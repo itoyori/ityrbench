@@ -1,18 +1,8 @@
 depends:
-  - name: massivethreads-dm
-    recipe: release
-  - name: pcas
+  - name: itoyori
     recipe: release
   - name: massivelogger
     recipe: release
-  - name: backward-cpp
-    recipe: v1.6
-  - name: jemalloc
-    recipe: v5.3.0
-  - name: pcg
-    recipe: master
-  - name: boost
-    recipe: v1.80.0
 
 default_params:
   nodes: 1
@@ -27,10 +17,9 @@ default_params:
   n_input: 1_000_000
   repeats: 10
   verify: 1
-  cutoff_i: 64
   cutoff_q: 16384
   cutoff_m: $cutoff_q
-  exec_type: 2 # 0:serial/1:std::sort/2:parallel
+  exec_type: parallel # std_sort/parallel
   # common params
   cache_policy: writeback_lazy # serial/nocache/writethrough/writeback/writeback_lazy/writeback_lazy_wl/getput
   dist_policy: cyclic # block/cyclic
@@ -39,8 +28,7 @@ default_params:
   sub_block_size: 4096 # bytes
   max_dirty: $cache_size # MB
   shared_mem: 1
-  logger: dummy # dummy/trace/stats
-  allocator: sys # sys/jemalloc
+  prof: disabled # disabled/stats/trace
   debugger: 0
 
 default_name: cilksort
@@ -52,9 +40,9 @@ batches:
     params:
       nodes: 1
       cores: 1
-      exec_type: [0, 1] # serial, std_sort
       n_input: 1_000_000_000
       repeats: 11
+      exec_type: [std_sort, parallel]
       cache_policy: serial
     duplicates: 1
     artifacts:
@@ -77,7 +65,7 @@ batches:
       n_input: 1_000_000_000
       repeats: 11
       cache_policy: [nocache, writethrough, writeback, writeback_lazy]
-      logger: stats
+      prof: stats
     artifacts:
       - type: stdout
         dest: cilksort/${batch_name}/nodes_${nodes}_p_${cache_policy}_${duplicate}.log
@@ -96,7 +84,7 @@ batches:
       n_input: 10_000_000_000
       repeats: 11
       cache_policy: [nocache, writethrough, writeback, writeback_lazy]
-      logger: stats
+      prof: stats
     artifacts:
       - type: stdout
         dest: cilksort/${batch_name}/nodes_${nodes}_p_${cache_policy}_${duplicate}.log
@@ -135,7 +123,7 @@ batches:
       repeats: 11
       cache_policy: writeback_lazy
       sub_block_size: [1, 4, 16, 64, 256, 1024, 4096, 16384, 65536]
-      logger: stats
+      prof: stats
     artifacts:
       - type: stdout
         dest: cilksort/${batch_name}/n_${n_input}_s_${sub_block_size}_${duplicate}.log
@@ -155,7 +143,7 @@ batches:
       repeats: 11
       cache_policy: [nocache, writeback_lazy, getput]
       dist_policy: [block, cyclic]
-      logger: stats
+      prof: stats
     artifacts:
       - type: stdout
         dest: cilksort/${batch_name}/c_${cache_policy}_d_${dist_policy}_${duplicate}.log
@@ -175,7 +163,7 @@ batches:
       repeats: 11
       cache_policy: [nocache, writeback_lazy, getput]
       dist_policy: [block, cyclic]
-      logger: stats
+      prof: stats
     artifacts:
       - type: stdout
         dest: cilksort/${batch_name}/c_${cache_policy}_d_${dist_policy}_${duplicate}.log
@@ -186,36 +174,39 @@ batches:
         dest: cilksort/${batch_name}/c_${cache_policy}_d_${dist_policy}_${duplicate}.out
 
 build:
-  depend_params: [elem_type, cache_policy, dist_policy, block_size, logger]
+  depend_params: [elem_type, cache_policy, dist_policy, block_size, prof]
   script: |
     source build_common.bash
 
-    CFLAGS="${CFLAGS:+$CFLAGS} -DNDEBUG"
-    CFLAGS="${CFLAGS:+$CFLAGS} -DITYR_BENCH_ELEM_TYPE=$KOCHI_PARAM_ELEM_TYPE"
-    CFLAGS="${CFLAGS:+$CFLAGS} -DITYR_USE_MPI_WIN_DYNAMIC=false"
+    CXXFLAGS="${CXXFLAGS:+$CXXFLAGS} -DNDEBUG"
+    CXXFLAGS="${CXXFLAGS:+$CXXFLAGS} -DITYRBENCH_ELEM_TYPE=$KOCHI_PARAM_ELEM_TYPE"
+    CXXFLAGS="${CXXFLAGS:+$CXXFLAGS} -DITYR_USE_MPI_WIN_DYNAMIC=false"
 
+    CC=$MPICC CXX=$MPICXX cmake -DCMAKE_CXX_FLAGS="$CXXFLAGS" -Ditoyori_DIR=$KOCHI_INSTALL_PREFIX_ITOYORI/lib/cmake/itoyori .
     make clean
-    MPICXX=$MPICXX CFLAGS=$CFLAGS make cilksort.out
+    make -j
 
 run:
-  depend_params: [nodes, cores, n_input, repeats, verify, cutoff_i, cutoff_m, cutoff_q, exec_type, cache_size, sub_block_size, max_dirty, shared_mem, logger, allocator, debugger]
+  depend_params: [nodes, cores, n_input, repeats, verify, cutoff_m, cutoff_q, exec_type, cache_size, sub_block_size, max_dirty, shared_mem, prof, debugger]
   script: |
     source run_common.bash
 
-    export OMPI_MCA_common_tofu_num_mrq_entries=2097152 # 2048, 8192, 32768, 131072 (default), 524288, or 2097152
-    export PCAS_ALLOCATOR_MAX_LOCAL_SIZE=2
+    # export OMPI_MCA_common_tofu_num_mrq_entries=2097152 # 2048, 8192, 32768, 131072 (default), 524288, or 2097152
+
+    case $KOCHI_PARAM_EXEC_TYPE in
+      std_sort) exec_type_num=1 ;;
+      parallel) exec_type_num=2 ;;
+      *)        echo "Unknown exec type"; exit 1 ;;
+    esac
 
     commands="
       ./cilksort.out
         -n $KOCHI_PARAM_N_INPUT
         -r $KOCHI_PARAM_REPEATS
-        -e $KOCHI_PARAM_EXEC_TYPE
-        -c $KOCHI_PARAM_CACHE_SIZE
-        -s $KOCHI_PARAM_SUB_BLOCK_SIZE
+        -e $exec_type_num
         -v $KOCHI_PARAM_VERIFY
-        -i $KOCHI_PARAM_CUTOFF_I
         -m $KOCHI_PARAM_CUTOFF_M
-        -q $KOCHI_PARAM_CUTOFF_Q"
+        -s $KOCHI_PARAM_CUTOFF_Q"
 
     n_nodes=$(echo $KOCHI_PARAM_NODES | cut -f 1 -d ":" | sed 's/x/*/g' | bc)
 
@@ -225,14 +216,4 @@ run:
       MPIEXEC=mpitx ityr_mpirun $((n_nodes * KOCHI_PARAM_CORES)) $KOCHI_PARAM_CORES gdb --args $commands
     fi
 
-    # jeprof_wrap() {
-    #   # FILEPATH=jeprof.${PMIX_RANK}.out
-    #   FILEPATH=cilksort.${PMIX_RANK}
-    #   export MALLOC_CONF="prof:true,lg_prof_interval:30,prof_prefix:$FILEPATH"
-    #   "$@"
-    # }
-    # export -f jeprof_wrap
-
-    # ityr_mpirun $((n_nodes * KOCHI_PARAM_CORES)) $KOCHI_PARAM_CORES bash -c "jeprof_wrap $commands"
-
-    if [[ $KOCHI_PARAM_LOGGER == trace ]]; then run_trace_viewer; fi
+    if [[ $KOCHI_PARAM_PROF == trace ]]; then run_trace_viewer; fi

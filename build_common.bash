@@ -1,21 +1,21 @@
 #!/bin/bash
 [[ -z "${PS1+x}" ]] && set -euo pipefail
 
+MPICC=${MPICC:-mpicc}
 MPICXX=${MPICXX:-mpicxx}
 
 $MPICXX --version
 
-CFLAGS="${CFLAGS:+$CFLAGS} -DITYR_LOGGER_IMPL=impl_$KOCHI_PARAM_LOGGER"
-CFLAGS="${CFLAGS:+$CFLAGS} -DITYR_DIST_POLICY=$KOCHI_PARAM_DIST_POLICY"
-CFLAGS="${CFLAGS:+$CFLAGS} -DITYR_BLOCK_SIZE=$KOCHI_PARAM_BLOCK_SIZE"
+CXXFLAGS="${CXXFLAGS:+$CXXFLAGS} -DITYR_PROFILER_MODE=$KOCHI_PARAM_PROF"
+CXXFLAGS="${CXXFLAGS:+$CXXFLAGS} -DITYR_ORI_DEFAULT_MEM_MAPPER=$KOCHI_PARAM_DIST_POLICY"
+CXXFLAGS="${CXXFLAGS:+$CXXFLAGS} -DITYR_ORI_BLOCK_SIZE=$KOCHI_PARAM_BLOCK_SIZE"
 
 case $KOCHI_PARAM_CACHE_POLICY in
-  serial)            CFLAGS="${CFLAGS:+$CFLAGS} -DITYR_POLICY=ityr_policy_serial" ;;
-  nocache)           CFLAGS="${CFLAGS:+$CFLAGS} -DITYR_POLICY=ityr_policy_workfirst -DITYR_IRO_DISABLE_CACHE=1" ;;
-  writethrough)      CFLAGS="${CFLAGS:+$CFLAGS} -DITYR_POLICY=ityr_policy_workfirst -DITYR_ENABLE_WRITE_THROUGH=1" ;;
-  writeback)         CFLAGS="${CFLAGS:+$CFLAGS} -DITYR_POLICY=ityr_policy_workfirst" ;;
-  writeback_lazy)    CFLAGS="${CFLAGS:+$CFLAGS} -DITYR_POLICY=ityr_policy_workfirst_lazy" ;;
-  writeback_lazy_wl) CFLAGS="${CFLAGS:+$CFLAGS} -DITYR_POLICY=ityr_policy_workfirst_lazy -DITYR_ENABLE_ACQUIRE_WHITELIST=1" ;;
-  getput)            CFLAGS="${CFLAGS:+$CFLAGS} -DITYR_POLICY=ityr_policy_workfirst_lazy -DITYR_IRO_GETPUT=1" ;;
+  serial)            CXXFLAGS="${CXXFLAGS:+$CXXFLAGS} -DITYR_ITO_SCHEDULER=serial" ;;
+  nocache)           CXXFLAGS="${CXXFLAGS:+$CXXFLAGS} -DITYR_POLICY=ityr_policy_workfirst -DITYR_IRO_DISABLE_CACHE=1" ;;
+  writethrough)      CXXFLAGS="${CXXFLAGS:+$CXXFLAGS} -DITYR_ORI_ENABLE_WRITE_THROUGH=1" ;;
+  writeback)         CXXFLAGS="${CXXFLAGS:+$CXXFLAGS} " ;;
+  writeback_lazy)    CXXFLAGS="${CXXFLAGS:+$CXXFLAGS} -DITYR_ORI_ENABLE_LAZY_RELEASE=1" ;;
+  getput)            CXXFLAGS="${CXXFLAGS:+$CXXFLAGS} -DITYR_POLICY=ityr_policy_workfirst_lazy -DITYR_IRO_GETPUT=1" ;;
   *)                 echo "Unknown cache policy ($KOCHI_PARAM_CACHE_POLICY)"; exit 1 ;;
 esac

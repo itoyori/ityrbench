@@ -5,11 +5,6 @@ MPIEXEC=${MPIEXEC:-mpiexec}
 
 $MPIEXEC --version || true
 
-export MADM_RUN__=1
-export MADM_PRINT_ENV=1
-export PCAS_PRINT_ENV=1
-export ITYR_PRINT_ENV=1
-
 STDOUT_FILE=mpirun_out.txt
 
 case $KOCHI_MACHINE in
@@ -103,7 +98,8 @@ case $KOCHI_MACHINE in
       local n_processes=$1
       local n_processes_per_node=$2
       $MPIEXEC -n $n_processes -N $n_processes_per_node \
-        -- setarch $(uname -m) --addr-no-randomize "${@:3}"
+        --mca osc ucx \
+        setarch $(uname -m) --addr-no-randomize "${@:3}"
     }
     ;;
 esac
@@ -114,19 +110,13 @@ run_trace_viewer() {
     exit 1
   fi
   shopt -s nullglob
-  MLOG_VIEWER_ONESHOT=false bokeh serve $KOCHI_INSTALL_PREFIX_MASSIVELOGGER/viewer --port $KOCHI_FORWARD_PORT --allow-websocket-origin \* --session-token-expiration 3600 --args ityr_log_*.ignore pcas_log_*.ignore
+  MLOG_VIEWER_ONESHOT=false bokeh serve $KOCHI_INSTALL_PREFIX_MASSIVELOGGER/viewer --port $KOCHI_FORWARD_PORT --allow-websocket-origin \* --session-token-expiration 3600 --args ityr_log_*.ignore
 }
 
-export PCAS_ENABLE_SHARED_MEMORY=$KOCHI_PARAM_SHARED_MEM
-export PCAS_MAX_DIRTY_CACHE_SIZE=$(bc <<< "$KOCHI_PARAM_MAX_DIRTY * 2^20 / 1")
-
-export MADM_STACK_SIZE=$((4 * 1024 * 1024))
-
-if [[ $KOCHI_PARAM_ALLOCATOR == jemalloc ]]; then
-  export LD_PRELOAD=${KOCHI_INSTALL_PREFIX_JEMALLOC}/lib/libjemalloc.so${LD_PRELOAD:+:$LD_PRELOAD}
-else
-  export LD_PRELOAD=${LD_PRELOAD:+$LD_PRELOAD}
-fi
+export ITYR_ENABLE_SHARED_MEMORY=$KOCHI_PARAM_SHARED_MEM
+export ITYR_ORI_CACHE_SIZE=$(bc <<< "$KOCHI_PARAM_CACHE_SIZE * 2^20 / 1")
+export ITYR_ORI_SUB_BLOCK_SIZE=$KOCHI_PARAM_SUB_BLOCK_SIZE
+export ITYR_ORI_MAX_DIRTY_CACHE_SIZE=$(bc <<< "$KOCHI_PARAM_MAX_DIRTY * 2^20 / 1")
 
 if [[ $KOCHI_PARAM_DEBUGGER == 1 ]] && [[ -z "${PS1+x}" ]]; then
   echo "Use kochi interact to run debugger."

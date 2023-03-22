@@ -60,10 +60,34 @@
 
 #include "pcg_random.hpp"
 
-using elem_t = int;
+enum class exec_t {
+  StdSort = 1,
+  Parallel = 2,
+};
+
+std::ostream& operator<<(std::ostream& o, const exec_t& e) {
+  switch (e) {
+    case exec_t::StdSort:  o << "std_sort"; break;
+    case exec_t::Parallel: o << "parallel"; break;
+  }
+  return o;
+}
+
+template <typename T>
+std::string to_str(T x) {
+  std::stringstream ss;
+  ss << x;
+  return ss.str();
+}
+
+#ifndef ITYRBENCH_ELEM_TYPE
+#define ITYRBENCH_ELEM_TYPE int
+#endif
+using elem_t = ITYRBENCH_ELEM_TYPE;
 
 std::size_t n_input        = std::size_t(1) * 1024 * 1024;
 int         n_repeats      = 10;
+exec_t      exec_type      = exec_t::Parallel;
 std::size_t cutoff_sort    = std::size_t(4) * 1024;
 std::size_t cutoff_merge   = std::size_t(4) * 1024;
 bool        verify_result  = true;
@@ -163,8 +187,16 @@ void cilksort(ityr::global_span<T> a, ityr::global_span<T> b) {
 }
 
 template <typename T, typename Rng>
-T get_random_elem(Rng& r) {
-  static std::uniform_int_distribution<T> dist(0, std::numeric_limits<T>::max());
+std::enable_if_t<std::is_integral_v<T>, T>
+gen_random_elem(Rng& r) {
+ static std::uniform_int_distribution<T> dist(0, std::numeric_limits<T>::max());
+ return dist(r);
+}
+
+template <typename T, typename Rng>
+std::enable_if_t<std::is_floating_point_v<T>, T>
+gen_random_elem(Rng& r) {
+  static std::uniform_real_distribution<T> dist(0, 1.0);
   return dist(r);
 }
 
@@ -179,7 +211,7 @@ void fill_array(ityr::global_span<T> s) {
                           ityr::make_global_iterator(s.begin(), ityr::ori::mode::write),
                           [=](std::size_t i, T& x) {
     pcg32 rng(seed, i);
-    x = get_random_elem<T>(rng);
+    x = gen_random_elem<T>(rng);
   });
 }
 
@@ -213,6 +245,7 @@ void show_help_and_exit(int argc [[maybe_unused]], char** argv) {
            "  options:\n"
            "    -n : Input size (size_t)\n"
            "    -r : # of repeats (int)\n"
+           "    -e : execution type (1: std::sort(), 2: parallel (default))\n"
            "    -s : cutoff count for serial sort (size_t)\n"
            "    -m : cutoff count for serial merge (size_t)\n"
            "    -v : verify the result (int)\n", argv[0]);
@@ -224,13 +257,16 @@ int main(int argc, char** argv) {
   ityr::init();
 
   int opt;
-  while ((opt = getopt(argc, argv, "n:r:s:m:v:h")) != EOF) {
+  while ((opt = getopt(argc, argv, "n:r:e:s:m:v:h")) != EOF) {
     switch (opt) {
       case 'n':
         n_input = atoll(optarg);
         break;
       case 'r':
         n_repeats = atoi(optarg);
+        break;
+      case 'e':
+        exec_type = exec_t(atoi(optarg));
         break;
       case 's':
         cutoff_sort = atoll(optarg);
@@ -255,12 +291,13 @@ int main(int argc, char** argv) {
            "Element size:                 %ld bytes\n"
            "N:                            %ld\n"
            "# of repeats:                 %d\n"
+           "Execution type:               %s\n"
            "Cutoff (cilksort):            %ld\n"
            "Cutoff (cilkmerge):           %ld\n"
            "Verify result:                %d\n"
            "-------------------------------------------------------------\n",
            ityr::n_ranks(), sizeof(elem_t), n_input, n_repeats,
-           cutoff_sort, cutoff_merge, verify_result);
+           to_str(exec_type).c_str(), cutoff_sort, cutoff_merge, verify_result);
 
     printf("[Compile Options]\n");
     ityr::print_compile_options();
@@ -268,6 +305,7 @@ int main(int argc, char** argv) {
     printf("[Runtime Options]\n");
     ityr::print_runtime_options();
     printf("=============================================================\n\n");
+    printf("PID of the main worker: %d\n", getpid());
     fflush(stdout);
   }
 
@@ -286,9 +324,15 @@ int main(int argc, char** argv) {
 
     auto t0 = ityr::gettime_ns();
 
-    ityr::root_exec([=]{
-      cilksort(a, b);
-    });
+    if (exec_type == exec_t::StdSort) {
+      ityr::root_exec([=]{
+        std::sort(a.begin(), a.end());
+      });
+    } else {
+      ityr::root_exec([=]{
+        cilksort(a, b);
+      });
+    }
 
     auto t1 = ityr::gettime_ns();
 

@@ -39,31 +39,17 @@ machines:
       on_login_node: |
         . /sqfs/work/G15442/v60680/venv/squid-c/bin/activate
         export TERM=xterm-256color
-        export MPICC=mpicc
-        export MPICXX=mpicxx
       on_machine: |
         . /sqfs/work/G15442/v60680/venv/squid-c/bin/activate
         export TERM=xterm-256color
-        export MPICC=mpicc
-        export MPICXX=mpicxx
         (module load BaseGCC/2022; mpirun -N 1 $NQSV_MPIOPTS /sqfs/home/v60680/launch_sshd.sh)
 
 dependencies:
   ucx:
     recipes:
-      - name: v1.11.0
-        before_script: UCX_VERSION=1.11.0 CONFIGURE_OPTS="--disable-logging --disable-debug --disable-assertions --disable-params-check"
-      - name: v1.13.1
-        before_script: UCX_VERSION=1.13.1 CONFIGURE_OPTS="--disable-logging --disable-debug --disable-assertions --disable-params-check"
-      - name: v1.11.0-debug
-        before_script: UCX_VERSION=1.11.0 CONFIGURE_OPTS="--enable-debug --enable-debug-data" CFLAGS="${CFLAGS:+$CFLAGS} -O0"
-      - name: v1.13.1-debug
-        before_script: UCX_VERSION=1.13.1 CONFIGURE_OPTS="--enable-debug --enable-debug-data" CFLAGS="${CFLAGS:+$CFLAGS} -O0"
-      - name: v1.11.0-prof
-        before_script: UCX_VERSION=1.11.0 CONFIGURE_OPTS="--disable-logging --disable-debug --disable-assertions --disable-params-check --enable-profiling --enable-frame-pointer --enable-stats"
+      - name: v1.11.2
+        before_script: UCX_VERSION=1.11.2 CONFIGURE_OPTS="--disable-logging --disable-debug --disable-assertions --disable-params-check"
     script:
-      - unset MPICC
-      - unset MPICXX
       - wget https://github.com/openucx/ucx/releases/download/v${UCX_VERSION}/ucx-${UCX_VERSION}.tar.gz
       - tar xvf ucx-${UCX_VERSION}.tar.gz
       - cd ucx-${UCX_VERSION}/
@@ -75,32 +61,10 @@ dependencies:
     git: https://github.com/open-mpi/ompi.git
     depends:
       - name: ucx
-        recipe: v1.11.0
+        recipe: v1.11.2
     recipes:
       - name:   main
         branch: main
-      - name:   v5.0.x
-        branch: v5.0.x
-      - name:   v5.0.0rc7
-        branch: v5.0.0rc7
-      - name:   v5.0.0rc9
-        branch: v5.0.0rc9
-      - name:   dev
-        mirror: true
-        mirror_dir: ../../github/ompi
-      - name:   v5.0.x-debug
-        branch: v5.0.x
-        before_script: CONFIGURE_OPTS="--enable-debug" CFLAGS="${CFLAGS:+$CFLAGS} -O0"
-        depends:
-          - name: ucx
-            recipe: v1.11.0-debug
-      - name:   dev-debug
-        mirror: true
-        mirror_dir: ../../github/ompi
-        before_script: CONFIGURE_OPTS="--enable-debug" CFLAGS="${CFLAGS:+$CFLAGS} -O0"
-        depends:
-          - name: ucx
-            recipe: v1.11.0-debug
     script:
       - ./autogen.pl
       - mkdir build
@@ -112,76 +76,6 @@ dependencies:
     activate_script:
       - export PATH=$KOCHI_INSTALL_PREFIX_OPENMPI/bin${PATH:+:$PATH}
       - export LD_LIBRARY_PATH=$KOCHI_INSTALL_PREFIX_OPENMPI/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
-
-  massivethreads-dm:
-    git: git@gitlab.eidos.ic.i.u-tokyo.ac.jp:shiina/massivethreads-dm.git
-    depends:
-      - name: openmpi
-        recipe: v5.0.0rc7
-        machines: [local]
-      - name: openmpi
-        recipe: dev
-        machines: [squid-c]
-    recipes:
-      - name: release
-        branch: ityr
-        script:
-          - CFLAGS="${CFLAGS:+$CFLAGS} -O3 -g -gdwarf-4 -Wall"
-          - CCFLAGS="$CFLAGS" CXXFLAGS="$CFLAGS" ./configure MPICC=$MPICC MPICXX=$MPICXX $CONFIGURE_OPTS --with-comm-layer=mpi3 --prefix=$KOCHI_INSTALL_PREFIX
-      - name: prof-stats
-        branch: ityr
-        script:
-          - CFLAGS="${CFLAGS:+$CFLAGS} -O3 -g -gdwarf-4 -Wall"
-          - CCFLAGS="$CFLAGS" CXXFLAGS="$CFLAGS" ./configure MPICC=$MPICC MPICXX=$MPICXX $CONFIGURE_OPTS --with-comm-layer=mpi3 --prefix=$KOCHI_INSTALL_PREFIX --enable-logger --disable-logger-trace
-      - name: prof-trace
-        branch: ityr
-        script:
-          - CFLAGS="${CFLAGS:+$CFLAGS} -O3 -g -gdwarf-4 -Wall"
-          - CCFLAGS="$CFLAGS" CXXFLAGS="$CFLAGS" ./configure MPICC=$MPICC MPICXX=$MPICXX $CONFIGURE_OPTS --with-comm-layer=mpi3 --prefix=$KOCHI_INSTALL_PREFIX --enable-logger
-      - name: develop
-        mirror: true
-        mirror_dir: ../massivethreads-dm
-        script:
-          - CFLAGS="${CFLAGS:+$CFLAGS} -O3 -g -gdwarf-4 -Wall"
-          - CCFLAGS="$CFLAGS" CXXFLAGS="$CFLAGS" ./configure MPICC=$MPICC MPICXX=$MPICXX $CONFIGURE_OPTS --with-comm-layer=mpi3 --prefix=$KOCHI_INSTALL_PREFIX
-    before_script: |
-      $MPICXX --version
-      if [[ $KOCHI_MACHINE == wisteria-o ]]; then
-        CFLAGS="${CFLAGS:+$CFLAGS} -DMADI_NULLIFY_PARENT_STACK=1"
-        CONFIGURE_OPTS="${CONFIGURE_OPTS:+$CONFIGURE_OPTS} --host=aarch64"
-      fi
-      if [[ $KOCHI_MACHINE == local ]]; then
-        CONFIGURE_OPTS="${CONFIGURE_OPTS:+$CONFIGURE_OPTS} --enable-polling"
-      fi
-    after_script:
-      - make -j
-      - make install
-
-  pcas:
-    git: git@gitlab.eidos.ic.i.u-tokyo.ac.jp:shiina/pcas.git
-    depends:
-      - name: openmpi
-        recipe: v5.0.0rc7
-        machines: [local]
-      - name: openmpi
-        recipe: dev
-        machines: [squid-c]
-    recipes:
-      - name: release
-        branch: master
-      - name: develop
-        mirror: true
-        mirror_dir: ../pcas
-      - name: develop_test
-        mirror: true
-        mirror_dir: ../pcas
-        on_machine: true
-        script:
-          - CC=$MPICC CXX=$MPICXX cmake -DCMAKE_INSTALL_PREFIX=$KOCHI_INSTALL_PREFIX .
-          - make all test install
-    script:
-      - CC=$MPICC CXX=$MPICXX cmake -DCMAKE_INSTALL_PREFIX=$KOCHI_INSTALL_PREFIX -DBUILD_TESTING=OFF .
-      - make install
 
   massivelogger:
     git: https://github.com/massivethreads/massivelogger.git
@@ -223,27 +117,6 @@ dependencies:
       - mkdir -p $KOCHI_INSTALL_PREFIX/include
       - cp backward.hpp $KOCHI_INSTALL_PREFIX/include/
 
-  jemalloc:
-    recipes:
-      - name: v5.3.0
-        envs:
-          JEMALLOC_VERSION: 5.3.0
-          CONFIGURE_OPTS: ""
-      - name: v5.3.0-prof
-        envs:
-          JEMALLOC_VERSION: 5.3.0
-          CONFIGURE_OPTS: --enable-prof
-    script:
-      - wget https://github.com/jemalloc/jemalloc/releases/download/${JEMALLOC_VERSION}/jemalloc-${JEMALLOC_VERSION}.tar.bz2
-      - tar xvf jemalloc-${JEMALLOC_VERSION}.tar.bz2
-      - cd jemalloc-${JEMALLOC_VERSION}/
-      - if [[ $KOCHI_MACHINE == wisteria-o ]]; then
-      -   CONFIGURE_OPTS="${CONFIGURE_OPTS:+$CONFIGURE_OPTS} CC=fccpx CXX=FCCpx --host=aarch64-linux-gnu --with-lg-page=16"
-      - fi
-      - ./configure --prefix=$KOCHI_INSTALL_PREFIX $CONFIGURE_OPTS
-      - make -j
-      - make install
-
   boost:
     recipes:
       - name: v1.80.0
@@ -264,21 +137,12 @@ dependencies:
       - export BOOST_ROOT=$KOCHI_INSTALL_PREFIX_BOOST
       - export LD_LIBRARY_PATH=$KOCHI_INSTALL_PREFIX_BOOST/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
 
-  pcg:
-    git: https://github.com/imneme/pcg-cpp.git
-    recipes:
-      - name: master
-        branch: master
-    script:
-      - cp -r include/ $KOCHI_INSTALL_PREFIX/
-
-  # experimental
   itoyori:
     git: git@gitlab.eidos.ic.i.u-tokyo.ac.jp:shiina/itoyori.git
     depends:
       - name: openmpi
-        recipe: v5.0.0rc7
-        machines: [local]
+        recipe: main
+        machines: [local, squid-c]
       - name: boost
         recipe: v1.80.0
         machines: [wisteria-o]
@@ -286,7 +150,7 @@ dependencies:
       - name: release
         branch: master
         script:
-          - CC=$MPICC CXX=$MPICXX cmake -DCMAKE_INSTALL_PREFIX=$KOCHI_INSTALL_PREFIX .
+          - CC=$MPICC CXX=$MPICXX cmake -DCMAKE_INSTALL_PREFIX=$KOCHI_INSTALL_PREFIX -DBUILD_TESTING=off -DBUILD_EXAMPLES=off .
           - make -j all install
       - name: develop
         mirror: true
