@@ -16,17 +16,17 @@ case $KOCHI_MACHINE in
       local n_processes_per_node=$2
       (
         vcoordfile=$(mktemp)
-        # if [[ $PJM_ENVIRONMENT == INTERACT ]]; then
-        #   tee_cmd="tee $STDOUT_FILE"
-        #   of_opt=""
-        #   trap "rm -f $vcoordfile" EXIT
-        # else
+        if [[ $PJM_ENVIRONMENT == INTERACT ]]; then
+          tee_cmd="tee $STDOUT_FILE"
+          of_opt=""
+          trap "rm -f $vcoordfile" EXIT
+        else
           export PLE_MPI_STD_EMPTYFILE=off # do not create empty stdout/err files
           tee_cmd="cat"
           of_opt="-of-proc $STDOUT_FILE"
           trap "rm -f $vcoordfile; compgen -G ${STDOUT_FILE}.* && tail -n +1 \$(ls ${STDOUT_FILE}.* -v) | tee $STDOUT_FILE && rm ${STDOUT_FILE}.*" EXIT
           # trap "rm -f $vcoordfile; compgen -G ${STDOUT_FILE}.* && tail -n +1 \$(ls ${STDOUT_FILE}.* -v) > $STDOUT_FILE && head -100 $STDOUT_FILE" EXIT
-        # fi
+        fi
         np=0
         if [[ -z ${PJM_NODE_Y+x} ]]; then
           # 1D
