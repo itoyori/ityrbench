@@ -174,11 +174,10 @@ batches:
         dest: cilksort/${batch_name}/c_${cache_policy}_d_${dist_policy}_${duplicate}.out
 
 build:
-  depend_params: [elem_type, cache_policy, dist_policy, block_size, prof]
+  depend_params: [elem_type, dist_policy, block_size, prof]
   script: |
     source build_common.bash
 
-    CXXFLAGS="${CXXFLAGS:+$CXXFLAGS} -DNDEBUG"
     CXXFLAGS="${CXXFLAGS:+$CXXFLAGS} -DITYRBENCH_ELEM_TYPE=$KOCHI_PARAM_ELEM_TYPE"
     CXXFLAGS="${CXXFLAGS:+$CXXFLAGS} -DITYR_USE_MPI_WIN_DYNAMIC=false"
 
@@ -187,7 +186,7 @@ build:
     make -j
 
 run:
-  depend_params: [nodes, cores, n_input, repeats, verify, cutoff_m, cutoff_q, exec_type, cache_size, sub_block_size, max_dirty, shared_mem, prof, debugger]
+  depend_params: [nodes, cores, n_input, repeats, verify, cutoff_m, cutoff_q, exec_type, cache_policy, cache_size, sub_block_size, max_dirty, shared_mem, prof, debugger]
   script: |
     source run_common.bash
 
@@ -200,7 +199,7 @@ run:
     esac
 
     commands="
-      ./cilksort.out
+      ./cilksort_${KOCHI_PARAM_CACHE_POLICY}.out
         -n $KOCHI_PARAM_N_INPUT
         -r $KOCHI_PARAM_REPEATS
         -e $exec_type_num

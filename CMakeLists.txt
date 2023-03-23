@@ -23,29 +23,31 @@ include(GNUInstallDirs)
 
 set(benchmarks cilksort)
 
+set(policies "\
+serial        , -DITYR_ITO_SCHEDULER=serial -DITYR_ORI_CORE=serial;\
+nocache       , -DITYR_ORI_CORE=nocache -DITYR_ORI_FORCE_GETPUT=1;\
+writethrough  , -DITYR_ORI_ENABLE_LAZY_RELEASE=0 -DITYR_ORI_ENABLE_WRITE_THROUGH=1;\
+writeback     , -DITYR_ORI_ENABLE_LAZY_RELEASE=0;\
+writeback_lazy, ;\
+getput        , -DITYR_ORI_FORCE_GETPUT=1 -DITYR_ORI_ENABLE_VM_MAP=0")
+
 foreach(bench IN LISTS benchmarks)
-  add_executable(${bench}.out ${bench}.cpp)
-  target_link_libraries(${bench}.out itoyori)
-  target_include_directories(${bench}.out PRIVATE pcg-cpp/include)
+  foreach(policy_tuple IN LISTS policies)
+    string(REPLACE "," ";" pair ${policy_tuple})
+    list(GET pair 0 policy_name)
+    list(GET pair 1 policy_cxxflags)
 
-  add_executable(${bench}_serial.out ${bench}.cpp)
-  target_link_libraries(${bench}_serial.out itoyori)
-  target_include_directories(${bench}_serial.out PRIVATE pcg-cpp/include)
-  target_compile_options(${bench}_serial.out PRIVATE -DITYR_ITO_SCHEDULER=serial)
+    string(STRIP "${policy_name}" policy_name)
+    separate_arguments(policy_options UNIX_COMMAND "${policy_cxxflags}")
 
-  add_executable(${bench}_prof_stats.out ${bench}.cpp)
-  target_link_libraries(${bench}_prof_stats.out itoyori)
-  target_include_directories(${bench}_prof_stats.out PRIVATE pcg-cpp/include)
-  target_compile_options(${bench}_prof_stats.out PRIVATE -DITYR_PROFILER_MODE=stats)
+    set(target "${bench}_${policy_name}")
 
-  add_executable(${bench}_prof_trace.out ${bench}.cpp)
-  target_link_libraries(${bench}_prof_trace.out itoyori)
-  target_include_directories(${bench}_prof_trace.out PRIVATE pcg-cpp/include)
-  target_compile_options(${bench}_prof_trace.out PRIVATE -DITYR_PROFILER_MODE=trace)
+    add_executable(${target}.out ${bench}.cpp)
+    target_link_libraries(${target}.out itoyori)
+    target_include_directories(${target}.out PRIVATE pcg-cpp/include)
+    target_compile_options(${target}.out PRIVATE ${policy_options})
 
-  install(TARGETS ${bench}.out
-                  ${bench}_serial.out
-                  ${bench}_prof_stats.out
-                  ${bench}_prof_trace.out
-          DESTINATION "${CMAKE_INSTALL_LIBEXECDIR}/ityrbench")
+    install(TARGETS ${target}.out
+            DESTINATION "${CMAKE_INSTALL_LIBEXECDIR}/ityrbench")
+  endforeach()
 endforeach()
