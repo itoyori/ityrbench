@@ -61,14 +61,14 @@
 #include "pcg_random.hpp"
 
 enum class exec_t {
+  Default = 0,
   StdSort = 1,
-  Parallel = 2,
 };
 
 std::ostream& operator<<(std::ostream& o, const exec_t& e) {
   switch (e) {
-    case exec_t::StdSort:  o << "std_sort"; break;
-    case exec_t::Parallel: o << "parallel"; break;
+    case exec_t::StdSort: o << "std_sort"; break;
+    case exec_t::Default: o << "default"; break;
   }
   return o;
 }
@@ -87,7 +87,7 @@ using elem_t = ITYRBENCH_ELEM_TYPE;
 
 std::size_t n_input        = std::size_t(1) * 1024 * 1024;
 int         n_repeats      = 10;
-exec_t      exec_type      = exec_t::Parallel;
+exec_t      exec_type      = exec_t::Default;
 std::size_t cutoff_sort    = std::size_t(4) * 1024;
 std::size_t cutoff_merge   = std::size_t(4) * 1024;
 bool        verify_result  = true;
@@ -245,7 +245,7 @@ void show_help_and_exit(int argc [[maybe_unused]], char** argv) {
            "  options:\n"
            "    -n : Input size (size_t)\n"
            "    -r : # of repeats (int)\n"
-           "    -e : execution type (1: std::sort(), 2: parallel (default))\n"
+           "    -e : execution type (0: default, 1: std::sort())\n"
            "    -s : cutoff count for serial sort (size_t)\n"
            "    -m : cutoff count for serial merge (size_t)\n"
            "    -v : verify the result (int)\n", argv[0]);
@@ -304,8 +304,9 @@ int main(int argc, char** argv) {
     printf("-------------------------------------------------------------\n");
     printf("[Runtime Options]\n");
     ityr::print_runtime_options();
-    printf("=============================================================\n\n");
+    printf("=============================================================\n");
     printf("PID of the main worker: %d\n", getpid());
+    printf("\n");
     fflush(stdout);
   }
 

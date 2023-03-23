@@ -65,6 +65,8 @@ dependencies:
     recipes:
       - name:   main
         branch: main
+      - name:   v5.0.0rc7
+        branch: v5.0.0rc7
     script:
       - ./autogen.pl
       - mkdir build
@@ -141,7 +143,7 @@ dependencies:
     git: git@gitlab.eidos.ic.i.u-tokyo.ac.jp:shiina/itoyori.git
     depends:
       - name: openmpi
-        recipe: main
+        recipe: v5.0.0rc7
         machines: [local, squid-c]
       - name: boost
         recipe: v1.80.0

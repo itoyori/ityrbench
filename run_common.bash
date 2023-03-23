@@ -99,7 +99,7 @@ case $KOCHI_MACHINE in
       local n_processes_per_node=$2
       $MPIEXEC -n $n_processes -N $n_processes_per_node \
         --mca osc ucx \
-        setarch $(uname -m) --addr-no-randomize "${@:3}"
+        -- setarch $(uname -m) --addr-no-randomize "${@:3}"
     }
     ;;
 esac

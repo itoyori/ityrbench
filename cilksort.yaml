@@ -19,7 +19,7 @@ default_params:
   verify: 1
   cutoff_q: 16384
   cutoff_m: $cutoff_q
-  exec_type: parallel # std_sort/parallel
+  exec_type: default # std_sort/default
   # common params
   cache_policy: writeback_lazy # serial/nocache/writethrough/writeback/writeback_lazy/writeback_lazy_wl/getput
   dist_policy: cyclic # block/cyclic
@@ -42,7 +42,7 @@ batches:
       cores: 1
       n_input: 1_000_000_000
       repeats: 11
-      exec_type: [std_sort, parallel]
+      exec_type: [std_sort, default]
       cache_policy: serial
     duplicates: 1
     artifacts:
@@ -194,8 +194,8 @@ run:
     # export OMPI_MCA_common_tofu_num_mrq_entries=2097152 # 2048, 8192, 32768, 131072 (default), 524288, or 2097152
 
     case $KOCHI_PARAM_EXEC_TYPE in
+      default)  exec_type_num=0 ;;
       std_sort) exec_type_num=1 ;;
-      parallel) exec_type_num=2 ;;
       *)        echo "Unknown exec type"; exit 1 ;;
     esac
 
