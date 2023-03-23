@@ -4,9 +4,7 @@
 #include <dlfcn.h>
 
 #include "ityr/ityr.hpp"
-
 #include "pcg_random.hpp"
-
 #include "backward.hpp"
 
 template <typename T> constexpr inline const char* typename_str()         { return "unknown"; }

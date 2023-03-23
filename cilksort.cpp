@@ -278,14 +278,14 @@ void show_help_and_exit(int argc [[maybe_unused]], char** argv) {
 }
 
 int main(int argc, char** argv) {
-  set_signal_handlers();
-
   ityr::init();
 
   ityr::common::profiler::event_initializer<prof_event_user_sort>          ITYR_ANON_VAR;
   ityr::common::profiler::event_initializer<prof_event_user_merge>         ITYR_ANON_VAR;
   ityr::common::profiler::event_initializer<prof_event_user_binary_search> ITYR_ANON_VAR;
   ityr::common::profiler::event_initializer<prof_event_user_copy>          ITYR_ANON_VAR;
+
+  set_signal_handlers();
 
   int opt;
   while ((opt = getopt(argc, argv, "n:r:e:s:m:v:h")) != EOF) {

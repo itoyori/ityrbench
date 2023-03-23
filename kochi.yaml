@@ -91,22 +91,6 @@ dependencies:
       - rm -rf $KOCHI_INSTALL_PREFIX/*
       - cp -af . $KOCHI_INSTALL_PREFIX
 
-  libunwind:
-    recipes:
-      - name: v1.6.2
-        before_script: LIBUNWIND_VERSION=1.6.2
-    script:
-      - wget http://download.savannah.nongnu.org/releases/libunwind/libunwind-${LIBUNWIND_VERSION}.tar.gz
-      - tar xvf libunwind-${LIBUNWIND_VERSION}.tar.gz
-      - cd libunwind-${LIBUNWIND_VERSION}/
-      - if [[ $KOCHI_MACHINE == wisteria-o ]]; then
-      -   ./configure CC=fccpx CXX=FCCpx --prefix=$KOCHI_INSTALL_PREFIX --host=aarch64-linux-gnu
-      - else
-      -   ./configure --prefix=$KOCHI_INSTALL_PREFIX
-      - fi
-      - make -j
-      - make install
-
   boost:
     recipes:
       - name: v1.80.0
