@@ -80,6 +80,26 @@ std::string to_str(T x) {
   return ss.str();
 }
 
+struct prof_event_user_sort : public ityr::common::profiler::event {
+  using event::event;
+  std::string str() const override { return "user_sort"; }
+};
+
+struct prof_event_user_merge : public ityr::common::profiler::event {
+  using event::event;
+  std::string str() const override { return "user_merge"; }
+};
+
+struct prof_event_user_binary_search : public ityr::common::profiler::event {
+  using event::event;
+  std::string str() const override { return "user_binary_search"; }
+};
+
+struct prof_event_user_copy : public ityr::common::profiler::event {
+  using event::event;
+  std::string str() const override { return "user_copy"; }
+};
+
 #ifndef ITYRBENCH_ELEM_TYPE
 #define ITYRBENCH_ELEM_TYPE int
 #endif
@@ -120,6 +140,7 @@ void cilkmerge(ityr::global_span<T> s1,
   }
 
   if (s2.size() == 0) {
+    ITYR_PROFILER_RECORD(prof_event_user_copy);
     ityr::ori::with_checkout(s1.data()  , s1.size()  , ityr::ori::mode::read,
                              dest.data(), dest.size(), ityr::ori::mode::write,
                              [&](const T* s1_, T* dest_) {
@@ -129,6 +150,7 @@ void cilkmerge(ityr::global_span<T> s1,
   }
 
   if (dest.size() < cutoff_merge) {
+    ITYR_PROFILER_RECORD(prof_event_user_merge);
     ityr::ori::with_checkout(s1.data()  , s1.size()  , ityr::ori::mode::read,
                              s2.data()  , s2.size()  , ityr::ori::mode::read,
                              dest.data(), dest.size(), ityr::ori::mode::write,
@@ -139,7 +161,10 @@ void cilkmerge(ityr::global_span<T> s1,
   }
 
   std::size_t split1 = (s1.size() + 1) / 2;
-  std::size_t split2 = binary_search(s2, T(s1[split1 - 1]));
+  std::size_t split2 = [&]() {
+    ITYR_PROFILER_RECORD(prof_event_user_binary_search);
+    return binary_search(s2, T(s1[split1 - 1]));
+  }();
 
   auto [s11  , s12  ] = divide(s1, split1);
   auto [s21  , s22  ] = divide(s2, split2);
@@ -156,6 +181,7 @@ void cilksort(ityr::global_span<T> a, ityr::global_span<T> b) {
   assert(a.size() == b.size());
 
   if (a.size() < cutoff_sort) {
+    ITYR_PROFILER_RECORD(prof_event_user_sort);
     ityr::ori::with_checkout(a.data(), a.size(), ityr::ori::mode::read_write,
                              [&](T* a_) {
       std::sort(a_, a_ + a.size());
@@ -255,6 +281,11 @@ void show_help_and_exit(int argc [[maybe_unused]], char** argv) {
 
 int main(int argc, char** argv) {
   ityr::init();
+
+  ityr::common::profiler::event_initializer<prof_event_user_sort>          ITYR_ANON_VAR;
+  ityr::common::profiler::event_initializer<prof_event_user_merge>         ITYR_ANON_VAR;
+  ityr::common::profiler::event_initializer<prof_event_user_binary_search> ITYR_ANON_VAR;
+  ityr::common::profiler::event_initializer<prof_event_user_copy>          ITYR_ANON_VAR;
 
   int opt;
   while ((opt = getopt(argc, argv, "n:r:e:s:m:v:h")) != EOF) {
