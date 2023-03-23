@@ -1,8 +1,6 @@
 depends:
   - name: itoyori
     recipe: release
-  - name: massivelogger
-    recipe: release
 
 default_params:
   nodes: 1

@@ -4,3 +4,6 @@
 [submodule "backward-cpp"]
 	path = backward-cpp
 	url = https://github.com/bombela/backward-cpp.git
+[submodule "massivelogger"]
+	path = massivelogger
+	url = https://github.com/massivethreads/massivelogger.git

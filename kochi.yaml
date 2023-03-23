@@ -79,18 +79,6 @@ dependencies:
       - export PATH=$KOCHI_INSTALL_PREFIX_OPENMPI/bin${PATH:+:$PATH}
       - export LD_LIBRARY_PATH=$KOCHI_INSTALL_PREFIX_OPENMPI/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
 
-  massivelogger:
-    git: https://github.com/massivethreads/massivelogger.git
-    recipes:
-      - name: release
-        branch: master
-      - name: develop
-        mirror: true
-        mirror_dir: ../massivelogger
-    script:
-      - rm -rf $KOCHI_INSTALL_PREFIX/*
-      - cp -af . $KOCHI_INSTALL_PREFIX
-
   boost:
     recipes:
       - name: v1.80.0
