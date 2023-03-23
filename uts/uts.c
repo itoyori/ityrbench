@@ -94,8 +94,6 @@ double shiftDepth = 0.5;
 int computeGranularity = 1;
 
 int numRepeats = 1;
-uint64_t cache_size = 16;
-uint64_t sub_block_size = 4096;
 
 /* display parameters */
 int debug    = 0;
@@ -154,10 +152,11 @@ int uts_numChildren_bin(Node * parent) {
 double tmp = log(4.0 / (1.0 + 4.0));
 
 int uts_numChildren_geo(Node * parent) {
-  double b_i = b_0;
+  /* double b_i = b_0; */
   int depth = parent->height;
   int numChildren, h;
-  double p, u;
+  /* double p, u; */
+  double u;
   
   // use shape function to compute target b_i
   /* if (depth > 0){ */
@@ -392,10 +391,6 @@ void uts_parseParams(int argc, char *argv[]){
         computeGranularity = max(1,atoi(argv[i+1])); break;
       case 'i':
         numRepeats = max(1,atoi(argv[i+1])); break;
-      case 'c':
-        cache_size = atoll(argv[i+1]); break;
-      case 's':
-        sub_block_size = atoll(argv[i+1]); break;
       default:
         err = i;
     }
@@ -430,8 +425,6 @@ void uts_helpMessage(void) {
   printf("   -v  int   nonzero to set verbose output\n");
   printf("   -x  int   debug level\n");
   printf("   -i  int   # of repeats\n");
-  printf("   -c  int   cache size for itoyori (MB)\n");
-  printf("   -s  int   sub-block size for itoyori (bytes)\n");
 
   // Get help message from the implementation
   printf("\n  Additional Implementation Parameters:\n");

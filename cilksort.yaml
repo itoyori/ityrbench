@@ -15,11 +15,11 @@ default_params:
   n_input: 1_000_000
   repeats: 10
   verify: 1
-  cutoff_q: 16384
-  cutoff_m: $cutoff_q
-  exec_type: default # std_sort/default
+  cutoff_s: 16384
+  cutoff_m: $cutoff_s
+  exec_type: default # default/std_sort
   # common params
-  cache_policy: writeback_lazy # serial/nocache/writethrough/writeback/writeback_lazy/writeback_lazy_wl/getput
+  cache_policy: writeback_lazy # serial/nocache/writethrough/writeback/writeback_lazy/getput
   dist_policy: cyclic # block/cyclic
   cache_size: 128 # MB
   block_size: 65536 # bytes
@@ -100,16 +100,16 @@ batches:
           machines: [wisteria-o]
       n_input: 1_000_000_000
       repeats: 11
-      cutoff_q: [64, 256, 1024, 4096, 16384, 65536]
+      cutoff_s: [64, 256, 1024, 4096, 16384, 65536]
       cache_policy: [nocache, writethrough, writeback, writeback_lazy]
     artifacts:
       - type: stdout
-        dest: cilksort/${batch_name}/c_${cutoff_q}_p_${cache_policy}_${duplicate}.log
+        dest: cilksort/${batch_name}/c_${cutoff_s}_p_${cache_policy}_${duplicate}.log
       - type: stats
-        dest: cilksort/${batch_name}/c_${cutoff_q}_p_${cache_policy}_${duplicate}.stats
+        dest: cilksort/${batch_name}/c_${cutoff_s}_p_${cache_policy}_${duplicate}.stats
       - type: file
         src: mpirun_out.txt
-        dest: cilksort/${batch_name}/c_${cutoff_q}_p_${cache_policy}_${duplicate}.out
+        dest: cilksort/${batch_name}/c_${cutoff_s}_p_${cache_policy}_${duplicate}.out
 
   sbsize:
     name: cilksort_${batch_name}
@@ -177,14 +177,14 @@ build:
     source build_common.bash
 
     CXXFLAGS="${CXXFLAGS:+$CXXFLAGS} -DITYRBENCH_ELEM_TYPE=$KOCHI_PARAM_ELEM_TYPE"
-    CXXFLAGS="${CXXFLAGS:+$CXXFLAGS} -DITYR_USE_MPI_WIN_DYNAMIC=false"
+    CXXFLAGS="${CXXFLAGS:+$CXXFLAGS} -DITYR_ALLOCATOR_USE_DYNAMIC_WIN=false"
 
     CC=$MPICC CXX=$MPICXX cmake -DCMAKE_CXX_FLAGS="$CXXFLAGS" -Ditoyori_DIR=$KOCHI_INSTALL_PREFIX_ITOYORI/lib/cmake/itoyori .
     make clean
     make -j
 
 run:
-  depend_params: [nodes, cores, n_input, repeats, verify, cutoff_m, cutoff_q, exec_type, cache_policy, cache_size, sub_block_size, max_dirty, shared_mem, prof, debugger]
+  depend_params: [nodes, cores, n_input, repeats, verify, cutoff_m, cutoff_s, exec_type, cache_policy, cache_size, sub_block_size, max_dirty, shared_mem, prof, debugger]
   script: |
     source run_common.bash
 
@@ -203,7 +203,7 @@ run:
         -e $exec_type_num
         -v $KOCHI_PARAM_VERIFY
         -m $KOCHI_PARAM_CUTOFF_M
-        -s $KOCHI_PARAM_CUTOFF_Q"
+        -s $KOCHI_PARAM_CUTOFF_S"
 
     n_nodes=$(echo $KOCHI_PARAM_NODES | cut -f 1 -d ":" | sed 's/x/*/g' | bc)
 

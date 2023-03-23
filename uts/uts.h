@@ -87,8 +87,6 @@ extern double     shiftDepth;
 /* Benchmark parameters */
 extern int    computeGranularity;
 extern int    numRepeats;
-extern uint64_t cache_size;
-extern uint64_t sub_block_size;
 extern int    debug;
 extern int    verbose;
 

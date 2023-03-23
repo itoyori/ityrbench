@@ -18,9 +18,7 @@
 #include <string.h>
 #include <math.h>
 
-#include "ityr/ityr.hpp"
-
-using my_ityr = ityr::ityr_if<ityr::ityr_policy>;
+#include "../common.hpp"
 
 #include "uts.h"
 
@@ -47,7 +45,7 @@ int impl_paramsToStr(char *strBuf, int ind) {
 }
 
 // Not using UTS command line params, return non-success
-int impl_parseParam(char *param, char *value) {
+int impl_parseParam(char *, char *) {
   return 1;
 }
 
@@ -76,7 +74,7 @@ Result mergeResult(Result r0, Result r1) {
   return r;
 }
 
-Node makeChild(const Node *parent, int childType, int computeGranuarity, counter_t idx) {
+Node makeChild(const Node *parent, int childType, int computeGranularity, counter_t idx) {
   int j;
 
   Node c = { childType, (int)parent->height + 1, -1, {{0}} };
@@ -159,11 +157,10 @@ Result parTreeSearch_fj(counter_t depth, Node parent) {
     Result r = { depth, 1, 1 };
     result = r;
   } else {
-    Result init = { 0, 0, 0 };
-    result = my_ityr::parallel_reduce(
+    result = ityr::parallel_reduce(
         ityr::count_iterator<counter_t>(0),
         ityr::count_iterator<counter_t>(numChildren),
-        init,
+        Result{0, 0, 0},
         mergeResult,
         [=](counter_t i) {
           Node child = makeChild(&parent, childType,
@@ -183,52 +180,36 @@ Result uts_fj_run(counter_t depth, Node parent) {
 #if UTS_RUN_SEQ
   return parTreeSearch_fj_seq(depth, parent);
 #else
-  return my_ityr::root_spawn([=]() { return parTreeSearch_fj(depth, parent); });
+  return ityr::root_exec([=]() {
+    return parTreeSearch_fj(depth, parent);
+  });
 #endif
 }
 
-Result uts_fj_main(uint64_t *walltime) {
-  Result r;
+Result uts_fj_main() {
   Node root;
-  int my_rank = my_ityr::rank();
+  uts_initRoot(&root, type);
 
-  if (my_rank == 0) {
-    uts_initRoot(&root, type);
-
-    uint64_t t1 = uts_wctime();
-
-    r = uts_fj_run((counter_t)0, root);
-
-    uint64_t t2 = uts_wctime();
-    *walltime = t2 - t1;
-  }
-
-  my_ityr::barrier();
-
-  return r;
+  return uts_fj_run((counter_t)0, root);
 }
 
-void real_main(int argc, char *argv[]) {
+int main(int argc, char** argv) {
   counter_t nNodes = 0;
   counter_t nLeaves = 0;
   counter_t maxTreeDepth = 0;
-  uint64_t  walltime = 0;
+
+  ityr::init();
 
   uts_parseParams(argc, argv);
 
-  int my_rank = my_ityr::rank();
-  int n_ranks = my_ityr::n_ranks();
-
-  if (my_rank == 0) {
+  if (ityr::is_master()) {
     setlocale(LC_NUMERIC, "en_US.UTF-8");
     printf("=============================================================\n"
            "[UTS]\n"
            "# of processes:                %d\n"
            "# of repeats:                  %d\n"
-           "PCAS cache size:               %ld MB\n"
-           "PCAS sub-block size:           %ld bytes\n"
            "-------------------------------------------------------------\n",
-           n_ranks, numRepeats, cache_size, sub_block_size);
+           ityr::n_ranks(), numRepeats);
 
     if (type == GEO) {
       printf("t (Tree type):                 Geometric (%d)\n"
@@ -249,35 +230,44 @@ void real_main(int argc, char *argv[]) {
     } else {
       assert(0); // TODO:
     }
-    printf("uth options:\n");
-    madm::uth::print_options(stdout);
-    printf("=============================================================\n\n");
+
+    printf("[Compile Options]\n");
+    ityr::print_compile_options();
+    printf("-------------------------------------------------------------\n");
+    printf("[Runtime Options]\n");
+    ityr::print_runtime_options();
+    printf("=============================================================\n");
     printf("PID of the main worker: %d\n", getpid());
+    printf("\n");
     fflush(stdout);
   }
 
-  my_ityr::iro::init(cache_size * 1024 * 1024, sub_block_size);
-
   for (int i = 0; i < numRepeats; i++) {
-    Result r = uts_fj_main(&walltime);
+    ityr::profiler_begin();
 
-    if (my_rank == 0) {
+    auto t0 = ityr::gettime_ns();
+
+    Result r = uts_fj_main();
+
+    auto t1 = ityr::gettime_ns();
+
+    ityr::profiler_end();
+
+    if (ityr::is_master()) {
       maxTreeDepth = r.maxdepth;
       nNodes = r.size;
       nLeaves = r.leaves;
 
-      double perf = (double)nNodes / walltime;
+      double perf = (double)nNodes / (t1 - t0);
 
       printf("[%d] %ld ns %.6g Gnodes/s ( nodes: %llu depth: %llu leaves: %llu )\n",
-             i, walltime, perf, nNodes, maxTreeDepth, nLeaves);
+             i, t1 - t0, perf, nNodes, maxTreeDepth, nLeaves);
       fflush(stdout);
     }
+
+    ityr::profiler_flush();
   }
 
-  my_ityr::iro::fini();
-}
-
-int main(int argc, char **argv) {
-  my_ityr::main(real_main, argc, argv);
+  ityr::fini();
   return 0;
 }

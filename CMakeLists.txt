@@ -23,17 +23,24 @@ add_subdirectory(backward-cpp)
 
 include(GNUInstallDirs)
 
-set(benchmarks cilksort)
+function(build_bench bench_name)
+  set(options)
+  set(single_value_args)
+  set(multi_value_args FILES CXXFLAGS)
 
-set(policies "\
-serial        , -DITYR_ITO_SCHEDULER=serial -DITYR_ORI_CORE=serial;\
-nocache       , -DITYR_ORI_CORE=nocache -DITYR_ORI_FORCE_GETPUT=1;\
-writethrough  , -DITYR_ORI_ENABLE_LAZY_RELEASE=0 -DITYR_ORI_ENABLE_WRITE_THROUGH=1;\
-writeback     , -DITYR_ORI_ENABLE_LAZY_RELEASE=0;\
-writeback_lazy, ;\
-getput        , -DITYR_ORI_FORCE_GETPUT=1 -DITYR_ORI_ENABLE_VM_MAP=0")
+  cmake_parse_arguments(PARSE_ARGV 0 ARG "${options}" "${single_value_args}" "${multi_value_args}")
 
-foreach(bench IN LISTS benchmarks)
+  separate_arguments(bench_options UNIX_COMMAND "${ARG_CXXFLAGS}")
+
+  set(policies "serial        , -DITYR_ITO_SCHEDULER=serial -DITYR_ORI_CORE=serial;\
+                nocache       , -DITYR_ORI_CORE=nocache -DITYR_ORI_FORCE_GETPUT=1;\
+                writethrough  , -DITYR_ORI_ENABLE_LAZY_RELEASE=0 -DITYR_ORI_ENABLE_WRITE_THROUGH=1;\
+                writeback     , -DITYR_ORI_ENABLE_LAZY_RELEASE=0;\
+                writeback_lazy, ;\
+                getput        , -DITYR_ORI_FORCE_GETPUT=1 -DITYR_ORI_ENABLE_VM_MAP=0")
+
+  add_custom_target(${bench_name})
+
   foreach(policy_tuple IN LISTS policies)
     string(REPLACE "," ";" pair ${policy_tuple})
     list(GET pair 0 policy_name)
@@ -42,15 +49,22 @@ foreach(bench IN LISTS benchmarks)
     string(STRIP "${policy_name}" policy_name)
     separate_arguments(policy_options UNIX_COMMAND "${policy_cxxflags}")
 
-    set(target "${bench}_${policy_name}")
+    set(target "${bench_name}_${policy_name}")
 
-    add_executable(${target}.out ${bench}.cpp)
+    add_executable(${target}.out "${ARG_FILES}")
     target_link_libraries(${target}.out itoyori)
     target_include_directories(${target}.out PRIVATE pcg-cpp/include)
+    target_compile_options(${target}.out PRIVATE ${bench_options})
     target_compile_options(${target}.out PRIVATE ${policy_options})
     add_backward(${target}.out)
 
     install(TARGETS ${target}.out
             DESTINATION "${CMAKE_INSTALL_LIBEXECDIR}/ityrbench")
+
+    add_dependencies(${bench_name} ${target}.out)
   endforeach()
-endforeach()
+endfunction()
+
+build_bench(cilksort FILES cilksort.cpp)
+build_bench(uts      FILES uts/main.cc uts/uts.c uts/rng/brg_sha1.c CXXFLAGS -DBRG_RNG=1)
+set_source_files_properties(uts/uts.c uts/rng/brg_sha1.c PROPERTIES LANGUAGE CXX)
