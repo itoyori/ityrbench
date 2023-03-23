@@ -56,9 +56,7 @@
  * log factor in the critical path (left as homework).
  */
 
-#include "ityr/ityr.hpp"
-
-#include "pcg_random.hpp"
+#include "common.hpp"
 
 enum class exec_t {
   Default = 0,
@@ -280,6 +278,8 @@ void show_help_and_exit(int argc [[maybe_unused]], char** argv) {
 }
 
 int main(int argc, char** argv) {
+  set_signal_handlers();
+
   ityr::init();
 
   ityr::common::profiler::event_initializer<prof_event_user_sort>          ITYR_ANON_VAR;
@@ -319,7 +319,7 @@ int main(int argc, char** argv) {
     printf("=============================================================\n"
            "[Cilksort]\n"
            "# of processes:               %d\n"
-           "Element size:                 %ld bytes\n"
+           "Element:                      %s (%ld bytes)\n"
            "N:                            %ld\n"
            "# of repeats:                 %d\n"
            "Execution type:               %s\n"
@@ -327,7 +327,7 @@ int main(int argc, char** argv) {
            "Cutoff (cilkmerge):           %ld\n"
            "Verify result:                %d\n"
            "-------------------------------------------------------------\n",
-           ityr::n_ranks(), sizeof(elem_t), n_input, n_repeats,
+           ityr::n_ranks(), typename_str<elem_t>(), sizeof(elem_t), n_input, n_repeats,
            to_str(exec_type).c_str(), cutoff_sort, cutoff_merge, verify_result);
 
     printf("[Compile Options]\n");

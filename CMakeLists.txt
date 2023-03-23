@@ -19,6 +19,8 @@ set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-O3 -DNDEBUG -g")
 
 find_package(itoyori REQUIRED)
 
+add_subdirectory(backward-cpp)
+
 include(GNUInstallDirs)
 
 set(benchmarks cilksort)
@@ -46,6 +48,8 @@ foreach(bench IN LISTS benchmarks)
     target_link_libraries(${target}.out itoyori)
     target_include_directories(${target}.out PRIVATE pcg-cpp/include)
     target_compile_options(${target}.out PRIVATE ${policy_options})
+    target_link_libraries(${target}.out unwind)
+    add_backward(${target}.out)
 
     install(TARGETS ${target}.out
             DESTINATION "${CMAKE_INSTALL_LIBEXECDIR}/ityrbench")
