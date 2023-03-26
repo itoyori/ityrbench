@@ -23,6 +23,29 @@ add_subdirectory(backward-cpp)
 
 include(GNUInstallDirs)
 
+function(build_bench_policy bench_name policy_name)
+  set(options)
+  set(single_value_args)
+  set(multi_value_args FILES CXXFLAGS)
+
+  cmake_parse_arguments(PARSE_ARGV 0 ARG "${options}" "${single_value_args}" "${multi_value_args}")
+
+  separate_arguments(policy_options UNIX_COMMAND "${ARG_CXXFLAGS}")
+
+  set(target "${bench_name}_${policy_name}")
+
+  add_executable(${target}.out "${ARG_FILES}")
+  target_link_libraries(${target}.out itoyori)
+  target_include_directories(${target}.out PRIVATE pcg-cpp/include)
+  target_compile_options(${target}.out PRIVATE ${policy_options})
+  add_backward(${target}.out)
+
+  install(TARGETS ${target}.out
+          DESTINATION "${CMAKE_INSTALL_LIBEXECDIR}/ityrbench")
+
+  add_dependencies(${bench_name} ${target}.out)
+endfunction()
+
 function(build_bench bench_name)
   set(options)
   set(single_value_args)
@@ -30,41 +53,28 @@ function(build_bench bench_name)
 
   cmake_parse_arguments(PARSE_ARGV 0 ARG "${options}" "${single_value_args}" "${multi_value_args}")
 
-  separate_arguments(bench_options UNIX_COMMAND "${ARG_CXXFLAGS}")
-
-  set(policies "serial        , -DITYR_ITO_SCHEDULER=serial -DITYR_ORI_CORE=serial;\
-                nocache       , -DITYR_ORI_CORE=nocache -DITYR_ORI_FORCE_GETPUT=1;\
-                writethrough  , -DITYR_ORI_ENABLE_LAZY_RELEASE=0 -DITYR_ORI_ENABLE_WRITE_THROUGH=1;\
-                writeback     , -DITYR_ORI_ENABLE_LAZY_RELEASE=0;\
-                writeback_lazy, ;\
-                getput        , -DITYR_ORI_FORCE_GETPUT=1 -DITYR_ORI_ENABLE_VM_MAP=0")
-
   add_custom_target(${bench_name})
 
-  foreach(policy_tuple IN LISTS policies)
-    string(REPLACE "," ";" pair ${policy_tuple})
-    list(GET pair 0 policy_name)
-    list(GET pair 1 policy_cxxflags)
+  build_bench_policy(${bench_name} serial FILES ${ARG_FILES}
+                     CXXFLAGS "${ARG_CXXFLAGS} -DITYR_ITO_SCHEDULER=serial -DITYR_ORI_CORE=serial")
 
-    string(STRIP "${policy_name}" policy_name)
-    separate_arguments(policy_options UNIX_COMMAND "${policy_cxxflags}")
+  build_bench_policy(${bench_name} nocache FILES ${ARG_FILES}
+                     CXXFLAGS "${ARG_CXXFLAGS} -DITYR_ORI_CORE=nocache -DITYR_ORI_FORCE_GETPUT=1")
 
-    set(target "${bench_name}_${policy_name}")
+  build_bench_policy(${bench_name} writethrough FILES ${ARG_FILES}
+                     CXXFLAGS "${ARG_CXXFLAGS} -DITYR_ORI_ENABLE_LAZY_RELEASE=0 -DITYR_ORI_ENABLE_WRITE_THROUGH=1")
 
-    add_executable(${target}.out "${ARG_FILES}")
-    target_link_libraries(${target}.out itoyori)
-    target_include_directories(${target}.out PRIVATE pcg-cpp/include)
-    target_compile_options(${target}.out PRIVATE ${bench_options})
-    target_compile_options(${target}.out PRIVATE ${policy_options})
-    add_backward(${target}.out)
+  build_bench_policy(${bench_name} writeback FILES ${ARG_FILES}
+                     CXXFLAGS "${ARG_CXXFLAGS} -DITYR_ORI_ENABLE_LAZY_RELEASE=0")
 
-    install(TARGETS ${target}.out
-            DESTINATION "${CMAKE_INSTALL_LIBEXECDIR}/ityrbench")
+  build_bench_policy(${bench_name} writeback_lazy FILES ${ARG_FILES}
+                     CXXFLAGS "${ARG_CXXFLAGS}")
 
-    add_dependencies(${bench_name} ${target}.out)
-  endforeach()
+  build_bench_policy(${bench_name} getput FILES ${ARG_FILES}
+                     CXXFLAGS "${ARG_CXXFLAGS} -DITYR_ORI_FORCE_GETPUT=1 -DITYR_ORI_ENABLE_VM_MAP=0")
 endfunction()
 
 build_bench(cilksort FILES cilksort.cpp)
-build_bench(uts      FILES uts/main.cc uts/uts.c uts/rng/brg_sha1.c CXXFLAGS -DBRG_RNG=1)
+build_bench(uts      FILES uts/main.cc   uts/uts.c uts/rng/brg_sha1.c CXXFLAGS -DBRG_RNG=1)
+build_bench(uts++    FILES uts/main++.cc uts/uts.c uts/rng/brg_sha1.c CXXFLAGS -DBRG_RNG=1)
 set_source_files_properties(uts/uts.c uts/rng/brg_sha1.c PROPERTIES LANGUAGE CXX)

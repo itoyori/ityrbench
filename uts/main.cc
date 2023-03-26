@@ -199,6 +199,7 @@ int main(int argc, char** argv) {
   counter_t maxTreeDepth = 0;
 
   ityr::init();
+  set_signal_handlers();
 
   uts_parseParams(argc, argv);
 

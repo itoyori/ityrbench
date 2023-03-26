@@ -19,11 +19,10 @@
 #include <math.h>
 #include <new>
 
-#include "ityr/ityr.hpp"
+#include "../common.hpp"
 
-using my_ityr = ityr::ityr_if<ityr::ityr_policy>;
 template <typename T>
-using global_ptr = my_ityr::global_ptr<T>;
+using global_ptr = ityr::ori::global_ptr<T>;
 
 #include "uts.h"
 
@@ -58,7 +57,7 @@ int impl_paramsToStr(char *strBuf, int ind) {
 }
 
 // Not using UTS command line params, return non-success
-int impl_parseParam(char *param, char *value) {
+int impl_parseParam(char *, char *) {
   return 1;
 }
 
@@ -87,7 +86,7 @@ Result mergeResult(Result r0, Result r1) {
   return r;
 }
 
-Node makeChild(const Node *parent, int childType, int computeGranuarity, counter_t idx) {
+Node makeChild(const Node *parent, int childType, int computeGranularity, counter_t idx) {
   int j;
 
   Node c = { childType, (int)parent->height + 1, -1, {{0}} };
@@ -103,36 +102,30 @@ Node makeChild(const Node *parent, int childType, int computeGranuarity, counter
 
 struct dynamic_node {
   int n_children;
-  my_ityr::global_vector<global_ptr<dynamic_node>> children;
+  ityr::global_vector<global_ptr<dynamic_node>> children;
 };
 
 global_ptr<dynamic_node> new_dynamic_node(int n_children) {
-  auto gptr = my_ityr::iro::malloc_local<dynamic_node>(1);
-  my_ityr::with_checkout_tied<my_ityr::access_mode::write>(
-      gptr, 1, [&](auto&& p) {
-    new (p) dynamic_node;
-    // FIXME: std::launder is not yet implemented in Fujitsu compiler (clang mode)
-    /* std::launder(p)->n_children = n_children; */
-    /* std::launder(p)->children.resize(n_children); */
-    reinterpret_cast<decltype(p)>(p)->n_children = n_children;
-    reinterpret_cast<decltype(p)>(p)->children.resize(n_children);
+  auto gptr = ityr::ori::malloc<dynamic_node>(1);
+  ityr::ori::with_checkout(gptr, 1, ityr::ori::mode::write, [&](auto&& p) {
+    dynamic_node* new_p = new (p) dynamic_node;
+    new_p->n_children = n_children;
+    new_p->children.resize(n_children);
   });
   return gptr;
 }
 
 global_ptr<global_ptr<dynamic_node>> get_children(global_ptr<dynamic_node> node) {
-  return my_ityr::with_checkout_tied<my_ityr::access_mode::read>(
-      node, 1, [&](auto&& p) {
+  return ityr::ori::with_checkout(node, 1, ityr::ori::mode::read, [&](auto&& p) {
     return p->children.data();
   });
 }
 
 void delete_dynamic_node(global_ptr<dynamic_node> node, int) {
-  my_ityr::with_checkout_tied<my_ityr::access_mode::read_write>(
-      node, 1, [&](auto&& p) {
+  ityr::ori::with_checkout(node, 1, ityr::ori::mode::read_write, [&](auto&& p) {
     std::destroy_at(p);
   });
-  my_ityr::iro::free(node, 1);
+  ityr::ori::free(node, 1);
 }
 
 #else
@@ -148,13 +141,13 @@ std::size_t node_size(int n_children) {
 
 global_ptr<dynamic_node> new_dynamic_node(int n_children) {
   auto gptr = global_ptr<dynamic_node>(
-      my_ityr::iro::malloc_local<std::byte>(node_size(n_children)));
+      ityr::ori::malloc<std::byte>(node_size(n_children)));
   gptr->*(&dynamic_node::n_children) = n_children;
   return gptr;
 }
 
 void delete_dynamic_node(global_ptr<dynamic_node> node, int n_children) {
-  my_ityr::iro::free(global_ptr<std::byte>(node), node_size(n_children));
+  ityr::ori::free(global_ptr<std::byte>(node), node_size(n_children));
 }
 
 global_ptr<global_ptr<dynamic_node>> get_children(global_ptr<dynamic_node> node) {
@@ -171,14 +164,14 @@ global_ptr<dynamic_node> build_tree(Node parent) {
   global_ptr<global_ptr<dynamic_node>> children = get_children(this_node);
 
   if (numChildren > 0) {
-    my_ityr::parallel_transform(
+    ityr::parallel_for_each(
         ityr::count_iterator<counter_t>(0),
         ityr::count_iterator<counter_t>(numChildren),
-        children,
-        [=](counter_t i) {
+        ityr::make_global_iterator(children, ityr::ori::mode::write),
+        [=](counter_t i, auto& x) {
           Node child = makeChild(&parent, childType,
                                  computeGranularity, i);
-          return build_tree(child);
+          x = build_tree(child);
         });
   }
 
@@ -192,11 +185,10 @@ Result traverse_tree(counter_t depth, global_ptr<dynamic_node> this_node) {
   if (numChildren == 0) {
     return { depth, 1, 1 };
   } else {
-    Result init { 0, 0, 0 };
-    Result result = my_ityr::parallel_reduce(
+    Result result = ityr::parallel_reduce(
         children,
         children + numChildren,
-        init,
+        Result{0, 0, 0},
         mergeResult,
         [=](global_ptr<dynamic_node> child_node) {
           return traverse_tree(depth + 1, child_node);
@@ -211,9 +203,9 @@ void destroy_tree(global_ptr<dynamic_node> this_node) {
   global_ptr<global_ptr<dynamic_node>> children = get_children(this_node);
 
   if (numChildren > 0) {
-    my_ityr::parallel_for<my_ityr::iro::access_mode::read>(
-        children,
-        children + numChildren,
+    ityr::parallel_for_each(
+        ityr::make_global_iterator(children              , ityr::ori::mode::read),
+        ityr::make_global_iterator(children + numChildren, ityr::ori::mode::read),
         [=](global_ptr<dynamic_node> child_node) {
           destroy_tree(child_node);
         });
@@ -225,82 +217,85 @@ void destroy_tree(global_ptr<dynamic_node> this_node) {
 //-- main ---------------------------------------------------------------------
 
 void uts_run() {
-  int my_rank = my_ityr::rank();
-
   global_ptr<dynamic_node> root_node;
 
   for (int i = 0; i < numRepeats; i++) {
-#if UTS_REBUILD_TREE
-    if (my_rank == 0) {
-#else
-    if (my_rank == 0 && i == 0) {
-#endif
-      uint64_t t1 = uts_wctime();
+    if (UTS_REBUILD_TREE || i == 0) {
+      auto t0 = ityr::gettime_ns();
       Node root;
       uts_initRoot(&root, type);
-      root_node = my_ityr::root_spawn([=]() { return build_tree(root); });
-      uint64_t t2 = uts_wctime();
+      root_node = ityr::root_exec([=]() {
+        return build_tree(root);
+      });
+      auto t1 = ityr::gettime_ns();
 
-      printf("## Tree built. (%ld ns)\n", t2 - t1);
-      fflush(stdout);
+      if (ityr::is_master()) {
+        printf("## Tree built. (%ld ns)\n", t1 - t0);
+        fflush(stdout);
+      }
     }
 
-    my_ityr::barrier();
+    ityr::profiler_begin();
 
-    if (my_rank == 0) {
-      uint64_t t1 = uts_wctime();
-      Result r = my_ityr::root_spawn([=]() { return traverse_tree(0, root_node); });
-      uint64_t t2 = uts_wctime();
-      uint64_t walltime = t2 - t1;
+    auto t0 = ityr::gettime_ns();
 
-      counter_t maxTreeDepth = r.maxdepth;
-      counter_t nNodes = r.size;
-      counter_t nLeaves = r.leaves;
+    Result r = ityr::root_exec([=]() {
+      return traverse_tree(0, root_node);
+    });
 
-      double perf = (double)nNodes / walltime;
+    auto t1 = ityr::gettime_ns();
 
+    ityr::profiler_end();
+
+    uint64_t walltime = t1 - t0;
+
+    counter_t maxTreeDepth = r.maxdepth;
+    counter_t nNodes = r.size;
+    counter_t nLeaves = r.leaves;
+
+    double perf = (double)nNodes / walltime;
+
+    if (ityr::is_master()) {
       printf("[%d] %ld ns %.6g Gnodes/s ( nodes: %llu depth: %llu leaves: %llu )\n",
              i, walltime, perf, nNodes, maxTreeDepth, nLeaves);
       fflush(stdout);
     }
 
-    my_ityr::barrier();
+    ityr::profiler_flush();
 
-#if UTS_REBUILD_TREE
-    if (my_rank == 0) {
-#else
-    if (my_rank == 0 && i == numRepeats - 1) {
-#endif
-      uint64_t t1 = uts_wctime();
-      my_ityr::root_spawn([=]() { destroy_tree(root_node); });
-      uint64_t t2 = uts_wctime();
+    if (UTS_REBUILD_TREE || i == numRepeats - 1) {
+      auto t0 = ityr::gettime_ns();
+      ityr::root_exec([=]() {
+        destroy_tree(root_node);
+      });
+      auto t1 = ityr::gettime_ns();
 
-      printf("## Tree destroyed. (%ld ns)\n", t2 - t1);
-      fflush(stdout);
+      if (ityr::is_master()) {
+        printf("## Tree destroyed. (%ld ns)\n", t1 - t0);
+        fflush(stdout);
+      }
     }
 
-    my_ityr::barrier();
-    my_ityr::iro::collect_deallocated();
-    my_ityr::barrier();
+    ityr::barrier();
+    /* ityr::ori::collect_deallocated(); */
+    /* ityr::barrier(); */
   }
 }
 
-void real_main(int argc, char *argv[]) {
+int main(int argc, char** argv) {
+  ityr::init();
+  set_signal_handlers();
+
   uts_parseParams(argc, argv);
 
-  int my_rank = my_ityr::rank();
-  int n_ranks = my_ityr::n_ranks();
-
-  if (my_rank == 0) {
+  if (ityr::is_master()) {
     setlocale(LC_NUMERIC, "en_US.UTF-8");
     printf("=============================================================\n"
            "[UTS++]\n"
            "# of processes:                %d\n"
            "# of repeats:                  %d\n"
-           "PCAS cache size:               %ld MB\n"
-           "PCAS sub-block size:           %ld bytes\n"
            "-------------------------------------------------------------\n",
-           n_ranks, numRepeats, cache_size, sub_block_size);
+           ityr::n_ranks(), numRepeats);
 
     if (type == GEO) {
       printf("t (Tree type):                 Geometric (%d)\n"
@@ -321,21 +316,20 @@ void real_main(int argc, char *argv[]) {
     } else {
       assert(0); // TODO:
     }
-    printf("uth options:\n");
-    madm::uth::print_options(stdout);
-    printf("=============================================================\n\n");
+
+    printf("[Compile Options]\n");
+    ityr::print_compile_options();
+    printf("-------------------------------------------------------------\n");
+    printf("[Runtime Options]\n");
+    ityr::print_runtime_options();
+    printf("=============================================================\n");
     printf("PID of the main worker: %d\n", getpid());
+    printf("\n");
     fflush(stdout);
   }
 
-  my_ityr::iro::init(cache_size * 1024 * 1024, sub_block_size);
-
   uts_run();
 
-  my_ityr::iro::fini();
-}
-
-int main(int argc, char **argv) {
-  my_ityr::main(real_main, argc, argv);
+  ityr::fini();
   return 0;
 }

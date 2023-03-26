@@ -10,6 +10,7 @@ STDOUT_FILE=mpirun_out.txt
 case $KOCHI_MACHINE in
   wisteria-o)
     export UTOFU_SWAP_PROTECT=1
+    export ITYR_RMA_USE_MPI_WIN_ALLOCATE=0
 
     ityr_mpirun() {
       local n_processes=$1
