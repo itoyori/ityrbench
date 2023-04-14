@@ -23,7 +23,7 @@ add_subdirectory(backward-cpp)
 
 include(GNUInstallDirs)
 
-function(build_bench_policy bench_name policy_name)
+function(build_bench_each bench_name config_name)
   set(options)
   set(single_value_args)
   set(multi_value_args FILES CXXFLAGS)
@@ -32,7 +32,7 @@ function(build_bench_policy bench_name policy_name)
 
   separate_arguments(policy_options UNIX_COMMAND "${ARG_CXXFLAGS}")
 
-  set(target "${bench_name}_${policy_name}")
+  set(target "${bench_name}_${config_name}")
 
   add_executable(${target}.out "${ARG_FILES}")
   target_link_libraries(${target}.out itoyori)
@@ -46,6 +46,43 @@ function(build_bench_policy bench_name policy_name)
   add_dependencies(${bench_name} ${target}.out)
 endfunction()
 
+function(build_bench_policy bench_name sched_name)
+  set(options)
+  set(single_value_args)
+  set(multi_value_args FILES CXXFLAGS)
+
+  cmake_parse_arguments(PARSE_ARGV 0 ARG "${options}" "${single_value_args}" "${multi_value_args}")
+
+  build_bench_each(${bench_name} "${sched_name}_nocache" FILES ${ARG_FILES}
+                   CXXFLAGS "${ARG_CXXFLAGS} -DITYR_ORI_CORE=nocache -DITYR_ORI_FORCE_GETPUT=1")
+
+  build_bench_each(${bench_name} "${sched_name}_writethrough" FILES ${ARG_FILES}
+                   CXXFLAGS "${ARG_CXXFLAGS} -DITYR_ORI_ENABLE_LAZY_RELEASE=0 -DITYR_ORI_ENABLE_WRITE_THROUGH=1")
+
+  build_bench_each(${bench_name} "${sched_name}_writeback" FILES ${ARG_FILES}
+                   CXXFLAGS "${ARG_CXXFLAGS} -DITYR_ORI_ENABLE_LAZY_RELEASE=0")
+
+  build_bench_each(${bench_name} "${sched_name}_writeback_lazy" FILES ${ARG_FILES}
+                   CXXFLAGS "${ARG_CXXFLAGS}")
+
+  build_bench_each(${bench_name} "${sched_name}_getput" FILES ${ARG_FILES}
+                   CXXFLAGS "${ARG_CXXFLAGS} -DITYR_ORI_FORCE_GETPUT=1 -DITYR_ORI_ENABLE_VM_MAP=0")
+endfunction()
+
+function(build_bench_sched bench_name)
+  set(options)
+  set(single_value_args)
+  set(multi_value_args FILES CXXFLAGS)
+
+  cmake_parse_arguments(PARSE_ARGV 0 ARG "${options}" "${single_value_args}" "${multi_value_args}")
+
+  build_bench_policy(${bench_name} randws FILES ${ARG_FILES}
+                     CXXFLAGS "${ARG_CXXFLAGS} -DITYR_ITO_SCHEDULER=randws")
+
+  build_bench_policy(${bench_name} adws FILES ${ARG_FILES}
+                     CXXFLAGS "${ARG_CXXFLAGS} -DITYR_ITO_SCHEDULER=adws")
+endfunction()
+
 function(build_bench bench_name)
   set(options)
   set(single_value_args)
@@ -55,23 +92,10 @@ function(build_bench bench_name)
 
   add_custom_target(${bench_name})
 
-  build_bench_policy(${bench_name} serial FILES ${ARG_FILES}
-                     CXXFLAGS "${ARG_CXXFLAGS} -DITYR_ITO_SCHEDULER=serial -DITYR_ORI_CORE=serial")
+  build_bench_each(${bench_name} serial FILES ${ARG_FILES}
+                   CXXFLAGS "${ARG_CXXFLAGS} -DITYR_ITO_SCHEDULER=serial -DITYR_ORI_CORE=serial")
 
-  build_bench_policy(${bench_name} nocache FILES ${ARG_FILES}
-                     CXXFLAGS "${ARG_CXXFLAGS} -DITYR_ORI_CORE=nocache -DITYR_ORI_FORCE_GETPUT=1")
-
-  build_bench_policy(${bench_name} writethrough FILES ${ARG_FILES}
-                     CXXFLAGS "${ARG_CXXFLAGS} -DITYR_ORI_ENABLE_LAZY_RELEASE=0 -DITYR_ORI_ENABLE_WRITE_THROUGH=1")
-
-  build_bench_policy(${bench_name} writeback FILES ${ARG_FILES}
-                     CXXFLAGS "${ARG_CXXFLAGS} -DITYR_ORI_ENABLE_LAZY_RELEASE=0")
-
-  build_bench_policy(${bench_name} writeback_lazy FILES ${ARG_FILES}
-                     CXXFLAGS "${ARG_CXXFLAGS}")
-
-  build_bench_policy(${bench_name} getput FILES ${ARG_FILES}
-                     CXXFLAGS "${ARG_CXXFLAGS} -DITYR_ORI_FORCE_GETPUT=1 -DITYR_ORI_ENABLE_VM_MAP=0")
+  build_bench_sched(${bench_name} FILES ${ARG_FILES} CXXFLAGS "${ARG_CXXFLAGS}")
 endfunction()
 
 build_bench(cilksort FILES cilksort.cpp)

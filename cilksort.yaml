@@ -19,7 +19,9 @@ default_params:
   cutoff_m: $cutoff_s
   exec_type: default # default/std_sort
   # common params
-  cache_policy: writeback_lazy # serial/nocache/writethrough/writeback/writeback_lazy/getput
+  serial: 0
+  sched: randws # randws/adws
+  cache_policy: writeback_lazy # nocache/writethrough/writeback/writeback_lazy/getput
   dist_policy: cyclic # block/cyclic
   cache_size: 128 # MB
   block_size: 65536 # bytes
@@ -40,7 +42,7 @@ batches:
       cores: 1
       n_input: 1_000_000_000
       exec_type: [std_sort, default]
-      cache_policy: serial
+      serial: 1
     artifacts:
       - type: stdout
         dest: cilksort/${batch_name}/n_${n_input}_exec_${exec_type}_${duplicate}.log
@@ -173,10 +175,10 @@ build:
 
     CC=$MPICC CXX=$MPICXX cmake -DCMAKE_CXX_FLAGS="$CXXFLAGS" -Ditoyori_DIR=$KOCHI_INSTALL_PREFIX_ITOYORI/lib/cmake/itoyori .
     make clean
-    make -j
+    make -j cilksort
 
 run:
-  depend_params: [nodes, cores, n_input, repeats, verify, cutoff_m, cutoff_s, exec_type, cache_policy, cache_size, sub_block_size, max_dirty, shared_mem, prof, debugger]
+  depend_params: [nodes, cores, n_input, repeats, verify, cutoff_m, cutoff_s, exec_type, serial, sched, cache_policy, cache_size, sub_block_size, max_dirty, shared_mem, prof, debugger]
   script: |
     source run_common.bash
 
@@ -188,8 +190,14 @@ run:
       *)        echo "Unknown exec type"; exit 1 ;;
     esac
 
+    if [[ $KOCHI_PARAM_SERIAL == 1 ]]; then
+      config_name=serial
+    else
+      config_name=${KOCHI_PARAM_SCHED}_${KOCHI_PARAM_CACHE_POLICY}
+    fi
+
     commands="
-      ./cilksort_${KOCHI_PARAM_CACHE_POLICY}.out
+      ./cilksort_${config_name}.out
         -n $KOCHI_PARAM_N_INPUT
         -r $KOCHI_PARAM_REPEATS
         -e $exec_type_num
