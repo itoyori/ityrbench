@@ -78,6 +78,16 @@ std::string to_str(T x) {
   return ss.str();
 }
 
+struct prof_event_user_sort_kernel : public ityr::common::profiler::event {
+  using event::event;
+  std::string str() const override { return "user_sort_kernel"; }
+};
+
+struct prof_event_user_merge_kernel : public ityr::common::profiler::event {
+  using event::event;
+  std::string str() const override { return "user_merge_kernel"; }
+};
+
 struct prof_event_user_sort : public ityr::common::profiler::event {
   using event::event;
   std::string str() const override { return "user_sort"; }
@@ -153,6 +163,7 @@ void cilkmerge(ityr::global_span<T> s1,
                              s2.data()  , s2.size()  , ityr::ori::mode::read,
                              dest.data(), dest.size(), ityr::ori::mode::write,
                              [&](const T* s1_, const T* s2_, T* dest_) {
+      ITYR_PROFILER_RECORD(prof_event_user_merge_kernel);
       std::merge(s1_, s1_ + s1.size(), s2_, s2_ + s2.size(), dest_);
     });
     return;
@@ -182,6 +193,7 @@ void cilksort(ityr::global_span<T> a, ityr::global_span<T> b) {
     ITYR_PROFILER_RECORD(prof_event_user_sort);
     ityr::ori::with_checkout(a.data(), a.size(), ityr::ori::mode::read_write,
                              [&](T* a_) {
+      ITYR_PROFILER_RECORD(prof_event_user_sort_kernel);
       std::sort(a_, a_ + a.size());
     });
     return;
@@ -280,6 +292,8 @@ void show_help_and_exit(int argc [[maybe_unused]], char** argv) {
 int main(int argc, char** argv) {
   ityr::init();
 
+  ityr::common::profiler::event_initializer<prof_event_user_sort_kernel>   ITYR_ANON_VAR;
+  ityr::common::profiler::event_initializer<prof_event_user_merge_kernel>  ITYR_ANON_VAR;
   ityr::common::profiler::event_initializer<prof_event_user_sort>          ITYR_ANON_VAR;
   ityr::common::profiler::event_initializer<prof_event_user_merge>         ITYR_ANON_VAR;
   ityr::common::profiler::event_initializer<prof_event_user_binary_search> ITYR_ANON_VAR;
@@ -346,6 +360,8 @@ int main(int argc, char** argv) {
 
   ityr::global_span<elem_t> a(a_ptr, n_input);
   ityr::global_span<elem_t> b(b_ptr, n_input);
+
+  /* ityr::ito::adws_enable_steal_option::set(false); */
 
   for (int r = 0; r < n_repeats; r++) {
     ityr::root_exec([=]{

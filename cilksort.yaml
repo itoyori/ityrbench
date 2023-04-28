@@ -22,7 +22,7 @@ default_params:
   serial: 0
   sched: randws # randws/adws
   cache_policy: writeback_lazy # nocache/writethrough/writeback/writeback_lazy/getput
-  dist_policy: cyclic # block/cyclic
+  dist_policy: cyclic # block/cyclic/block_adws
   cache_size: 128 # MB
   block_size: 65536 # bytes
   sub_block_size: 4096 # bytes
@@ -170,6 +170,7 @@ build:
   script: |
     source build_common.bash
 
+    # CXXFLAGS="${CXXFLAGS:+$CXXFLAGS} -DITYR_MAX_VERBOSE_LEVEL=1"
     CXXFLAGS="${CXXFLAGS:+$CXXFLAGS} -DITYRBENCH_ELEM_TYPE=$KOCHI_PARAM_ELEM_TYPE"
     CXXFLAGS="${CXXFLAGS:+$CXXFLAGS} -DITYR_ALLOCATOR_USE_DYNAMIC_WIN=false"
 
