@@ -22,7 +22,7 @@ default_params:
   serial: 0
   sched: randws # randws/adws
   cache_policy: writeback_lazy # nocache/writethrough/writeback/writeback_lazy/getput
-  dist_policy: cyclic # block/cyclic/block_adws
+  dist_policy: default # default/block/cyclic/block_adws
   cache_size: 128 # MB
   block_size: 65536 # bytes
   sub_block_size: 4096 # bytes
@@ -56,39 +56,43 @@ batches:
     name: cilksort_${batch_name}
     params:
       nodes:
-        - value: [1, 2:torus, 2x3:torus, 2x3x2:torus, 3x4x3:torus, 6x6x4:torus, 8x9x8:torus]
+        # - value: [1, 2:torus, 2x3:torus, 2x3x2:torus, 3x4x3:torus, 6x6x4:torus, 8x9x8:torus]
+        - value: [1, 2:torus, 2x3:torus, 2x3x2:torus, 3x4x3:torus, 6x6x4:torus]
           machines: [wisteria-o]
         - value: [1, 2, 4, 8, 16]
           machines: [squid-c]
       n_input: 1_000_000_000
-      cache_policy: [nocache, writethrough, writeback, writeback_lazy]
+      sched: [randws, adws]
+      cache_policy: [nocache, writethrough, writeback, writeback_lazy, getput]
       prof: stats
     artifacts:
       - type: stdout
-        dest: cilksort/${batch_name}/nodes_${nodes}_p_${cache_policy}_${duplicate}.log
+        dest: cilksort/${batch_name}/nodes_${nodes}_s_${sched}_p_${cache_policy}_${duplicate}.log
       - type: stats
-        dest: cilksort/${batch_name}/nodes_${nodes}_p_${cache_policy}_${duplicate}.stats
+        dest: cilksort/${batch_name}/nodes_${nodes}_s_${sched}_p_${cache_policy}_${duplicate}.stats
       - type: file
         src: mpirun_out.txt
-        dest: cilksort/${batch_name}/nodes_${nodes}_p_${cache_policy}_${duplicate}.out
+        dest: cilksort/${batch_name}/nodes_${nodes}_s_${sched}_p_${cache_policy}_${duplicate}.out
 
   scale10G:
     name: cilksort_${batch_name}
     params:
       nodes:
-        - value: [2x3x2:torus, 3x4x3:torus, 6x6x4:torus, 8x9x8:torus]
+        # - value: [2x3x2:torus, 3x4x3:torus, 6x6x4:torus, 8x9x8:torus]
+        - value: [2x3x2:torus, 3x4x3:torus, 6x6x4:torus]
           machines: [wisteria-o]
       n_input: 10_000_000_000
-      cache_policy: [nocache, writethrough, writeback, writeback_lazy]
+      sched: [randws, adws]
+      cache_policy: [nocache, writethrough, writeback, writeback_lazy, getput]
       prof: stats
     artifacts:
       - type: stdout
-        dest: cilksort/${batch_name}/nodes_${nodes}_p_${cache_policy}_${duplicate}.log
+        dest: cilksort/${batch_name}/nodes_${nodes}_s_${sched}_p_${cache_policy}_${duplicate}.log
       - type: stats
-        dest: cilksort/${batch_name}/nodes_${nodes}_p_${cache_policy}_${duplicate}.stats
+        dest: cilksort/${batch_name}/nodes_${nodes}_s_${sched}_p_${cache_policy}_${duplicate}.stats
       - type: file
         src: mpirun_out.txt
-        dest: cilksort/${batch_name}/nodes_${nodes}_p_${cache_policy}_${duplicate}.out
+        dest: cilksort/${batch_name}/nodes_${nodes}_s_${sched}_p_${cache_policy}_${duplicate}.out
 
   granularity:
     name: cilksort_${batch_name}
@@ -174,7 +178,7 @@ build:
     CXXFLAGS="${CXXFLAGS:+$CXXFLAGS} -DITYRBENCH_ELEM_TYPE=$KOCHI_PARAM_ELEM_TYPE"
     CXXFLAGS="${CXXFLAGS:+$CXXFLAGS} -DITYR_ALLOCATOR_USE_DYNAMIC_WIN=false"
 
-    CC=$MPICC CXX=$MPICXX cmake -DCMAKE_CXX_FLAGS="$CXXFLAGS" -Ditoyori_DIR=$KOCHI_INSTALL_PREFIX_ITOYORI/lib/cmake/itoyori .
+    CC=$MPICC CXX=$MPICXX cmake -DCMAKE_CXX_FLAGS="$CXXFLAGS" $CMAKE_OPTIONS .
     make clean
     make -j cilksort
 

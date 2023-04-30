@@ -17,6 +17,8 @@ endif()
 set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG")
 set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-O3 -DNDEBUG -g")
 
+set(ITYRBENCH_DEFAULT_MEM_MAPPER 0 CACHE STRING "Default memory mapper (distribution policy) for Itoyori")
+
 find_package(itoyori REQUIRED)
 
 add_subdirectory(backward-cpp)
@@ -76,11 +78,19 @@ function(build_bench_sched bench_name)
 
   cmake_parse_arguments(PARSE_ARGV 0 ARG "${options}" "${single_value_args}" "${multi_value_args}")
 
+  if(ITYRBENCH_DEFAULT_MEM_MAPPER STREQUAL "default")
+    set(default_mem_mapper_randws "cyclic")
+    set(default_mem_mapper_adws   "block_adws")
+  else()
+    set(default_mem_mapper_randws ${ITYRBENCH_DEFAULT_MEM_MAPPER})
+    set(default_mem_mapper_adws   ${ITYRBENCH_DEFAULT_MEM_MAPPER})
+  endif()
+
   build_bench_policy(${bench_name} randws FILES ${ARG_FILES}
-                     CXXFLAGS "${ARG_CXXFLAGS} -DITYR_ITO_SCHEDULER=randws")
+                     CXXFLAGS "${ARG_CXXFLAGS} -DITYR_ITO_SCHEDULER=randws -DITYR_ORI_DEFAULT_MEM_MAPPER=${default_mem_mapper_randws}")
 
   build_bench_policy(${bench_name} adws FILES ${ARG_FILES}
-                     CXXFLAGS "${ARG_CXXFLAGS} -DITYR_ITO_SCHEDULER=adws")
+                     CXXFLAGS "${ARG_CXXFLAGS} -DITYR_ITO_SCHEDULER=adws -DITYR_ORI_DEFAULT_MEM_MAPPER=${default_mem_mapper_adws}")
 endfunction()
 
 function(build_bench bench_name)
