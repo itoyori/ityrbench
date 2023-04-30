@@ -111,7 +111,7 @@ run_trace_viewer() {
     exit 1
   fi
   shopt -s nullglob
-  MLOG_VIEWER_ONESHOT=false bokeh serve ./massivelogger/viewer --port $KOCHI_FORWARD_PORT --allow-websocket-origin \* --session-token-expiration 3600 --args ityr_log_*.ignore
+  MLOG_VIEWER_ONESHOT=false bokeh serve ./third-party/massivelogger/viewer --port $KOCHI_FORWARD_PORT --allow-websocket-origin \* --session-token-expiration 3600 --args ityr_log_*.ignore
 }
 
 export ITYR_ENABLE_SHARED_MEMORY=$KOCHI_PARAM_SHARED_MEM

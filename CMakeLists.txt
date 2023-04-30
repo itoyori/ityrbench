@@ -21,7 +21,7 @@ set(ITYRBENCH_DEFAULT_MEM_MAPPER 0 CACHE STRING "Default memory mapper (distribu
 
 find_package(itoyori REQUIRED)
 
-add_subdirectory(backward-cpp)
+add_subdirectory(third-party/backward-cpp)
 
 include(GNUInstallDirs)
 
@@ -38,7 +38,7 @@ function(build_bench_each bench_name config_name)
 
   add_executable(${target}.out "${ARG_FILES}")
   target_link_libraries(${target}.out itoyori)
-  target_include_directories(${target}.out PRIVATE pcg-cpp/include)
+  target_include_directories(${target}.out PRIVATE third-party/pcg-cpp/include)
   target_compile_options(${target}.out PRIVATE ${policy_options})
   add_backward(${target}.out)
 
