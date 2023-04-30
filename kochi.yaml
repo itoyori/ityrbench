@@ -19,6 +19,7 @@ machines:
         module load cmake/3.22.2
       on_machine: |
         export PATH="/work/gc64/c64050/opt/odyssey/tmux/3.3a/bin:$PATH"
+        export PATH="/work/gc64/c64050/opt/odyssey/htop/3.2.2/bin:$PATH"
         . /work/gc64/c64050/venv/odyssey/bin/activate
         export MPICC=mpifcc
         export MPICXX=mpiFCC
@@ -34,7 +35,7 @@ machines:
     alloc_interact_script: |
       qlogin -q INTC --group=G15442 -b $KOCHI_ALLOC_NODE_SPEC -T openmpi
     alloc_script: |
-      echo "$KOCHI_WORKER_LAUNCH_CMD" | qsub -q SCMEM -j o --group=G15442 -b $KOCHI_ALLOC_NODE_SPEC -T openmpi -l elapstim_req=${KOCHI_ALLOC_TIME_LIMIT:-6:00:00},memsz_job=unlimited
+      echo "$KOCHI_WORKER_LAUNCH_CMD" | qsub -q SQUID -j o --group=G15442 -b $KOCHI_ALLOC_NODE_SPEC -T openmpi -l elapstim_req=${KOCHI_ALLOC_TIME_LIMIT:-6:00:00}
     load_env_script:
       on_login_node: |
         . /sqfs/work/G15442/v60680/venv/squid-c/bin/activate
@@ -65,8 +66,8 @@ dependencies:
     recipes:
       - name:   main
         branch: main
-      - name:   v5.0.0rc7
-        branch: v5.0.0rc7
+      - name:   v5.0.0rc11
+        branch: v5.0.0rc11
     script:
       - ./autogen.pl
       - mkdir build
@@ -103,7 +104,7 @@ dependencies:
     git: git@gitlab.eidos.ic.i.u-tokyo.ac.jp:shiina/itoyori.git
     depends:
       - name: openmpi
-        recipe: v5.0.0rc7
+        recipe: v5.0.0rc11
         machines: [local, squid-c]
       - name: boost
         recipe: v1.80.0

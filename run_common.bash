@@ -91,7 +91,7 @@ case $KOCHI_MACHINE in
         --hostfile $NQSII_MPINODES \
         --mca btl ^ofi \
         --mca osc_ucx_acc_single_intrinsic true \
-        setarch $(uname -m) --addr-no-randomize "${@:3}"
+        -- setarch $(uname -m) --addr-no-randomize "${@:3}"
     }
     ;;
   *)
