@@ -73,7 +73,8 @@ case $KOCHI_MACHINE in
     }
     ;;
   squid-c)
-    export UCX_TLS=rc_x,self,sm
+    # export UCX_TLS=rc_x,self,sm
+    export UCX_TLS=dc_x,self,sm
     export OMPI_MCA_mca_base_env_list="TERM;UCX_NET_DEVICES;UCX_MAX_NUM_EPS=inf;UCX_TLS;"
     # export OMPI_MCA_mca_base_env_list="TERM;UCX_NET_DEVICES;UCX_MAX_NUM_EPS=inf;UCX_TLS;UCX_LOG_LEVEL=info;"
     # export OMPI_MCA_mca_base_env_list="TERM;UCX_NET_DEVICES;UCX_MAX_NUM_EPS=inf;UCX_TLS;UCX_LOG_LEVEL=func;UCX_LOG_FILE=ucxlog.%h.%p;"
