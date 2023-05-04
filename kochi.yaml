@@ -49,6 +49,8 @@ machines:
 dependencies:
   ucx:
     recipes:
+      - name: v1.14.0
+        before_script: UCX_VERSION=1.14.0 CONFIGURE_OPTS="--disable-logging --disable-debug --disable-assertions --disable-params-check --without-go"
       - name: v1.11.2
         before_script: UCX_VERSION=1.11.2 CONFIGURE_OPTS="--disable-logging --disable-debug --disable-assertions --disable-params-check"
     script:
@@ -63,7 +65,7 @@ dependencies:
     git: https://github.com/open-mpi/ompi.git
     depends:
       - name: ucx
-        recipe: v1.11.2
+        recipe: v1.14.0
     recipes:
       - name:   main
         branch: main
