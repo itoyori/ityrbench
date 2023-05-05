@@ -76,7 +76,7 @@ dependencies:
       - mkdir build
       - cd build/
       - CFLAGS="${CFLAGS:+$CFLAGS} -g -gdwarf-4"
-      - ../configure ${CFLAGS:+CFLAGS="$CFLAGS"} --prefix=$KOCHI_INSTALL_PREFIX --with-ucx=$KOCHI_INSTALL_PREFIX_UCX --disable-man-pages --with-pmix=internal --with-hwloc=internal --with-libevent=internal --without-hcoll ${CONFIGURE_OPTS:+$CONFIGURE_OPTS}
+      - ../configure ${CFLAGS:+CFLAGS="$CFLAGS"} --prefix=$KOCHI_INSTALL_PREFIX --with-ucx=$KOCHI_INSTALL_PREFIX_UCX --disable-man-pages --with-pmix=internal --with-hwloc=internal --with-libevent=internal
       - make -j
       - make install
     activate_script:
