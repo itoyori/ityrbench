@@ -67,7 +67,8 @@ batches:
           machines: [squid-c]
       n_input: 1_000_000_000
       sched: [randws, adws]
-      cache_policy: [nocache, writethrough, writeback, writeback_lazy, getput]
+      # cache_policy: [nocache, writethrough, writeback, writeback_lazy, getput]
+      cache_policy: [nocache, writeback_lazy]
       prof: stats
     artifacts:
       - type: stdout
@@ -89,7 +90,8 @@ batches:
           machines: [squid-c]
       n_input: 10_000_000_000
       sched: [randws, adws]
-      cache_policy: [nocache, writethrough, writeback, writeback_lazy, getput]
+      # cache_policy: [nocache, writethrough, writeback, writeback_lazy, getput]
+      cache_policy: [nocache, writeback_lazy]
       prof: stats
     artifacts:
       - type: stdout
