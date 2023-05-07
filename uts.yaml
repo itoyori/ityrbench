@@ -15,8 +15,10 @@ default_params:
   repeats: 11
   exec_type: parallel # serial/parallel
   # common params
-  cache_policy: writeback_lazy # serial/nocache/writethrough/writeback/writeback_lazy/getput
-  dist_policy: cyclic # block/cyclic
+  serial: 0
+  sched: randws # randws/adws
+  cache_policy: writeback_lazy # nocache/writethrough/writeback/writeback_lazy/getput
+  dist_policy: default # default/block/cyclic/block_adws
   cache_size: 128 # MB
   block_size: 65536 # bytes
   sub_block_size: 4096 # bytes
@@ -38,19 +40,25 @@ build:
       *)        echo "Unknown exec type ($KOCHI_PARAM_EXEC_TYPE)"; exit 1 ;;
     esac
 
-    CC=$MPICC CXX=$MPICXX cmake -DCMAKE_CXX_FLAGS="$CXXFLAGS" -Ditoyori_DIR=$KOCHI_INSTALL_PREFIX_ITOYORI/lib/cmake/itoyori .
+    CC=$MPICC CXX=$MPICXX cmake -DCMAKE_CXX_FLAGS="$CXXFLAGS" $CMAKE_OPTIONS .
     make clean
     make -j uts
 
 run:
-  depend_params: [nodes, cores, tree, repeats, cache_policy, cache_size, sub_block_size, max_dirty, shared_mem, prof, debugger]
+  depend_params: [nodes, cores, tree, repeats, serial, sched, cache_policy, cache_size, sub_block_size, max_dirty, shared_mem, prof, debugger]
   script: |
     source run_common.bash
 
     source uts/sample_trees.sh
 
+    if [[ $KOCHI_PARAM_SERIAL == 1 ]]; then
+      config_name=serial
+    else
+      config_name=${KOCHI_PARAM_SCHED}_${KOCHI_PARAM_CACHE_POLICY}
+    fi
+
     commands="
-      ./uts_${KOCHI_PARAM_CACHE_POLICY}.out
+      ./uts_${config_name}.out
         ${!KOCHI_PARAM_TREE}
         -i $KOCHI_PARAM_REPEATS"
 
