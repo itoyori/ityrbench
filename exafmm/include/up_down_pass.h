@@ -92,7 +92,9 @@ namespace EXAFMM_NAMESPACE {
 
     //! Upward pass (P2M, M2M)
     void upwardPass(GCells cells) {
-      logger::startTimer("Upward pass");                        // Start timer
+      if (ityr::is_master()) {
+        logger::startTimer("Upward pass");                        // Start timer
+      }
       ityr::root_exec([=] {
         if (!cells.empty()) {                                     // If cell vector is not empty
           GC_iter C0 = cells.begin();                              //  Set iterator of target root cell
@@ -107,12 +109,16 @@ namespace EXAFMM_NAMESPACE {
           postOrderTraversal(C0, C0);                             //  Start post-order traversal from root
         }                                                         // End if for empty cell vector
       });
-      logger::stopTimer("Upward pass");                         // Stop timer
+      if (ityr::is_master()) {
+        logger::stopTimer("Upward pass");                         // Stop timer
+      }
     }
 
     //! Downward pass (L2L, L2P)
     void downwardPass(GCells cells) {
-      logger::startTimer("Downward pass");                      // Start timer
+      if (ityr::is_master()) {
+        logger::startTimer("Downward pass");                      // Start timer
+      }
       ityr::root_exec([=] {
         if (!cells.empty()) {                                     // If cell vector is not empty
           GC_iter C0 = cells.begin();                              //  Root cell
@@ -130,7 +136,9 @@ namespace EXAFMM_NAMESPACE {
           }                                                       //  End loop over child cells
         }                                                         // End if for empty cell vector
       });
-      logger::stopTimer("Downward pass");                       // Stop timer
+      if (ityr::is_master()) {
+        logger::stopTimer("Downward pass");                       // Stop timer
+      }
     }
 
     //! Get dipole of entire system
