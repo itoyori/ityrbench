@@ -11,23 +11,24 @@
 
 /* #include "pcg_random.hpp" */
 
-#include "ityr/ityr.hpp"
+#include "../../common.hpp"
 
 namespace EXAFMM_NAMESPACE {
-  using my_ityr = ityr::ityr_if<ityr::ityr_policy>;
+  template <typename T>
+  using global_span = ityr::global_span<T>;
+  template <typename T>
+  using raw_span = ityr::common::span<T>;
+  template <typename T>
+  using global_vec = ityr::global_vector<T>;
 
-  template <typename T>
-  using global_span = my_ityr::global_span<T>;
-  template <typename T>
-  using raw_span = ityr::raw_span<T>;
-  template <typename T>
-  using global_vec = my_ityr::global_vector<T>;
+  inline constexpr std::size_t cutoff_body = 1024;
+  inline constexpr std::size_t cutoff_cell = 128;
 
   inline constexpr ityr::global_vector_options global_vec_coll_opts {
     .collective         = true,
     .parallel_construct = true,
     .parallel_destruct  = true,
-    .cutoff             = my_ityr::iro::block_size,
+    .cutoff_count       = cutoff_body,
   };
 
   // Basic type definitions

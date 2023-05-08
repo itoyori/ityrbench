@@ -15,11 +15,6 @@ void run_fmm(const Args& args) {
   const real_t eps2 = 0.0;
   const complex_t wavek = complex_t(10.,1.) / real_t(2 * M_PI);
 
-  int my_rank = my_ityr::rank();
-  int n_ranks = my_ityr::n_ranks();
-
-  my_ityr::logger::init(my_rank, n_ranks);
-
   global_vec<Body> bodies_vec(global_vec_coll_opts);
   global_vec<Body> jbodies_vec(global_vec_coll_opts);
   global_vec<Body> buffer_vec(global_vec_coll_opts);
@@ -47,7 +42,7 @@ void run_fmm(const Args& args) {
   buffer_vec.resize(args.numBodies);
   buffer = {buffer_vec.begin(), buffer_vec.end()};
 
-  if (my_rank == 0) {
+  if (ityr::is_master()) {
     logger::printTitle("FMM Parameters");
     args.print(logger::stringLength);
   }
@@ -71,11 +66,11 @@ void run_fmm(const Args& args) {
   bool pass = true;
   bool isTime = false;
   for (int t=0; t<args.repeat; t++) {
-    my_ityr::master_do([=] {
+    ityr::root_exec([=] {
       data.initBodies(bodies, args.distribution, 0);
     });
 
-    if (my_rank == 0) {
+    if (ityr::is_master()) {
       logger::printTitle("FMM Profiling");
       logger::startTimer("Total FMM");
       logger::startPAPI();
@@ -84,7 +79,7 @@ void run_fmm(const Args& args) {
     int numIteration = 1;
     if (isTime) numIteration = 10;
     for (int it=0; it<numIteration; it++) {
-      if (my_rank == 0) {
+      if (ityr::is_master()) {
         std::stringstream title;
         title << "Time average loop " << t;
         logger::printTitle(title.str());
@@ -101,12 +96,9 @@ void run_fmm(const Args& args) {
       cells_vec = buildTree.buildTree(bodies, buffer, bounds);
       cells = {cells_vec.begin(), cells_vec.end()};
 
-      if (my_rank == 0) {
-        upDownPass.upwardPass(cells);
-        traversal.initListCount(cells);
-        traversal.initWeight(cells);
-      }
-      my_ityr::barrier();
+      upDownPass.upwardPass(cells);
+      traversal.initListCount(cells);
+      traversal.initWeight(cells);
 
       if (args.IneJ) {
 #if 0
@@ -123,14 +115,11 @@ void run_fmm(const Args& args) {
         }
       }
 
-      if (my_rank == 0) {
-        upDownPass.downwardPass(cells);
-      }
-      my_ityr::barrier();
+      upDownPass.downwardPass(cells);
     }
 
     if (args.accuracy) {
-      int should_break = my_ityr::master_do([&]() {
+      int should_break = ityr::root_exec([&]() {
         logger::printTitle("Total runtime");
         logger::stopDAG();
         logger::stopPAPI();
@@ -156,8 +145,13 @@ void run_fmm(const Args& args) {
           traversal.direct(bodies_sampled, jbodies, cycle);
           logger::stopTimer("Total Direct");
 
-          ityr::with_checkout<my_ityr::access_mode::read_write, my_ityr::access_mode::read_write>(
-              bodies_sampled, bodies2, [&](auto bodies_sampled_, auto bodies2_) {
+          ityr::ori::with_checkout(
+              bodies_sampled.data(), bodies_sampled.size(), ityr::ori::mode::read_write,
+              bodies2.data()       , bodies2.size()       , ityr::ori::mode::read_write,
+              [&](Body* bodies_sampled_p, Body* bodies2_p) {
+            Bodies bodies_sampled_ = {bodies_sampled_p, bodies_sampled_p + bodies_sampled.size()};
+            Bodies bodies2_ = {bodies2_p, bodies2_p + bodies2.size()};
+
             double potDif = verify.getDifScalar(bodies_sampled_, bodies2_);
             double potNrm = verify.getNrmScalar(bodies_sampled_);
             double accDif = verify.getDifVector(bodies_sampled_, bodies2_);
@@ -197,41 +191,21 @@ void run_fmm(const Args& args) {
 
       if (should_break) break;
     } else {
-      if (my_rank == 0) {
+      if (ityr::is_master()) {
         buildTree.printTreeData(cells);
       }
     }
   }
-
-  /* if (my_rank == 0) { */
-  /*   if (!pass) { */
-  /*     if (verify.verbose) { */
-  /*       if(!isTime) std::cout << "failed accuracy regression" << std::endl; */
-  /*       else std::cout << "failed time regression" << std::endl; */
-  /*     } */
-  /*     abort(); */
-  /*   } */
-  /*   if (args.getMatrix) { */
-/* #if 0 */
-  /*     traversal.writeMatrix(bodies, jbodies); */
-/* #endif */
-  /*   } */
-  /*   logger::writeDAG(); */
-  /* } */
-  my_ityr::barrier();
-}
-
-int real_main(int argc, char ** argv) {
-  Args args(argc, argv);
-  my_ityr::iro::init(args.cache_size * 1024 * 1024, args.sub_block_size);
-
-  run_fmm(args);
-
-  my_ityr::iro::fini();
-  return 0;
 }
 
 int main(int argc, char** argv) {
-  my_ityr::main(real_main, argc, argv);
+  Args args(argc, argv);
+  ityr::init();
+
+  set_signal_handlers();
+
+  run_fmm(args);
+
+  ityr::fini();
   return 0;
 }

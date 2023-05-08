@@ -140,9 +140,9 @@ namespace EXAFMM_NAMESPACE {
       real_t Ri = Ci->*(static_cast<real_t Cell::*>(&CellBase::R));
       real_t Rj = Cj->*(static_cast<real_t Cell::*>(&CellBase::R));
       if (RT2 > (Ri+Rj) * (Ri+Rj) * (1 - 1e-3)) {   // If distance is far enough
-        my_ityr::with_checkout_tied<my_ityr::access_mode::read,
-                                    my_ityr::access_mode::read>(
-            Ci, 1, Cj, 1,
+        ityr::ori::with_checkout(
+            Ci, 1, ityr::ori::mode::read,
+            Cj, 1, ityr::ori::mode::read,
             [&](const Cell* Ci_, const Cell* Cj_) {
           kernel.M2L(Ci_, Cj_);                                     //  M2L kernel
           countKernel(numM2L);                                    //  Increment M2L counter
@@ -180,9 +180,9 @@ namespace EXAFMM_NAMESPACE {
 #endif
 	if (Cj->*(static_cast<int Cell::*>(&CellBase::NBODY)) == 0) {                                   //  If the bodies weren't sent from remote node
 	  //std::cout << "Warning: icell " << Ci->ICELL << " needs bodies from jcell" << Cj->ICELL << std::endl;
-          my_ityr::with_checkout_tied<my_ityr::access_mode::read,
-                                      my_ityr::access_mode::read>(
-              Ci, 1, Cj, 1,
+          ityr::ori::with_checkout(
+              Ci, 1, ityr::ori::mode::read,
+              Cj, 1, ityr::ori::mode::read,
               [&](const Cell* Ci_, const Cell* Cj_) {
             kernel.M2L(Ci_, Cj_);                                   //   M2L kernel
             countKernel(numM2L);                                  //   Increment M2L counter
@@ -191,27 +191,26 @@ namespace EXAFMM_NAMESPACE {
           });
 #if EXAFMM_NO_P2P
 	} else if (!isNeighbor) {                               //  If GROAMCS handles neighbors
-          my_ityr::with_checkout_tied<my_ityr::access_mode::read,
-                                      my_ityr::access_mode::read>(
-              Ci, 1, Cj, 1,
-              [&](const Cell* Ci_, const Cell* Cj_) {
+          ityr::ori::with_checkout(
+              Ci, 1, ityr::ori::mode::read,
+              Cj, 1, ityr::ori::mode::read,
             kernel.M2L(Ci_, Cj_);                                   //   M2L kernel
             countKernel(numM2L);                                  //   Increment M2L counter
             countList(Ci_, Cj_, false);                             //   Increment M2L list
             countWeight(Ci_, Cj_, remote);                          //   Increment M2L weight
           });
 	} else {
-          my_ityr::with_checkout_tied<my_ityr::access_mode::read,
-                                      my_ityr::access_mode::read>(
-              Ci, 1, Cj, 1,
+          ityr::ori::with_checkout(
+              Ci, 1, ityr::ori::mode::read,
+              Cj, 1, ityr::ori::mode::read,
               [&](const Cell* Ci_, const Cell* Cj_) {
             countList(Ci_, Cj_, true);                              //   Increment P2P list
           });
 #else
 	} else {
-          my_ityr::with_checkout_tied<my_ityr::access_mode::read,
-                                      my_ityr::access_mode::read>(
-              Ci, 1, Cj, 1,
+          ityr::ori::with_checkout(
+              Ci, 1, ityr::ori::mode::read,
+              Cj, 1, ityr::ori::mode::read,
               [&](const Cell* Ci_, const Cell* Cj_) {
             kernel.P2P(Ci_, Cj_);                                   //   P2P kernel for pair of cells
             countKernel(numP2P);                                  //   Increment P2P counter
@@ -261,7 +260,7 @@ namespace EXAFMM_NAMESPACE {
             TraverseRange rightBranch(traversal, CiMid, CiEnd,  //    Instantiate recursive functor
                                       CjMid, CjEnd, remote);
 
-            my_ityr::parallel_invoke(
+            ityr::parallel_invoke(
               [=]() { leftBranch(); },
               [=]() { rightBranch(); }
             );
@@ -273,7 +272,7 @@ namespace EXAFMM_NAMESPACE {
             TraverseRange rightBranch(traversal, CiMid, CiEnd,  //    Instantiate recursive functor
                                       CjBegin, CjMid, remote);
 
-            my_ityr::parallel_invoke(
+            ityr::parallel_invoke(
               [=]() { leftBranch(); },
               [=]() { rightBranch(); }
             );
@@ -385,15 +384,10 @@ namespace EXAFMM_NAMESPACE {
     //! Evaluate P2P and M2L using list based traversal
     void traverse(GCells icells, GCells jcells, vec3 cycle, bool dual, real_t remote=1) {
       if (icells.empty() || jcells.empty()) return;             // Quit if either of the cell vectors are empty
-      int my_rank = my_ityr::rank();
 
-      my_ityr::barrier();
-      my_ityr::logger::clear();
-      my_ityr::barrier();
+      ityr::profiler_begin();
 
-      uint64_t t0 = my_ityr::wallclock::get_time();
-
-      if (my_rank == 0) {
+      if (ityr::is_master()) {
         logger::startTimer("Traverse");                           // Start timer
       }
 
@@ -404,7 +398,7 @@ namespace EXAFMM_NAMESPACE {
       Cj0 = jcells.begin();                                     // Iterator of first source cell
       kernel.Xperiodic = 0;                                     // Set periodic coordinate offset to 0
 
-      my_ityr::master_do([=] {
+      ityr::root_exec([=] {
         if (images == 0) {                                        //  If non-periodic boundary condition
           dualTreeTraversal(Ci0, Cj0, remote);                    //   Traverse the tree
         } else {                                                  //  If periodic boundary condition
@@ -422,14 +416,12 @@ namespace EXAFMM_NAMESPACE {
         }                                                         //  End if for periodic boundary condition
       });
 
-      uint64_t t1 = my_ityr::wallclock::get_time();
-
-      if (my_rank == 0) {
+      if (ityr::is_master()) {
         logger::stopTimer("Traverse");                            // Stop timer
         logger::writeTracer();                                    // Write tracer to file
       }
 
-      my_ityr::logger::flush_and_print_stat(t0, t1);
+      ityr::profiler_end();
     }
 
     //! Direct summation

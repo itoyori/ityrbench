@@ -7,7 +7,7 @@
 namespace EXAFMM_NAMESPACE {
   class BuildTree {
     template <typename T>
-    using global_ptr = my_ityr::global_ptr<T>;
+    using global_ptr = ityr::ori::global_ptr<T>;
 
     typedef vec<8,int> ivec8;                                   //!< Vector of 8 integer types
 
@@ -38,11 +38,11 @@ namespace EXAFMM_NAMESPACE {
 
   private:
     static global_ptr<OctreeNode> alloc_octree_node() {
-      return my_ityr::iro::malloc_local<OctreeNode>(1);
+      return ityr::ori::malloc<OctreeNode>(1);
     }
 
     static void free_octree_node(global_ptr<OctreeNode> node) {
-      my_ityr::iro::free(node, 1);
+      ityr::ori::free(node, 1);
     }
 
     //! Recursive functor for counting bodies in each octant using binary tree
@@ -65,17 +65,18 @@ namespace EXAFMM_NAMESPACE {
       void operator() () const {                                // Overload operator()
 	/* assert(getNumBinNode(end - begin) <= binNode->END - binNode->BEGIN + 1); */
 	if (end - begin <= nspawn) {                            //  If number of bodies is less than threshold
-          my_ityr::with_checkout_tied<my_ityr::access_mode::read_write>(
-              binNode, 1, [&](BinaryTreeNode* binNode_) {
+          ityr::ori::with_checkout(
+              binNode, 1, ityr::ori::mode::read_write,
+              [&](BinaryTreeNode* binNode_) {
 
             for (int i=0; i<8; i++) binNode_->NBODY[i] = 0;        //   Initialize number of bodies in octant
             binNode_->LEFT = binNode_->RIGHT = nullptr;                //   Initialize pointers to left and right child node
 
-            my_ityr::serial_for<my_ityr::iro::access_mode::read,
-                                my_ityr::iro::access_mode::read>(
+            ityr::serial_for_each(
+                {.checkout_count = cutoff_body},
                 ityr::count_iterator<int>(begin),
                 ityr::count_iterator<int>(end),
-                bodies.begin() + begin,
+                ityr::make_global_iterator(bodies.begin() + begin, ityr::ori::mode::read),
                 [&](int i, const auto& B) {
 
               vec3 x = B.X;                                   //  Coordinates of body
@@ -86,7 +87,7 @@ namespace EXAFMM_NAMESPACE {
               int octant = (x[0] > X[0]) + ((x[1] > X[1]) << 1) + ((x[2] > X[2]) << 2);// Which octant body belongs to
               binNode_->NBODY[octant]++;                           //    Increment body count in octant
                                                                       //
-            }, my_ityr::iro::block_size);
+            });
 
           });
 	} else {                                                //  Else if number of bodies is larger than threshold
@@ -98,17 +99,18 @@ namespace EXAFMM_NAMESPACE {
 
           global_ptr<BinaryTreeNode> binNode_left, binNode_right;
 
-          my_ityr::with_checkout_tied<my_ityr::access_mode::read_write>(
-              binNode, 1, [&](BinaryTreeNode* binNode_) {
+          ityr::ori::with_checkout(
+              binNode, 1, ityr::ori::mode::read_write,
+              [&](BinaryTreeNode* binNode_) {
             binNode_left = binNode_->BEGIN;
             binNode_right = binNode_->BEGIN + numLeftNode;
             binNode_->LEFT = binNode_left;
             binNode_->RIGHT = binNode_right;
           });
 
-          my_ityr::with_checkout_tied<my_ityr::access_mode::write,
-                                      my_ityr::access_mode::write>(
-              binNode_left, 1, binNode_right, 1,
+          ityr::ori::with_checkout(
+              binNode_left , 1, ityr::ori::mode::write,
+              binNode_right, 1, ityr::ori::mode::write,
               [&](BinaryTreeNode* binNode_left_, BinaryTreeNode* binNode_right_) {
             binNode_left_->BEGIN = binNode_left + 1;             //   Assign next memory address to left begin pointer
             binNode_left_->END = binNode_left + numLeftNode;     //   Keep track of last memory address used by left
@@ -119,7 +121,7 @@ namespace EXAFMM_NAMESPACE {
           CountBodies leftBranch(bodies, begin, mid, X, binNode_left, nspawn);// Recursion for left branch
           CountBodies rightBranch(bodies, mid, end, X, binNode_right, nspawn);// Recursion for right branch
 
-          my_ityr::parallel_invoke(
+          ityr::parallel_invoke(
             [=]() { leftBranch(); },
             [=]() { rightBranch(); }
           );
@@ -151,17 +153,17 @@ namespace EXAFMM_NAMESPACE {
           ivec8 offsets;
           for (int i = 0; i < 8; i++) {
             if (counts[i] > 0) {
-              buffers[i] = my_ityr::iro::checkout<my_ityr::access_mode::write>(
-                  &buffer[octantOffset[i]], counts[i]);
+              buffers[i] = ityr::ori::checkout(
+                  &buffer[octantOffset[i]], counts[i], ityr::ori::mode::write);
               offsets[i] = 0;
             }
           }
 
-          my_ityr::serial_for<my_ityr::iro::access_mode::read,
-                              my_ityr::iro::access_mode::read>(
+          ityr::serial_for_each(
+              {.checkout_count = cutoff_body},
               ityr::count_iterator<int>(begin),
               ityr::count_iterator<int>(end),
-              bodies.begin() + begin,
+              ityr::make_global_iterator(bodies.begin() + begin, ityr::ori::mode::read),
               [&](int i, const auto& B) {
 
             vec3 x = B.X;                                   //  Coordinates of body
@@ -175,12 +177,11 @@ namespace EXAFMM_NAMESPACE {
             buffers[octant][offsets[octant]] = B;
             offsets[octant]++;
 
-          }, my_ityr::iro::block_size);
+          });
 
           for (int i = 0; i < 8; i++) {
             if (counts[i] > 0) {
-              my_ityr::iro::checkin<my_ityr::access_mode::write>(
-                  buffers[i], counts[i]);
+              ityr::ori::checkin(buffers[i], counts[i], ityr::ori::mode::write);
             }
           }
 	} else {                                                //  Else if there are child nodes
@@ -193,7 +194,7 @@ namespace EXAFMM_NAMESPACE {
           ivec8 octantOffset_ = octantOffset + binNode_left->*(&BinaryTreeNode::NBODY);
           MoveBodies rightBranch(bodies, buffer, mid, end, binNode_right, octantOffset_, X);// Recursion for right branch
 
-          my_ityr::parallel_invoke(
+          ityr::parallel_invoke(
             [=]() { leftBranch(); },
             [=]() { rightBranch(); }
           );
@@ -225,8 +226,9 @@ namespace EXAFMM_NAMESPACE {
       //! Create an octree node
       global_ptr<OctreeNode> makeOctNode(bool nochild) const {
         global_ptr<OctreeNode> octNode = alloc_octree_node();
-        my_ityr::with_checkout_tied<my_ityr::access_mode::write>(
-            octNode, 1, [&](OctreeNode* octNode_) {
+        ityr::ori::with_checkout(
+            octNode, 1, ityr::ori::mode::write,
+            [&](OctreeNode* octNode_) {
           OctreeNode* octNode = new (octNode_) OctreeNode();                             // Allocate memory for single node
           octNode->IBODY = begin;                                 // Index of first body in node
           octNode->NBODY = end - begin;                           // Number of bodies in node
@@ -262,20 +264,14 @@ namespace EXAFMM_NAMESPACE {
 	}                                                       //  End if for no bodies
 	if (end - begin <= ncrit) {                             //  If number of bodies is less than threshold
           if (direction) {                                          //  If direction of data is from bodies to buffer
-            my_ityr::with_checkout_tied<my_ityr::access_mode::read,
-                                        my_ityr::access_mode::write>(
-                bodies.begin() + begin, end - begin,
-                buffer.begin() + begin, end - begin,
+            ityr::ori::with_checkout(
+                bodies.begin() + begin, end - begin, ityr::ori::mode::read,
+                buffer.begin() + begin, end - begin, ityr::ori::mode::write,
                 [&](const Body* b_src, Body* b_dest) {
               for (int i = 0; i < end - begin; i++) {
                 b_dest[i] = b_src[i];
               }
             });
-            /* my_ityr::parallel_transform(bodies.begin() + begin, */
-            /*                             bodies.begin() + end, */
-            /*                             buffer.begin() + begin, */
-            /*                             [](const auto& B) { return B; }, */
-            /*                             my_ityr::iro::block_size); */
           }
           return makeOctNode(true);        //  Create an octree node and assign it's pointer
 	}                                                       //  End if for number of bodies
@@ -306,7 +302,7 @@ namespace EXAFMM_NAMESPACE {
         auto children = global_ptr<global_ptr<OctreeNode>>(&(octNode->*(&OctreeNode::CHILD)));
         global_vec<BinaryTreeNode> binNodeChild_vec(8);              //  Allocate new root for this branch
         global_ptr<BinaryTreeNode> binNodeChild = binNodeChild_vec.begin();
-        my_ityr::parallel_for<my_ityr::access_mode::read>(
+        ityr::parallel_for_each(
             ityr::count_iterator<int>(0),
             ityr::count_iterator<int>(8),
             [=, *this](int i) {
@@ -371,9 +367,9 @@ namespace EXAFMM_NAMESPACE {
         GC_iter CNs[8];
         GC_iter Ci = CN;                                       //   CN points to the next free memory address
 
-        my_ityr::with_checkout_tied<my_ityr::access_mode::read,
-                                    my_ityr::access_mode::write>(
-            octNode, 1, C, 1,
+        ityr::ori::with_checkout(
+            octNode, 1, ityr::ori::mode::read,
+            C      , 1, ityr::ori::mode::write,
             [&](const OctreeNode* o, Cell* c_) {
           Cell* c = new (c_) Cell();
           c->IPARENT = iparent;                                   //  Index of parent cell
@@ -411,7 +407,7 @@ namespace EXAFMM_NAMESPACE {
         });
 
         if (nchild > 0) {
-          int numLevels_ = my_ityr::parallel_reduce(
+          int numLevels_ = ityr::parallel_reduce(
               ityr::count_iterator<int>(0),
               ityr::count_iterator<int>(nchild),
               int(0),
@@ -449,14 +445,8 @@ namespace EXAFMM_NAMESPACE {
 
     //! Grow tree structure top down
     void growTree(GBodies bodies, GBodies buffer, Box box) {
-      int my_rank = my_ityr::rank();
-
-      my_ityr::barrier();
-      my_ityr::iro::collect_deallocated();
-      my_ityr::barrier();
-
       assert(box.R > 0);                                        // Check for bounds validity
-      if (my_rank == 0) {
+      if (ityr::is_master()) {
         logger::startTimer("Grow tree");                          // Start timer
       }
       B0 = bodies.begin();                                      // Bodies iterator
@@ -469,7 +459,7 @@ namespace EXAFMM_NAMESPACE {
       root_node.BEGIN = bin_nodes_vec.begin();
       root_node.END = bin_nodes_vec.end();
 
-      N0 = my_ityr::master_do([=] {
+      N0 = ityr::root_exec([=] {
         global_vec<BinaryTreeNode> root_bin_node_vec(1, root_node);
 
         BuildNodes buildNodes(bodies, buffer, 0, bodies.size(),
@@ -494,15 +484,14 @@ namespace EXAFMM_NAMESPACE {
 	timer["Count bodies"] + timer["Exclusive scan"] +
 	timer["Move bodies"] + timer["Get node range"] << " s" << std::endl;
 #endif
-      if (my_rank == 0) {
+      if (ityr::is_master()) {
         logger::stopTimer("Grow tree");                           // Stop timer
       }
     }
 
     //! Link tree structure
     global_vec<Cell> linkTree(Box box) {
-      int my_rank = my_ityr::rank();
-      if (my_rank == 0) {
+      if (ityr::is_master()) {
         logger::startTimer("Link tree");                          // Start timer
       }
       global_vec<Cell> cells_vec(global_vec_coll_opts);                                              // Initialize cell array
@@ -515,20 +504,16 @@ namespace EXAFMM_NAMESPACE {
 	cells_vec.resize(ncells);                                //  Allocate cells array
 	GC_iter C0 = cells_vec.begin();                              //  Cell begin iterator
 
-        numLevels = my_ityr::master_do([=]() {
+        numLevels = ityr::root_exec([=]() {
           Nodes2cells nodes2cells(N0, B0, C0, C0, C0+1, box.X, box.R, nspawn);// Instantiate recursive functor
           auto ret = nodes2cells();                                          //  Convert nodes to cells recursively
           free_octree_node(N0);
           return ret;
         });
       }                                                         // End if for empty node tree
-      if (my_rank == 0) {
+      if (ityr::is_master()) {
         logger::stopTimer("Link tree");                           // Stop timer
       }
-
-      my_ityr::barrier();
-      my_ityr::iro::collect_deallocated();
-      my_ityr::barrier();
 
       return cells_vec;                                             // Return cells array
     }

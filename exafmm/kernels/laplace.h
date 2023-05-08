@@ -152,9 +152,9 @@ namespace EXAFMM_NAMESPACE {
       GB_iter GBj = Cj->BODY;
       int ni = Ci->NBODY;
       int nj = Cj->NBODY;
-      my_ityr::with_checkout_tied<my_ityr::access_mode::read_write,
-                                  my_ityr::access_mode::read>(
-          GBi, ni, GBj, nj,
+      ityr::ori::with_checkout(
+          GBi, ni, ityr::ori::mode::read_write,
+          GBj, nj, ityr::ori::mode::read,
           [&](Body* Bi, const Body* Bj) {
         int i = 0;
 #if EXAFMM_USE_SIMD
@@ -244,8 +244,9 @@ namespace EXAFMM_NAMESPACE {
       GB_iter GBj = Cj->BODY;
       int ni = Ci->NBODY;
       int nj = Cj->NBODY;
-      my_ityr::with_checkout_tied<my_ityr::access_mode::read_write>(
-          GBi, ni, [&](Body* Bi) {
+      ityr::ori::with_checkout(
+          GBi, ni, ityr::ori::mode::read_write,
+          [&](Body* Bi) {
         int i = 0;
 #if EXAFMM_USE_SIMD
         for ( ; i<=ni-NSIMD; i+=NSIMD) {
@@ -266,8 +267,11 @@ namespace EXAFMM_NAMESPACE {
           simdvec zj = Xperiodic[2];
           zi -= zj;
 
-          my_ityr::serial_for<my_ityr::access_mode::read>(
-              GBj, GBj + nj, [&](const Body& Bj) {
+          ityr::serial_for_each(
+              {.checkout_count = cutoff_body},
+              ityr::make_global_iterator(GBj     , ityr::ori::mode::read),
+              ityr::make_global_iterator(GBj + nj, ityr::ori::mode::read),
+              [&](const Body& Bj) {
             simdvec dx = Bj.X[0];
             dx -= xi;
             simdvec dy = Bj.X[1];
@@ -295,7 +299,7 @@ namespace EXAFMM_NAMESPACE {
             ay += yj;
             zj *= invR;
             az += zj;
-          }, my_ityr::iro::block_size);
+          });
 
           for (int k=0; k<NSIMD; k++) {
             Bi[i+k].TRG[0] += transpose(pot, k);
@@ -311,8 +315,11 @@ namespace EXAFMM_NAMESPACE {
           kreal_t ay = 0;
           kreal_t az = 0;
 
-          my_ityr::serial_for<my_ityr::access_mode::read>(
-              GBj, GBj + nj, [&](const Body& Bj) {
+          ityr::serial_for_each(
+              {.checkout_count = cutoff_body},
+              ityr::make_global_iterator(GBj     , ityr::ori::mode::read),
+              ityr::make_global_iterator(GBj + nj, ityr::ori::mode::read),
+              [&](const Body& Bj) {
             vec3 dX = Bi[i].X - Bj.X - Xperiodic;
             real_t R2 = norm(dX) + eps2;
             if (R2 != 0) {
@@ -324,7 +331,7 @@ namespace EXAFMM_NAMESPACE {
               ay += dX[1];
               az += dX[2];
             }
-          }, my_ityr::iro::block_size);
+          });
 
           Bi[i].TRG[0] += pot;
           Bi[i].TRG[1] -= ax;
@@ -336,9 +343,9 @@ namespace EXAFMM_NAMESPACE {
 
     void P2M(const Cell* C) {
       complex_t Ynm[P*P], YnmTheta[P*P];
-      my_ityr::with_checkout_tied<my_ityr::access_mode::read_write,
-                                  my_ityr::access_mode::read>(
-          C->M.data(), C->M.size(), C->BODY, C->NBODY,
+      ityr::ori::with_checkout(
+          C->M.data(), C->M.size(), ityr::ori::mode::read_write,
+          C->BODY    , C->NBODY   , ityr::ori::mode::read,
           [&](complex_t* CM, const Body* Bp) {
         for (auto B=Bp; B!=Bp+C->NBODY; B++) {
           vec3 dX = B->X - C->X;
@@ -364,9 +371,9 @@ namespace EXAFMM_NAMESPACE {
         cart2sph(dX, rho, alpha, beta);
         evalMultipole(rho, alpha, -beta, Ynm, YnmTheta);
 
-        my_ityr::with_checkout_tied<my_ityr::access_mode::read_write,
-                                    my_ityr::access_mode::read>(
-            Ci->M.data(), Ci->M.size(), Cj->M.data(), Cj->M.size(),
+        ityr::ori::with_checkout(
+            Ci->M.data(), Ci->M.size(), ityr::ori::mode::read_write,
+            Cj->M.data(), Cj->M.size(), ityr::ori::mode::read,
             [&](complex_t* CiM, const complex_t* CjM) {
           for (int j=0; j<P; j++) {
             for (int k=0; k<=j; k++) {
@@ -407,9 +414,9 @@ namespace EXAFMM_NAMESPACE {
       cart2sph(dX, rho, alpha, beta);
       evalLocal(rho, alpha, beta, Ynm2);
 
-      my_ityr::with_checkout_tied<my_ityr::access_mode::read_write,
-                                  my_ityr::access_mode::read>(
-          Ci->L.data(), Ci->L.size(), Cj->M.data(), Cj->M.size(),
+      ityr::ori::with_checkout(
+          Ci->L.data(), Ci->L.size(), ityr::ori::mode::read_write,
+          Cj->M.data(), Cj->M.size(), ityr::ori::mode::read,
           [&](complex_t* CiL, const complex_t* CjM) {
         for (int j=0; j<P; j++) {
           for (int k=0; k<=j; k++) {
@@ -446,9 +453,9 @@ namespace EXAFMM_NAMESPACE {
       cart2sph(dX, rho, alpha, beta);
       evalMultipole(rho, alpha, beta, Ynm, YnmTheta);
 
-      my_ityr::with_checkout_tied<my_ityr::access_mode::read_write,
-                                  my_ityr::access_mode::read>(
-          Ci->L.data(), Ci->L.size(), Cj->L.data(), Cj->L.size(),
+      ityr::ori::with_checkout(
+          Ci->L.data(), Ci->L.size(), ityr::ori::mode::read_write,
+          Cj->L.data(), Cj->L.size(), ityr::ori::mode::read,
           [&](complex_t* CiL, const complex_t* CjL) {
         for (int j=0; j<P; j++) {
           for (int k=0; k<=j; k++) {
@@ -481,9 +488,9 @@ namespace EXAFMM_NAMESPACE {
 
     void L2P(const Cell* C) {
       complex_t Ynm[P*P], YnmTheta[P*P];
-      my_ityr::with_checkout_tied<my_ityr::access_mode::read_write,
-                                  my_ityr::access_mode::read>(
-          C->BODY, C->NBODY, C->L.data(), C->L.size(),
+      ityr::ori::with_checkout(
+          C->BODY    , C->NBODY   , ityr::ori::mode::read_write,
+          C->L.data(), C->L.size(), ityr::ori::mode::read,
           [&](Body* Bp, const complex_t* CL) {
         for (auto B=Bp; B!=Bp+C->NBODY; B++) {
           vec3 dX = B->X - C->X + EPS;

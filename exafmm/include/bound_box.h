@@ -70,8 +70,7 @@ namespace EXAFMM_NAMESPACE {
 
     //! Get Xmin and Xmax of bodies
     Bounds getBounds(GBodies bodies) {
-      int my_rank = my_ityr::rank();
-      if (my_rank == 0) {
+      if (ityr::is_master()) {
         logger::startTimer("Get bounds");                         // Start timer
       }
       Bounds bounds;                                            // Bounds : Contains Xmin, Xmax
@@ -80,15 +79,16 @@ namespace EXAFMM_NAMESPACE {
       } else {                                                  // If body vector is not empty
         auto mp_X = static_cast<vec3 Body::*>(&Source::X);
         bounds.Xmin = bounds.Xmax = bodies.begin()->*(mp_X);
-        my_ityr::serial_for<my_ityr::iro::access_mode::read>(
-            bodies.begin(),
-            bodies.end(),
+        ityr::serial_for_each(
+            {.checkout_count = cutoff_body},
+            ityr::make_global_iterator(bodies.begin(), ityr::ori::mode::read),
+            ityr::make_global_iterator(bodies.end()  , ityr::ori::mode::read),
             [&](const auto& B) {
           bounds.Xmin = min(B.X, bounds.Xmin - 1e-5);          //   Update Xmin
           bounds.Xmax = max(B.X, bounds.Xmax + 1e-5);          //   Update Xmax
-        }, my_ityr::iro::block_size);
+        });
       }                                                         // End if for empty body vector
-      if (my_rank == 0) {
+      if (ityr::is_master()) {
         logger::stopTimer("Get bounds");                          // Stop timer
       }
       return bounds;                                            // Return Xmin and Xmax
@@ -96,18 +96,18 @@ namespace EXAFMM_NAMESPACE {
 
     //! Update Xmin and Xmax of bodies
     Bounds getBounds(GBodies bodies, Bounds bounds) {
-      int my_rank = my_ityr::rank();
-      if (my_rank == 0) {
+      if (ityr::is_master()) {
         logger::startTimer("Get bounds");                         // Start timer
       }
-      my_ityr::serial_for<my_ityr::iro::access_mode::read>(
-          bodies.begin(),
-          bodies.end(),
+      ityr::serial_for_each(
+          {.checkout_count = cutoff_body},
+          ityr::make_global_iterator(bodies.begin(), ityr::ori::mode::read),
+          ityr::make_global_iterator(bodies.end()  , ityr::ori::mode::read),
           [&](const auto& B) {
         bounds.Xmin = min(B.X, bounds.Xmin - 1e-5);            //  Update Xmin
         bounds.Xmax = max(B.X, bounds.Xmax + 1e-5);            //  Update Xmax
-      }, my_ityr::iro::block_size);
-      if (my_rank == 0) {
+      });
+      if (ityr::is_master()) {
         logger::stopTimer("Get bounds");                          // Stop timer
       }
       return bounds;                                            // Return Xmin and Xmax
@@ -115,8 +115,7 @@ namespace EXAFMM_NAMESPACE {
 
     //! Get Xmin and Xmax of cells
     Bounds getBounds(GCells cells) {
-      int my_rank = my_ityr::rank();
-      if (my_rank == 0) {
+      if (ityr::is_master()) {
         logger::startTimer("Get bounds");                         // Start timer
       }
       Bounds bounds;                                            // Bounds : Contains Xmin, Xmax
@@ -125,15 +124,16 @@ namespace EXAFMM_NAMESPACE {
       } else {                                                  // If cell vector is not empty
         auto mp_X = static_cast<vec3 Cell::*>(&CellBase::X);
 	bounds.Xmin = bounds.Xmax = cells.begin()->*(mp_X);           //  Initialize Xmin, Xmax
-        my_ityr::serial_for<my_ityr::iro::access_mode::read>(
-            cells.begin(),
-            cells.end(),
+        ityr::serial_for_each(
+            {.checkout_count = cutoff_cell},
+            ityr::make_global_iterator(cells.begin(), ityr::ori::mode::read),
+            ityr::make_global_iterator(cells.end()  , ityr::ori::mode::read),
             [&](const auto& C) {
           bounds.Xmin = min(vec3(C.X) - 1e-5, bounds.Xmin);          //   Update Xmin
           bounds.Xmax = max(vec3(C.X) + 1e-5, bounds.Xmax);          //   Update Xmax
-        }, my_ityr::iro::block_size);
+        });
       }                                                         // End if for empty body vector
-      if (my_rank == 0) {
+      if (ityr::is_master()) {
         logger::stopTimer("Get bounds");                          // Stop timer
       }
       return bounds;                                            // Return Xmin and Xmax
@@ -141,18 +141,18 @@ namespace EXAFMM_NAMESPACE {
 
     //! Update Xmin and Xmax of cells
     Bounds getBounds(GCells cells, Bounds bounds) {
-      int my_rank = my_ityr::rank();
-      if (my_rank == 0) {
+      if (ityr::is_master()) {
         logger::startTimer("Get bounds");                         // Start timer
       }
-      my_ityr::serial_for<my_ityr::iro::access_mode::read>(
-          cells.begin(),
-          cells.end(),
+      ityr::serial_for_each(
+          {.checkout_count = cutoff_cell},
+          ityr::make_global_iterator(cells.begin(), ityr::ori::mode::read),
+          ityr::make_global_iterator(cells.end()  , ityr::ori::mode::read),
           [&](const auto& C) {
         bounds.Xmin = min(vec3(C.X) - 1e-5, bounds.Xmin);            //  Update Xmin
         bounds.Xmax = max(vec3(C.X) + 1e-5, bounds.Xmax);            //  Update Xmax
-      }, my_ityr::iro::block_size);
-      if (my_rank == 0) {
+      });
+      if (ityr::is_master()) {
         logger::stopTimer("Get bounds");                          // Stop timer
       }
       return bounds;                                            // Return Xmin and Xmax

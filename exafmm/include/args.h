@@ -32,7 +32,6 @@ namespace EXAFMM_NAMESPACE {
     {"threads",      required_argument, 0, 'T'},
     {"verbose",      no_argument,       0, 'v'},
     {"write",        no_argument,       0, 'w'},
-    {"cache-size",   no_argument,       0, 'x'},
     {0, 0, 0, 0}
   };
 
@@ -56,8 +55,6 @@ namespace EXAFMM_NAMESPACE {
     int threads;
     int verbose;
     int write;
-    std::size_t cache_size;
-    std::size_t sub_block_size;
 
   private:
     void usage(char * name) const {
@@ -82,9 +79,7 @@ namespace EXAFMM_NAMESPACE {
 	      " --theta (-t)                    : Multipole acceptance criterion (%f)\n"
 	      " --threads (-T)                  : Number of threads (%d)\n"
 	      " --verbose (-v)                  : Print information to screen (%d)\n"
-	      " --write (-w)                    : Write timings to file (%d)\n"
-	      " --cache-size (-x)               : Cache size for PCAS (%ld)\n",
-	      " --sub-block-size (-y)           : Sub-block size for PCAS (%ld)\n",
+	      " --write (-w)                    : Write timings to file (%d)\n",
 	      name,
               accuracy,
 	      ncrit,
@@ -103,9 +98,7 @@ namespace EXAFMM_NAMESPACE {
 	      theta,
 	      threads,
 	      verbose,
-	      write,
-              cache_size,
-              sub_block_size);
+	      write);
     }
 
     const char * parseDistribution(const char * arg) const {
@@ -210,9 +203,7 @@ namespace EXAFMM_NAMESPACE {
       theta(.4),
       threads(16),
       verbose(0),
-      write(0),
-      cache_size(16),
-      sub_block_size(4096) {
+      write(0) {
       while (1) {
 	int option_index;
 	int c = getopt_long(argc, argv, "ab:c:d:De:gGhi:jmMn:op:P:r:s:t:T:vwx:y:", long_options, &option_index);
@@ -274,12 +265,6 @@ namespace EXAFMM_NAMESPACE {
 	  break;
 	case 'w':
 	  write = 1;
-	  break;
-	case 'x':
-	  cache_size = atoll(optarg);
-	  break;
-	case 'y':
-	  sub_block_size = atoll(optarg);
 	  break;
 	default:
 	  usage(argv[0]);
@@ -347,11 +332,7 @@ namespace EXAFMM_NAMESPACE {
 		  << std::setw(stringLength)
 		  << "write" << " : " << write << std::endl
 		  << std::setw(stringLength)
-		  << "# of processes" << " : " << my_ityr::n_ranks() << std::endl
-		  << std::setw(stringLength)
-		  << "cache_size" << " : " << cache_size << " MB" << std::endl
-		  << std::setw(stringLength)
-		  << "sub_block_size" << " : " << sub_block_size << " bytes" << std::endl;
+		  << "# of processes" << " : " << ityr::n_ranks() << std::endl;
       }
     }
   };

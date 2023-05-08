@@ -387,9 +387,9 @@ namespace EXAFMM_NAMESPACE {
       GB_iter GBj = Cj->BODY;
       int ni = Ci->NBODY;
       int nj = Cj->NBODY;
-      my_ityr::with_checkout_tied<my_ityr::access_mode::read_write,
-                                  my_ityr::access_mode::read>(
-          GBi, ni, GBj, nj,
+      ityr::ori::with_checkout(
+          GBi, ni, ityr::ori::mode::read_write,
+          GBj, nj, ityr::ori::mode::read,
           [&](Body* Bi, const Body* Bj) {
         int i = 0;
 #if EXAFMM_USE_SIMD
@@ -515,8 +515,9 @@ namespace EXAFMM_NAMESPACE {
       GB_iter GBj = Cj->BODY;
       int ni = Ci->NBODY;
       int nj = Cj->NBODY;
-      my_ityr::with_checkout_tied<my_ityr::access_mode::read_write>(
-          GBi, ni, [&](Body* Bi) {
+      ityr::ori::with_checkout(
+          GBi, ni, ityr::ori::mode::read_write,
+          [&](Body* Bi) {
         int i = 0;
 #if EXAFMM_USE_SIMD
         simdvec wave_rvec = wave_r;
@@ -544,8 +545,11 @@ namespace EXAFMM_NAMESPACE {
           simdvec dz = Xperiodic[2];
           zi -= dz;
 
-          my_ityr::serial_for<my_ityr::access_mode::read>(
-              GBj, GBj + nj, [&](const Body& Bj) {
+          ityr::serial_for_each(
+              {.checkout_count = cutoff_body},
+              ityr::make_global_iterator(GBj     , ityr::ori::mode::read),
+              ityr::make_global_iterator(GBj + nj, ityr::ori::mode::read),
+              [&](const Body& Bj) {
             dx = Bj.X[0];
             dx -= xi;
             dy = Bj.X[1];
@@ -583,7 +587,7 @@ namespace EXAFMM_NAMESPACE {
             ay_i += coef_i * dy;
             az_r += coef_r * dz;
             az_i += coef_i * dz;
-          }, my_ityr::iro::block_size);
+          });
 
           for (int k=0; k<NSIMD; k++) {
             Bi[i+k].TRG[0] += transpose(pot_r, pot_i, k);
@@ -603,8 +607,11 @@ namespace EXAFMM_NAMESPACE {
           real_t az_r = 0.0;
           real_t az_i = 0.0;
 
-          my_ityr::serial_for<my_ityr::access_mode::read>(
-              GBj, GBj + nj, [&](const Body& Bj) {
+          ityr::serial_for_each(
+              {.checkout_count = cutoff_body},
+              ityr::make_global_iterator(GBj     , ityr::ori::mode::read),
+              ityr::make_global_iterator(GBj + nj, ityr::ori::mode::read),
+              [&](const Body& Bj) {
             real_t mj_r = std::real(Bj.SRC);
             real_t mj_i = std::imag(Bj.SRC);
             vec3 dX = Bi[i].X - Bj.X - Xperiodic;
@@ -629,7 +636,7 @@ namespace EXAFMM_NAMESPACE {
               az_r += coef2_r * dX[2];
               az_i += coef2_i * dX[2];
             }
-          }, my_ityr::iro::block_size);
+          });
 
           Bi[i].TRG[0] += complex_t(pot_r, pot_i);
           Bi[i].TRG[1] += complex_t(ax_r, ax_i);
@@ -646,9 +653,9 @@ namespace EXAFMM_NAMESPACE {
       for (int n=0; n<P*P; n++) Mnm[n] = complex_t(0,0);
       real_t kscale = 2 * C->R * abs(wavek);
 
-      my_ityr::with_checkout_tied<my_ityr::access_mode::read_write,
-                                  my_ityr::access_mode::read>(
-          C->M.data(), C->M.size(), C->BODY, C->NBODY,
+      ityr::ori::with_checkout(
+          C->M.data(), C->M.size(), ityr::ori::mode::read_write,
+          C->BODY    , C->NBODY   , ityr::ori::mode::read,
           [&](complex_t* CM, const Body* Bp) {
         for (auto B=Bp; B!=Bp+C->NBODY; B++) {
           vec3 dX = B->X - C->X;
@@ -702,9 +709,9 @@ namespace EXAFMM_NAMESPACE {
 	  ephi[P+n] = ephi[P+n-1] * ephi[P+1];
 	  ephi[P-n] = conj(ephi[P+n]);
 	}
-        my_ityr::with_checkout_tied<my_ityr::access_mode::read_write,
-                                    my_ityr::access_mode::read>(
-            Ci->M.data(), Ci->M.size(), Cj->M.data(), Cj->M.size(),
+        ityr::ori::with_checkout(
+            Ci->M.data(), Ci->M.size(), ityr::ori::mode::read_write,
+            Cj->M.data(), Cj->M.size(), ityr::ori::mode::read,
             [&](complex_t* CiM, const complex_t* CjM) {
           for (int n=0; n<P; n++) {
             for (int m=-n; m<=n; m++) {
@@ -798,9 +805,9 @@ namespace EXAFMM_NAMESPACE {
 	ephi[P+n] = ephi[P+n-1] * ephi[P+1];
 	ephi[P-n] = conj(ephi[P+n]);
       }
-      my_ityr::with_checkout_tied<my_ityr::access_mode::read_write,
-                                  my_ityr::access_mode::read>(
-          Ci->L.data(), Ci->L.size(), Cj->M.data(), Cj->M.size(),
+      ityr::ori::with_checkout(
+          Ci->L.data(), Ci->L.size(), ityr::ori::mode::read_write,
+          Cj->M.data(), Cj->M.size(), ityr::ori::mode::read,
           [&](complex_t* CiL, const complex_t* CjM) {
         for (int n=0; n<Popt; n++) {
           for (int m=-n; m<=n; m++) {
@@ -914,9 +921,9 @@ namespace EXAFMM_NAMESPACE {
 	ephi[P+n] = ephi[P+n-1] * ephi[P+1];
 	ephi[P-n] = conj(ephi[P+n]);
       }
-      my_ityr::with_checkout_tied<my_ityr::access_mode::read_write,
-                                  my_ityr::access_mode::read>(
-          Ci->L.data(), Ci->L.size(), Cj->L.data(), Cj->L.size(),
+      ityr::ori::with_checkout(
+          Ci->L.data(), Ci->L.size(), ityr::ori::mode::read_write,
+          Cj->L.data(), Cj->L.size(), ityr::ori::mode::read,
           [&](complex_t* CiL, const complex_t* CjL) {
         for (int n=0; n<P; n++) {
           for (int m=-n; m<=n; m++) {
@@ -1022,9 +1029,9 @@ namespace EXAFMM_NAMESPACE {
       real_t Ynm[P*(P+1)/2], Ynmd[P*(P+1)/2];
       complex_t ephi[P], jn[P+1], jnd[P+1];
       real_t kscale = 2 * C->R * abs(wavek);
-      my_ityr::with_checkout_tied<my_ityr::access_mode::read_write,
-                                  my_ityr::access_mode::read>(
-          C->BODY, C->NBODY, C->L.data(), C->L.size(),
+      ityr::ori::with_checkout(
+          C->BODY    , C->NBODY   , ityr::ori::mode::read_write,
+          C->L.data(), C->L.size(), ityr::ori::mode::read,
           [&](Body* Bp, const complex_t* CL) {
         for (auto B=Bp; B!=Bp+C->NBODY; B++) {
           complex_t Lj[P*P];
