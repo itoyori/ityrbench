@@ -14,8 +14,8 @@ namespace EXAFMM_NAMESPACE {
     std::vector<real_t> Anm1, Anm2;
 
   public:
-    const int P;
-    const int NTERM;
+    int P;
+    int NTERM;
     real_t    eps2;
     complex_t wavek;
     vec3      Xperiodic;
@@ -365,6 +365,7 @@ namespace EXAFMM_NAMESPACE {
     }
 
   public:
+    Kernel() {}
     Kernel(int _P, real_t _eps2, complex_t _wavek) : P(_P), NTERM(P*P), eps2(_eps2), wavek(_wavek) {
       Xperiodic = 0;
       xquad.resize(P);

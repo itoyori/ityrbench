@@ -10,6 +10,10 @@
 #include "verify.h"
 using namespace EXAFMM_NAMESPACE;
 
+// make them global to have the same virtual address
+Kernel kernel;
+Traversal traversal;
+
 void run_fmm(const Args& args) {
   const vec3 cycle = 2 * M_PI;
   const real_t eps2 = 0.0;
@@ -26,9 +30,9 @@ void run_fmm(const Args& args) {
   BuildTree buildTree(args.ncrit, args.nspawn);
   GCells cells, jcells;
   Dataset data;
-  Kernel kernel(args.P, eps2, wavek);
-  Traversal traversal(kernel, args.theta, args.nspawn, args.images, args.path);
-  UpDownPass upDownPass(kernel);
+  kernel = {args.P, eps2, wavek};
+  traversal = {&kernel, args.theta, args.nspawn, args.images, args.path};
+  UpDownPass upDownPass(&kernel);
   Verify verify(args.path);
   num_threads(args.threads);
 

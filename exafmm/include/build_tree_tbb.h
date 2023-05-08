@@ -459,7 +459,7 @@ namespace EXAFMM_NAMESPACE {
       root_node.BEGIN = bin_nodes_vec.begin();
       root_node.END = bin_nodes_vec.end();
 
-      N0 = ityr::root_exec([=] {
+      N0 = ityr::root_exec([=, *this] {
         global_vec<BinaryTreeNode> root_bin_node_vec(1, root_node);
 
         BuildNodes buildNodes(bodies, buffer, 0, bodies.size(),
@@ -499,12 +499,10 @@ namespace EXAFMM_NAMESPACE {
       if (N0 != nullptr) {                                         // If the node tree is not empty
         std::size_t ncells = N0->*(&OctreeNode::NNODE);
 
-        /* if (my_rank == 0) printf("ncells: %ld\n", ncells); */
-
 	cells_vec.resize(ncells);                                //  Allocate cells array
 	GC_iter C0 = cells_vec.begin();                              //  Cell begin iterator
 
-        numLevels = ityr::root_exec([=]() {
+        numLevels = ityr::root_exec([=, *this]() {
           Nodes2cells nodes2cells(N0, B0, C0, C0, C0+1, box.X, box.R, nspawn);// Instantiate recursive functor
           auto ret = nodes2cells();                                          //  Convert nodes to cells recursively
           free_octree_node(N0);

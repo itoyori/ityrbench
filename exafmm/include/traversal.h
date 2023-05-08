@@ -14,10 +14,10 @@
 namespace EXAFMM_NAMESPACE {
   class Traversal {
   private:
-    Kernel & kernel;                                            //!< Kernel class
-    const real_t theta;                                         //!< Multipole acceptance criteria
-    const int nspawn;                                           //!< Threshold of NBODY for spawning new threads
-    const int images;                                           //!< Number of periodic image sublevels
+    Kernel* kernel;                                            //!< Kernel class
+    real_t theta;                                         //!< Multipole acceptance criteria
+    int nspawn;                                           //!< Threshold of NBODY for spawning new threads
+    int images;                                           //!< Number of periodic image sublevels
     const char * path;                                          //!< Path to save files
 #if EXAFMM_COUNT_KERNEL
     real_t numP2P;                                              //!< Number of P2P kernel calls
@@ -135,7 +135,7 @@ namespace EXAFMM_NAMESPACE {
       int nchild_i = Ci->*(static_cast<int Cell::*>(&CellBase::NCHILD));
       int nchild_j = Cj->*(static_cast<int Cell::*>(&CellBase::NCHILD));
       vec3 dX = vec3(Ci->*(static_cast<vec3 Cell::*>(&CellBase::X))) -
-                vec3(Cj->*(static_cast<vec3 Cell::*>(&CellBase::X))) - kernel.Xperiodic;               // Distance vector from source to target
+                vec3(Cj->*(static_cast<vec3 Cell::*>(&CellBase::X))) - kernel->Xperiodic;               // Distance vector from source to target
       real_t RT2 = norm(dX) * theta * theta;                    // Scalar distance squared
       real_t Ri = Ci->*(static_cast<real_t Cell::*>(&CellBase::R));
       real_t Rj = Cj->*(static_cast<real_t Cell::*>(&CellBase::R));
@@ -144,7 +144,7 @@ namespace EXAFMM_NAMESPACE {
             Ci, 1, ityr::ori::mode::read,
             Cj, 1, ityr::ori::mode::read,
             [&](const Cell* Ci_, const Cell* Cj_) {
-          kernel.M2L(Ci_, Cj_);                                     //  M2L kernel
+          kernel->M2L(Ci_, Cj_);                                     //  M2L kernel
           countKernel(numM2L);                                    //  Increment M2L counter
           countList(Ci_, Cj_, false);                               //  Increment M2L list
           countWeight(Ci_, Cj_, remote);                            //  Increment M2L weight
@@ -172,8 +172,8 @@ namespace EXAFMM_NAMESPACE {
 	}
 	int isNeighbor = 1;
 	for (d=0; d<3; d++) {
-	  if (kernel.Xperiodic[d] > 1e-3) jX[d] += 5;
-	  if (kernel.Xperiodic[d] < -1e-3) jX[d] -= 5;
+	  if (kernel->Xperiodic[d] > 1e-3) jX[d] += 5;
+	  if (kernel->Xperiodic[d] < -1e-3) jX[d] -= 5;
 	  isNeighbor &= abs(iX[d] - jX[d]) <= 1;
 	}
 #endif
@@ -184,7 +184,7 @@ namespace EXAFMM_NAMESPACE {
               Ci, 1, ityr::ori::mode::read,
               Cj, 1, ityr::ori::mode::read,
               [&](const Cell* Ci_, const Cell* Cj_) {
-            kernel.M2L(Ci_, Cj_);                                   //   M2L kernel
+            kernel->M2L(Ci_, Cj_);                                   //   M2L kernel
             countKernel(numM2L);                                  //   Increment M2L counter
             countList(Ci_, Cj_, false);                             //   Increment M2L list
             countWeight(Ci_, Cj_, remote);                          //   Increment M2L weight
@@ -194,7 +194,7 @@ namespace EXAFMM_NAMESPACE {
           ityr::ori::with_checkout(
               Ci, 1, ityr::ori::mode::read,
               Cj, 1, ityr::ori::mode::read,
-            kernel.M2L(Ci_, Cj_);                                   //   M2L kernel
+            kernel->M2L(Ci_, Cj_);                                   //   M2L kernel
             countKernel(numM2L);                                  //   Increment M2L counter
             countList(Ci_, Cj_, false);                             //   Increment M2L list
             countWeight(Ci_, Cj_, remote);                          //   Increment M2L weight
@@ -212,7 +212,7 @@ namespace EXAFMM_NAMESPACE {
               Ci, 1, ityr::ori::mode::read,
               Cj, 1, ityr::ori::mode::read,
               [&](const Cell* Ci_, const Cell* Cj_) {
-            kernel.P2P(Ci_, Cj_);                                   //   P2P kernel for pair of cells
+            kernel->P2P(Ci_, Cj_);                                   //   P2P kernel for pair of cells
             countKernel(numP2P);                                  //   Increment P2P counter
             countList(Ci_, Cj_, true);                              //   Increment P2P list
             countWeight(Ci_, Cj_, remote);                          //   Increment P2P weight
@@ -291,8 +291,8 @@ namespace EXAFMM_NAMESPACE {
       int listSize = neighbor * neighbor * neighbor;            // Neighbor list size
       Cells pcells; pcells.resize(listSize);                    // Create cells
       for (C_iter C=pcells.begin(); C!=pcells.end(); C++) {     // Loop over periodic cells
-        C->M.resize(kernel.NTERM, 0.0);                         //  Allocate & initialize M coefs
-        C->L.resize(kernel.NTERM, 0.0);                         //  Allocate & initialize L coefs
+        C->M.resize(kernel->NTERM, 0.0);                         //  Allocate & initialize M coefs
+        C->L.resize(kernel->NTERM, 0.0);                         //  Allocate & initialize L coefs
       }                                                         // End loop over periodic cells
       C_iter Ci = pcells.end()-1;                               // Last cell is periodic parent cell
       *Ci = *Cj0;                                               // Copy values from source root
@@ -307,10 +307,10 @@ namespace EXAFMM_NAMESPACE {
 		for (int cx=-prange; cx<=prange; cx++) {        //      Loop over x periodic direction (child)
 		  for (int cy=-prange; cy<=prange; cy++) {      //       Loop over y periodic direction (child)
 		    for (int cz=-prange; cz<=prange; cz++) {    //        Loop over z periodic direction (child)
-		      kernel.Xperiodic[0] = (ix * neighbor + cx) * cycle[0];//   Coordinate offset for x periodic direction
-		      kernel.Xperiodic[1] = (iy * neighbor + cy) * cycle[1];//   Coordinate offset for y periodic direction
-		      kernel.Xperiodic[2] = (iz * neighbor + cz) * cycle[2];//   Coordinate offset for z periodic direction
-		      kernel.M2L(Ci0, Ci);                      //         M2L kernel
+		      kernel->Xperiodic[0] = (ix * neighbor + cx) * cycle[0];//   Coordinate offset for x periodic direction
+		      kernel->Xperiodic[1] = (iy * neighbor + cy) * cycle[1];//   Coordinate offset for y periodic direction
+		      kernel->Xperiodic[2] = (iz * neighbor + cz) * cycle[2];//   Coordinate offset for z periodic direction
+		      kernel->M2L(Ci0, Ci);                      //         M2L kernel
 		    }                                           //        End loop over z periodic direction (child)
 		  }                                             //       End loop over y periodic direction (child)
 		}                                               //      End loop over x periodic direction (child)
@@ -333,7 +333,7 @@ namespace EXAFMM_NAMESPACE {
 	    }                                                   //    End loop over z periodic direction
 	  }                                                     //   End loop over y periodic direction
 	}                                                       //  End loop over x periodic direction
-	kernel.M2M(Ci,Cj0);                                     //  Evaluate periodic M2M kernels for this sublevel
+	kernel->M2M(Ci,Cj0);                                     //  Evaluate periodic M2M kernels for this sublevel
 	cycle *= neighbor;                                      //  Increase periodic cycle by number of neighbors
 	Cj0 = C0;                                               //  Reset Cj0 back
       }                                                         // End loop over sublevels of tree
@@ -343,7 +343,8 @@ namespace EXAFMM_NAMESPACE {
 
   public:
     //! Constructor
-    Traversal(Kernel & _kernel, real_t _theta, int _nspawn, int _images, const char * _path) : // Constructor
+    Traversal() {}
+    Traversal(Kernel* _kernel, real_t _theta, int _nspawn, int _images, const char * _path) : // Constructor
       kernel(_kernel), theta(_theta), nspawn(_nspawn), images(_images), path(_path) // Initialize variables
 #if EXAFMM_COUNT_KERNEL
       , numP2P(0), numM2L(0)
@@ -396,7 +397,7 @@ namespace EXAFMM_NAMESPACE {
       prange = 1;
       Ci0 = icells.begin();                                     // Iterator of first target cell
       Cj0 = jcells.begin();                                     // Iterator of first source cell
-      kernel.Xperiodic = 0;                                     // Set periodic coordinate offset to 0
+      kernel->Xperiodic = 0;                                     // Set periodic coordinate offset to 0
 
       ityr::root_exec([=] {
         if (images == 0) {                                        //  If non-periodic boundary condition
@@ -405,9 +406,9 @@ namespace EXAFMM_NAMESPACE {
           for (int ix=-prange; ix<=prange; ix++) {                //   Loop over x periodic direction
             for (int iy=-prange; iy<=prange; iy++) {              //    Loop over y periodic direction
               for (int iz=-prange; iz<=prange; iz++) {            //     Loop over z periodic direction
-                kernel.Xperiodic[0] = ix * cycle[0];              //      Coordinate shift for x periodic direction
-                kernel.Xperiodic[1] = iy * cycle[1];              //      Coordinate shift for y periodic direction
-                kernel.Xperiodic[2] = iz * cycle[2];              //      Coordinate shift for z periodic direction
+                kernel->Xperiodic[0] = ix * cycle[0];              //      Coordinate shift for x periodic direction
+                kernel->Xperiodic[1] = iy * cycle[1];              //      Coordinate shift for y periodic direction
+                kernel->Xperiodic[2] = iz * cycle[2];              //      Coordinate shift for z periodic direction
                 dualTreeTraversal(Ci0, Cj0, remote);              //      Traverse the tree for this periodic image
               }                                                   //     End loop over z periodic direction
             }                                                     //    End loop over y periodic direction
@@ -436,14 +437,14 @@ namespace EXAFMM_NAMESPACE {
       for (int ix=-prange; ix<=prange; ix++) {                  //  Loop over x periodic direction
 	for (int iy=-prange; iy<=prange; iy++) {                //   Loop over y periodic direction
 	  for (int iz=-prange; iz<=prange; iz++) {              //    Loop over z periodic direction
-	    kernel.Xperiodic[0] = ix * cycle[0];                //     Coordinate shift for x periodic direction
-	    kernel.Xperiodic[1] = iy * cycle[1];                //     Coordinate shift for y periodic direction
-	    kernel.Xperiodic[2] = iz * cycle[2];                //     Coordinate shift for z periodic direction
+	    kernel->Xperiodic[0] = ix * cycle[0];                //     Coordinate shift for x periodic direction
+	    kernel->Xperiodic[1] = iy * cycle[1];                //     Coordinate shift for y periodic direction
+	    kernel->Xperiodic[2] = iz * cycle[2];                //     Coordinate shift for z periodic direction
 	    Ci->BODY = ibodies.begin();                         //     Iterator of first target body
 	    Ci->NBODY = ibodies.size();                         //     Number of target bodies
 	    Cj->BODY = jbodies.begin();                         //     Iterator of first source body
 	    Cj->NBODY = jbodies.size();                         //     Number of source bodies
-            kernel.P2P_direct(Ci, Cj);                                 //     Evaluate P2P kenrel
+            kernel->P2P_direct(Ci, Cj);                                 //     Evaluate P2P kenrel
 	  }                                                     //    End loop over z periodic direction
 	}                                                       //   End loop over y periodic direction
       }                                                         //  End loop over x periodic direction
@@ -457,7 +458,7 @@ namespace EXAFMM_NAMESPACE {
       for (B_iter Bi=bodies.begin(); Bi!=bodies.end(); Bi++) {  // Loop over target bodies
 	for (B_iter Bj=jbodies.begin(); Bj!=jbodies.end(); Bj++) {//  Loop over source bodies
 	  vec3 dX = Bi->X - Bj->X;                              //   Distance vector
-	  real_t R2 = norm(dX) + kernel.eps2;                   //   Distance squared
+	  real_t R2 = norm(dX) + kernel->eps2;                   //   Distance squared
 	  real_t G = R2 == 0 ? 0.0 : 1.0 / sqrt(R2);            //   Green's function
 	  matrixFile << G << " ";                               //   Write to matrix data file
 	}                                                       //  End loop over source bodies
