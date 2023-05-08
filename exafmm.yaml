@@ -1,16 +1,6 @@
 depends:
-  - name: massivethreads-dm
+  - name: itoyori
     recipe: release
-  - name: pcas
-    recipe: release
-  - name: massivelogger
-    recipe: release
-  - name: backward-cpp
-    recipe: v1.6
-  - name: jemalloc
-    recipe: v5.3.0
-  - name: boost
-    recipe: v1.80.0
 
 default_params:
   nodes: 1
@@ -30,15 +20,16 @@ default_params:
   kernel: laplace # laplace/helmholtz/biotsavart
   accuracy_test: 1
   # common params
-  cache_policy: writeback_lazy # serial/nocache/writethrough/writeback/writeback_lazy/writeback_lazy_wl/getput
-  dist_policy: cyclic # block/cyclic
+  serial: 0
+  sched: randws # randws/adws
+  cache_policy: writeback_lazy # nocache/writethrough/writeback/writeback_lazy/getput
+  dist_policy: default # default/block/cyclic/block_adws
   cache_size: 128 # MB
   block_size: 65536 # bytes
   sub_block_size: 4096 # bytes
   max_dirty: $cache_size # MB
   shared_mem: 1
-  logger: dummy # dummy/trace/stats
-  allocator: sys # sys/jemalloc
+  prof: disabled # disabled/stats/trace
   debugger: 0
 
 default_name: exafmm
@@ -127,27 +118,32 @@ batches:
         dest: exafmm/${batch_name}/n_${n_input}_s_${sub_block_size}_${duplicate}.out
 
 build:
-  depend_params: [cache_policy, dist_policy, block_size, logger]
+  depend_params: [dist_policy, block_size, prof]
   script: |
     source build_common.bash
 
-    CFLAGS="${CFLAGS:+$CFLAGS} -DNDEBUG"
-    # CFLAGS="${CFLAGS:+$CFLAGS} -O0"
-    CFLAGS="${CFLAGS:+$CFLAGS} -DITYR_USE_MPI_WIN_DYNAMIC=false"
+    CXXFLAGS="${CXXFLAGS:+$CXXFLAGS} -DITYR_ALLOCATOR_USE_DYNAMIC_WIN=false"
 
-    make distclean
-    MPICXX=$MPICXX CFLAGS=$CFLAGS make exafmm
+    CC=$MPICC CXX=$MPICXX cmake -DCMAKE_CXX_FLAGS="$CXXFLAGS" $CMAKE_OPTIONS .
+    make clean
+    make -j exafmm
 
 run:
-  depend_params: [nodes, cores, n_input, repeats, theta, nspawn, ncrit, P, kernel, accuracy_test, cache_size, sub_block_size, max_dirty, shared_mem, logger, allocator, debugger]
+  depend_params: [nodes, cores, n_input, repeats, theta, nspawn, ncrit, P, kernel, accuracy_test, serial, sched, cache_policy, cache_size, sub_block_size, max_dirty, shared_mem, prof, debugger]
   script: |
     source run_common.bash
 
     export OMPI_MCA_common_tofu_num_mrq_entries=2097152 # 2048, 8192, 32768, 131072 (default), 524288, or 2097152
     export PCAS_ALLOCATOR_MAX_LOCAL_SIZE=128
 
+    if [[ $KOCHI_PARAM_SERIAL == 1 ]]; then
+      config_name=${KOCHI_PARAM_KERNEL}_serial
+    else
+      config_name=${KOCHI_PARAM_KERNEL}_${KOCHI_PARAM_SCHED}_${KOCHI_PARAM_CACHE_POLICY}
+    fi
+
     commands="
-      ./exafmm/examples/$KOCHI_PARAM_KERNEL
+      ./exafmm/exafmm_${config_name}.out
         -v -T 1 -D
         $([[ $KOCHI_PARAM_ACCURACY_TEST == 0 ]] || echo -a)
         -n $KOCHI_PARAM_N_INPUT
@@ -155,9 +151,7 @@ run:
         -t $KOCHI_PARAM_THETA
         -s $KOCHI_PARAM_NSPAWN
         -c $KOCHI_PARAM_NCRIT
-        -P $KOCHI_PARAM_P
-        -x $KOCHI_PARAM_CACHE_SIZE
-        -y $KOCHI_PARAM_SUB_BLOCK_SIZE"
+        -P $KOCHI_PARAM_P"
 
     n_nodes=$(echo $KOCHI_PARAM_NODES | cut -f 1 -d ":" | sed 's/x/*/g' | bc)
 
@@ -167,4 +161,4 @@ run:
       MPIEXEC=mpitx ityr_mpirun $((n_nodes * KOCHI_PARAM_CORES)) $KOCHI_PARAM_CORES gdb --args $commands
     fi
 
-    if [[ $KOCHI_PARAM_LOGGER == trace ]]; then run_trace_viewer; fi
+    if [[ $KOCHI_PARAM_PROF == trace ]]; then run_trace_viewer; fi
