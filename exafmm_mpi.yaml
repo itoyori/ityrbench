@@ -98,8 +98,7 @@ build:
     else
       MYTH_CXXFLAGS="-I${KOCHI_INSTALL_PREFIX_MASSIVETHREADS}/include"
       MYTH_LDFLAGS="-L${KOCHI_INSTALL_PREFIX_MASSIVETHREADS}/lib -Wl,-R${KOCHI_INSTALL_PREFIX_MASSIVETHREADS}/lib"
-      MYTH_LIBS"-lmyth"
-
+      MYTH_LIBS="-lmyth"
       # ./configure --disable-simd --enable-mpi --enable-openmp MPICXX="$MPICXX" CXXFLAGS="$CXXFLAGS -fopenmp"
       ./configure --disable-simd --enable-mpi --with-mthread MPICXX="$MPICXX" CXXFLAGS="$MYTH_CXXFLAGS $CXXFLAGS" LDFLAGS="$MYTH_LDFLAGS" LIBS="$MYTH_LIBS"
     fi
@@ -107,7 +106,7 @@ build:
     make -j
 
 run:
-  depend_params: [nodes, cores, n_input, repeats, theta, nspawn, ncrit, P, kernel, accuracy_test, debugger]
+  depend_params: [nodes, cores, n_input, repeats, theta, nspawn, ncrit, P, kernel, accuracy_test, serial, debugger]
   script: |
     source run_common.bash
 
@@ -115,8 +114,14 @@ run:
     # export OMP_WAIT_POLICY=active
     # export OMP_PROC_BIND=false
 
+    if [[ $KOCHI_PARAM_SERIAL == 1 ]]; then
+      executable=${KOCHI_PARAM_KERNEL}
+    else
+      executable=${KOCHI_PARAM_KERNEL}_mpi
+    fi
+
     commands="
-      ./exafmm_mpi/examples/${KOCHI_PARAM_KERNEL}_mpi
+      ./exafmm_mpi/examples/${executable}
         -v -T $KOCHI_PARAM_CORES -D
         $([[ $KOCHI_PARAM_ACCURACY_TEST == 0 ]] || echo -a)
         -n $KOCHI_PARAM_N_INPUT
