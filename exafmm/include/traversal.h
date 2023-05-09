@@ -12,6 +12,17 @@
 #endif
 
 namespace EXAFMM_NAMESPACE {
+
+  struct prof_event_user_M2L : public ityr::common::profiler::event {
+    using event::event;
+    std::string str() const override { return "user_M2L"; }
+  };
+
+  struct prof_event_user_P2P : public ityr::common::profiler::event {
+    using event::event;
+    std::string str() const override { return "user_P2P"; }
+  };
+
   class Traversal {
   private:
     Kernel* kernel;                                            //!< Kernel class
@@ -140,6 +151,7 @@ namespace EXAFMM_NAMESPACE {
       real_t Ri = Ci->*(static_cast<real_t Cell::*>(&CellBase::R));
       real_t Rj = Cj->*(static_cast<real_t Cell::*>(&CellBase::R));
       if (RT2 > (Ri+Rj) * (Ri+Rj) * (1 - 1e-3)) {   // If distance is far enough
+        ITYR_PROFILER_RECORD(prof_event_user_M2L);
         ityr::ori::with_checkout(
             Ci, 1, ityr::ori::mode::read,
             Cj, 1, ityr::ori::mode::read,
@@ -180,6 +192,7 @@ namespace EXAFMM_NAMESPACE {
 #endif
 	if (Cj->*(static_cast<int Cell::*>(&CellBase::NBODY)) == 0) {                                   //  If the bodies weren't sent from remote node
 	  //std::cout << "Warning: icell " << Ci->ICELL << " needs bodies from jcell" << Cj->ICELL << std::endl;
+          ITYR_PROFILER_RECORD(prof_event_user_M2L);
           ityr::ori::with_checkout(
               Ci, 1, ityr::ori::mode::read,
               Cj, 1, ityr::ori::mode::read,
@@ -191,6 +204,7 @@ namespace EXAFMM_NAMESPACE {
           });
 #if EXAFMM_NO_P2P
 	} else if (!isNeighbor) {                               //  If GROAMCS handles neighbors
+          ITYR_PROFILER_RECORD(prof_event_user_M2L);
           ityr::ori::with_checkout(
               Ci, 1, ityr::ori::mode::read,
               Cj, 1, ityr::ori::mode::read,
@@ -208,6 +222,7 @@ namespace EXAFMM_NAMESPACE {
           });
 #else
 	} else {
+          ITYR_PROFILER_RECORD(prof_event_user_P2P);
           ityr::ori::with_checkout(
               Ci, 1, ityr::ori::mode::read,
               Cj, 1, ityr::ori::mode::read,
@@ -423,6 +438,7 @@ namespace EXAFMM_NAMESPACE {
       }
 
       ityr::profiler_end();
+      ityr::profiler_flush();
     }
 
     //! Direct summation

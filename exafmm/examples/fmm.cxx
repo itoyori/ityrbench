@@ -206,7 +206,31 @@ int main(int argc, char** argv) {
   Args args(argc, argv);
   ityr::init();
 
+  ityr::common::profiler::event_initializer<prof_event_user_M2L>        ITYR_ANON_VAR;
+  ityr::common::profiler::event_initializer<prof_event_user_P2P>        ITYR_ANON_VAR;
+  ityr::common::profiler::event_initializer<prof_event_user_M2L_kernel> ITYR_ANON_VAR;
+  ityr::common::profiler::event_initializer<prof_event_user_P2P_kernel> ITYR_ANON_VAR;
+
   set_signal_handlers();
+
+  if (ityr::is_master()) {
+    setlocale(LC_NUMERIC, "en_US.UTF-8");
+    printf("=============================================================\n"
+           "[ExaFMM]\n"
+           "# of processes:               %d\n"
+           "-------------------------------------------------------------\n",
+           ityr::n_ranks());
+
+    printf("[Compile Options]\n");
+    ityr::print_compile_options();
+    printf("-------------------------------------------------------------\n");
+    printf("[Runtime Options]\n");
+    ityr::print_runtime_options();
+    printf("=============================================================\n");
+    printf("PID of the main worker: %d\n", getpid());
+    printf("\n");
+    fflush(stdout);
+  }
 
   run_fmm(args);
 

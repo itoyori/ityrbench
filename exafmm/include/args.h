@@ -330,9 +330,7 @@ namespace EXAFMM_NAMESPACE {
 		  << std::setw(stringLength)
 		  << "verbose" << " : " << verbose << std::endl
 		  << std::setw(stringLength)
-		  << "write" << " : " << write << std::endl
-		  << std::setw(stringLength)
-		  << "# of processes" << " : " << ityr::n_ranks() << std::endl;
+		  << "write" << " : " << write << std::endl;
       }
     }
   };

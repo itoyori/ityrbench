@@ -29,6 +29,7 @@ default_params:
   noncoll_alloc_size: 256 # MB
   shared_mem: 1
   prof: disabled # disabled/stats/trace
+  dag_prof: disabled # disabled/workspan
   debugger: 0
 
 default_name: uts++
@@ -108,7 +109,7 @@ batches:
         dest: uts++/${batch_name}/tree_${tree}_s_${sub_block_size}_${duplicate}.out
 
 build:
-  depend_params: [exec_type, rebuild_tree, use_vector, use_win_dynamic, dist_policy, block_size, prof]
+  depend_params: [exec_type, rebuild_tree, use_vector, use_win_dynamic, dist_policy, block_size, prof, dag_prof]
   script: |
     source build_common.bash
 

@@ -6,6 +6,16 @@
 #endif
 
 namespace EXAFMM_NAMESPACE {
+  struct prof_event_user_M2L_kernel : public ityr::common::profiler::event {
+    using event::event;
+    std::string str() const override { return "user_M2L_kernel"; }
+  };
+
+  struct prof_event_user_P2P_kernel : public ityr::common::profiler::event {
+    using event::event;
+    std::string str() const override { return "user_P2P_kernel"; }
+  };
+
   class Kernel {
   private:
     int nquad, nquad2;
@@ -392,6 +402,7 @@ namespace EXAFMM_NAMESPACE {
           GBi, ni, ityr::ori::mode::read_write,
           GBj, nj, ityr::ori::mode::read,
           [&](Body* Bi, const Body* Bj) {
+        ITYR_PROFILER_RECORD(prof_event_user_P2P_kernel);
         int i = 0;
 #if EXAFMM_USE_SIMD
         simdvec wave_rvec = wave_r;
@@ -810,6 +821,7 @@ namespace EXAFMM_NAMESPACE {
           Ci->L.data(), Ci->L.size(), ityr::ori::mode::read_write,
           Cj->M.data(), Cj->M.size(), ityr::ori::mode::read,
           [&](complex_t* CiL, const complex_t* CjM) {
+        ITYR_PROFILER_RECORD(prof_event_user_M2L_kernel);
         for (int n=0; n<Popt; n++) {
           for (int m=-n; m<=n; m++) {
             int nm = n * n + n + m;
