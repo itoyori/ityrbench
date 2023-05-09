@@ -131,3 +131,18 @@ dependencies:
         script:
           - CC=$MPICC CXX=$MPICXX cmake -DCMAKE_INSTALL_PREFIX=$KOCHI_INSTALL_PREFIX .
           - make -j all test install
+
+  massivethreads:
+    git: https://github.com/massivethreads/massivethreads.git
+    recipes:
+      - name: release
+        branch: master
+    script:
+      - CFLAGS="${CFLAGS:+$CFLAGS} -O3 -g -gdwarf-4 -DNDEBUG"
+      - if [[ $KOCHI_MACHINE == wisteria-o ]]; then
+      -   ./configure CC=fccpx CFLAGS="${CFLAGS:+$CFLAGS}" --prefix=$KOCHI_INSTALL_PREFIX --host=aarch64-linux-gnu
+      - else
+      -   ./configure --prefix=$KOCHI_INSTALL_PREFIX CFLAGS="${CFLAGS:+$CFLAGS}"
+      - fi
+      - make -j
+      - make install

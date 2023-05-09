@@ -114,11 +114,13 @@ run_trace_viewer() {
   MLOG_VIEWER_ONESHOT=false bokeh serve ./third-party/massivelogger/viewer --port $KOCHI_FORWARD_PORT --allow-websocket-origin \* --session-token-expiration 3600 --args ityr_log_*.ignore
 }
 
-export ITYR_ENABLE_SHARED_MEMORY=$KOCHI_PARAM_SHARED_MEM
-export ITYR_ORI_CACHE_SIZE=$(bc <<< "$KOCHI_PARAM_CACHE_SIZE * 2^20 / 1")
-export ITYR_ORI_SUB_BLOCK_SIZE=$KOCHI_PARAM_SUB_BLOCK_SIZE
-export ITYR_ORI_MAX_DIRTY_CACHE_SIZE=$(bc <<< "$KOCHI_PARAM_MAX_DIRTY * 2^20 / 1")
-export ITYR_ORI_NONCOLL_ALLOCATOR_SIZE=$(bc <<< "$KOCHI_PARAM_NONCOLL_ALLOC_SIZE * 2^20 / 1")
+if [[ ! -z ${KOCHI_INSTALL_PREFIX_ITOYORI+x} ]]; then
+  export ITYR_ENABLE_SHARED_MEMORY=$KOCHI_PARAM_SHARED_MEM
+  export ITYR_ORI_CACHE_SIZE=$(bc <<< "$KOCHI_PARAM_CACHE_SIZE * 2^20 / 1")
+  export ITYR_ORI_SUB_BLOCK_SIZE=$KOCHI_PARAM_SUB_BLOCK_SIZE
+  export ITYR_ORI_MAX_DIRTY_CACHE_SIZE=$(bc <<< "$KOCHI_PARAM_MAX_DIRTY * 2^20 / 1")
+  export ITYR_ORI_NONCOLL_ALLOCATOR_SIZE=$(bc <<< "$KOCHI_PARAM_NONCOLL_ALLOC_SIZE * 2^20 / 1")
+fi
 
 if [[ $KOCHI_PARAM_DEBUGGER == 1 ]] && [[ -z "${PS1+x}" ]]; then
   echo "Use kochi interact to run debugger."

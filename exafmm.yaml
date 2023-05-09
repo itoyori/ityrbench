@@ -16,7 +16,7 @@ default_params:
   theta: 0.2
   nspawn: 1000
   ncrit: 32
-  P: 10
+  P: 4
   kernel: laplace # laplace/helmholtz/biotsavart
   accuracy_test: 1
   # common params
@@ -44,7 +44,6 @@ batches:
       nodes: 1
       cores: 1
       n_input: 1_000_000
-      P: 4
       repeats: 11
       cache_policy: serial
     duplicates: 1
@@ -66,7 +65,6 @@ batches:
         - value: [1, 2, 4, 8, 16]
           machines: [squid-c]
       n_input: 1_000_000
-      P: 4
       repeats: 11
       cache_policy: [nocache, writethrough, writeback, writeback_lazy]
     artifacts:
@@ -85,7 +83,6 @@ batches:
         - value: [2x3x2:torus, 3x4x3:torus, 6x6x4:torus, 8x9x8:torus]
           machines: [wisteria-o]
       n_input: 10_000_000
-      P: 4
       repeats: 11
       cache_policy: [nocache, writethrough, writeback, writeback_lazy]
       accuracy_test: 0
@@ -105,7 +102,6 @@ batches:
         - value: 3x4x3:torus
           machines: [wisteria-o]
       n_input: [1_000_000, 10_000_000]
-      P: 4
       repeats: 11
       cache_policy: writeback_lazy
       sub_block_size: [1, 4, 16, 64, 256, 1024, 4096, 16384, 65536]

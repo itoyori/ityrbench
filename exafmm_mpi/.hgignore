@@ -1,0 +1,14 @@
+syntax: glob
+
+*.a
+*.dat
+*.fmm
+*.fmm_restart
+*.mod
+*.o
+*.th_o
+*.out
+*.pdb
+*restart
+*.so
+*.svg

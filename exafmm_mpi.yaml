@@ -1,0 +1,135 @@
+depends:
+  - name: massivethreads
+    recipe: release
+
+default_params:
+  nodes: 1
+  cores:
+    - value: 48
+      machines: [wisteria-o]
+    - value: 76
+      machines: [squid-c]
+    - value: 6
+      machines: [local]
+  n_input: 10000
+  repeats: 1
+  theta: 0.2
+  nspawn: 1000
+  ncrit: 32
+  P: 4
+  kernel: laplace # laplace/helmholtz/biotsavart
+  accuracy_test: 1
+  serial: 0
+  debugger: 0
+
+default_name: exafmm_mpi
+default_queue: node_${nodes}
+default_duplicates: 3
+
+batches:
+  scale1M:
+    name: exafmm_mpi_${batch_name}
+    params:
+      nodes:
+        - value: [1, 2:torus, 2x3:torus, 2x3x2:torus, 3x4x3:torus, 6x6x4:torus]
+          machines: [wisteria-o]
+        - value: [1, 2, 4, 8, 16]
+          machines: [squid-c]
+      n_input: 1_000_000
+      repeats: 11
+    artifacts:
+      - type: stdout
+        dest: exafmm_mpi/${batch_name}/nodes_${nodes}_${duplicate}.log
+      - type: stats
+        dest: exafmm_mpi/${batch_name}/nodes_${nodes}_${duplicate}.stats
+      - type: file
+        src: mpirun_out.txt
+        dest: exafmm_mpi/${batch_name}/nodes_${nodes}_${duplicate}.out
+
+  scale10M:
+    name: exafmm_mpi_${batch_name}
+    params:
+      nodes:
+        # - value: [2x3:torus, 2x3x2:torus, 3x4x3:torus, 6x6x4:torus, 8x9x8:torus]
+        - value: [1, 2:torus, 2x3:torus, 2x3x2:torus, 3x4x3:torus, 6x6x4:torus, 8x9x8:torus]
+          machines: [wisteria-o]
+      n_input: 10_000_000
+      repeats: 11
+      accuracy_test: 0
+    artifacts:
+      - type: stdout
+        dest: exafmm_mpi/${batch_name}/nodes_${nodes}_${duplicate}.log
+      - type: stats
+        dest: exafmm_mpi/${batch_name}/nodes_${nodes}_${duplicate}.stats
+      - type: file
+        src: mpirun_out.txt
+        dest: exafmm_mpi/${batch_name}/nodes_${nodes}_${duplicate}.out
+
+  weak1M:
+    name: exafmm_mpi_${batch_name}
+    params:
+      nodes:
+        - value: [1, 2:torus, 2x3:torus, 2x3x2:torus, 3x4x3:torus, 6x6x4:torus]
+          machines: [wisteria-o]
+        - value: [1, 2, 4, 8, 16]
+          machines: [squid-c]
+      n_input: "`eval('$nodes'.split(':')[0].replace('x', '*')) * 1_000_000`"
+      repeats: 11
+    artifacts:
+      - type: stdout
+        dest: exafmm_mpi/${batch_name}/nodes_${nodes}_${duplicate}.log
+      - type: stats
+        dest: exafmm_mpi/${batch_name}/nodes_${nodes}_${duplicate}.stats
+      - type: file
+        src: mpirun_out.txt
+        dest: exafmm_mpi/${batch_name}/nodes_${nodes}_${duplicate}.out
+
+build:
+  depend_params: [serial]
+  script: |
+    source build_common.bash
+
+    CXXFLAGS="${CXXFLAGS:+$CXXFLAGS} -O3 -DNDEBUG -g -ffast-math"
+
+    cd exafmm_mpi
+
+    if [[ $KOCHI_PARAM_SERIAL == 1 ]]; then
+      ./configure --disable-simd --enable-mpi MPICXX="$MPICXX" CXXFLAGS="$CXXFLAGS"
+    else
+      MYTH_CXXFLAGS="-I${KOCHI_INSTALL_PREFIX_MASSIVETHREADS}/include"
+      MYTH_LDFLAGS="-L${KOCHI_INSTALL_PREFIX_MASSIVETHREADS}/lib -Wl,-R${KOCHI_INSTALL_PREFIX_MASSIVETHREADS}/lib"
+      MYTH_LIBS"-lmyth"
+
+      # ./configure --disable-simd --enable-mpi --enable-openmp MPICXX="$MPICXX" CXXFLAGS="$CXXFLAGS -fopenmp"
+      ./configure --disable-simd --enable-mpi --with-mthread MPICXX="$MPICXX" CXXFLAGS="$MYTH_CXXFLAGS $CXXFLAGS" LDFLAGS="$MYTH_LDFLAGS" LIBS="$MYTH_LIBS"
+    fi
+
+    make -j
+
+run:
+  depend_params: [nodes, cores, n_input, repeats, theta, nspawn, ncrit, P, kernel, accuracy_test, debugger]
+  script: |
+    source run_common.bash
+
+    export OMPI_MCA_plm_ple_cpu_affinity=0
+    # export OMP_WAIT_POLICY=active
+    # export OMP_PROC_BIND=false
+
+    commands="
+      ./exafmm_mpi/examples/${KOCHI_PARAM_KERNEL}_mpi
+        -v -T $KOCHI_PARAM_CORES -D
+        $([[ $KOCHI_PARAM_ACCURACY_TEST == 0 ]] || echo -a)
+        -n $KOCHI_PARAM_N_INPUT
+        -r $KOCHI_PARAM_REPEATS
+        -t $KOCHI_PARAM_THETA
+        -s $KOCHI_PARAM_NSPAWN
+        -c $KOCHI_PARAM_NCRIT
+        -P $KOCHI_PARAM_P"
+
+    n_nodes=$(echo $KOCHI_PARAM_NODES | cut -f 1 -d ":" | sed 's/x/*/g' | bc)
+
+    if [[ $KOCHI_PARAM_DEBUGGER == 0 ]]; then
+      ityr_mpirun $((n_nodes)) 1 $commands
+    else
+      MPIEXEC=mpitx ityr_mpirun $((n_nodes)) 1 gdb --args $commands
+    fi

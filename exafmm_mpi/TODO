@@ -1,0 +1,104 @@
+-- Immediate --
+* Rank items in this list according to importance
+
+Debug images >= 3
+Remove nspawn
+.h to .cxx
+Ewald on multipoles
+Search source files for unnecessary functions
+Search TODO list and extract priority tasks
+
+-- later --
+Add back time regression
+Fix parallel Biot-Savart
+Fix nightly
+Test debug option
+Remove 1e-5 from bound_box
+
+- PetIGA no macro
+- Helmholtz breaks for very low P
+- Helmholtz breaks for -D
+- With strumpack
+- Use EXAFMM_CLUSTER in md_distributed
+- Add kernel.cxx vec.cxx hss/laplace.cxx hss/helmholtz.cxx to nightly test
+- Full simdList, threadList, configList in nightly.py
+
+- Remove make cleanall from build
+- Extend list based traversal to adaptive tree (UVWX-list)
+
+-- MPI --
+- LBT MPI <- ICELL is being calculated from localBounds
+MPI-3.0 lock all
+cycle counter based weights
+2:1 refinement for precomputation
+non-orthogonal recursive bisection
+
+-- automake --
+- Add m4/ax_mpi variants from PVFMM
+Use docker to create virtual environment for buildbot
+Representative case plot generator
+
+-- types --
+- logger.h split to print.h
+- __attribute__((always_inline))
+bodies -> bodies + fields, bodyPos -> bodies, bodyAcc -> fields
+AoS, SoA union by Strzodka
+Use compressed Cell struct of Bonsai
+Remove M, L from Cell struct
+Calculate EPS from test
+
+-- tree build --
+- Separate key manipulation namespace, e.g. interleaveMorton(), deinterleaveHilbert() (controllable key_t)
+- Morton, Hilbert in build_tree folder
+Separate different algorithms into different files (create folder for build tree, partition, etc.)
+
+-- kernels --
+- Calculate Flops, Cycle counter kernel timer
+- Separate LaplaceCartesianRecursion, LaplaceCartesianTemplate
+- Precomputation of translation matrix (import from PVFMM)
+- Hack vecmathlib and import essential features
+- Add back Stokes kernels
+- Theoretical error bound using kernel.cxx
+Use getIndex for NO_P2P
+Kahan + fixed precision
+Solid harmonics kernel
+FX10 sin, cos, exp intrinsic
+Use kvec3 in Biot-Savart
+
+-- driver --
+- System benchmarking, HPCC, SPEC, for CPU, GPU, MPI performance
+- TBB -> OpenMP with atomics -> flush
+- OMP_PLACES {threads,cores,sockets}
+MemAxes: Visualizing Memory Traffic
+Periodic B.C. by one precomputed translation matrix
+Teng's BH MAC with M2P option during DTT
+charmm2: remove repartition inside Ewald & VdW
+cutoff based traversal for md_distributed
+
+-- GPU --
+CUDA 6.0 debug
+Unify dataset
+.h -> .cxx/.cu
+MPI Bonsai
+Ewald, VdW
+Zero softening
+
+-- comparisons --
+DTT vs. UVWX-list
+Separate +- tree vs. Single tree
+Cartesian vs. Spherical vs. Planewave
+ORB vs. HOT
+OpenMP vs. TBB vs. Cilk vs. MThreads
+Geometric vs. Algebraic Mat-Vec
+
+-- things that were removed --
+TBB, Cilk, MassiveThreads
+GPU
+2d
+Rmax
+Ropt
+Mass
+
+-- documentation --
+- JOSS paper
+ipython notebook tutorial (from Andreas)
