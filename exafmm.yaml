@@ -12,7 +12,7 @@ default_params:
     - value: 6
       machines: [local]
   n_input: 10000
-  repeats: 1
+  repeats: 11
   theta: 0.2
   nspawn: 1000
   ncrit: 32
@@ -44,7 +44,6 @@ batches:
       nodes: 1
       cores: 1
       n_input: 1_000_000
-      repeats: 11
       cache_policy: serial
     duplicates: 1
     artifacts:
@@ -65,7 +64,6 @@ batches:
         - value: [1, 2, 4, 8, 16]
           machines: [squid-c]
       n_input: 1_000_000
-      repeats: 11
       cache_policy: [nocache, writethrough, writeback, writeback_lazy]
     artifacts:
       - type: stdout
@@ -83,7 +81,6 @@ batches:
         - value: [2x3x2:torus, 3x4x3:torus, 6x6x4:torus, 8x9x8:torus]
           machines: [wisteria-o]
       n_input: 10_000_000
-      repeats: 11
       cache_policy: [nocache, writethrough, writeback, writeback_lazy]
       accuracy_test: 0
     artifacts:
@@ -102,7 +99,6 @@ batches:
         - value: 3x4x3:torus
           machines: [wisteria-o]
       n_input: [1_000_000, 10_000_000]
-      repeats: 11
       cache_policy: writeback_lazy
       sub_block_size: [1, 4, 16, 64, 256, 1024, 4096, 16384, 65536]
       accuracy_test: 0

@@ -40,6 +40,7 @@ function(build_bench_each bench_name config_name)
   target_link_libraries(${target}.out itoyori)
   target_include_directories(${target}.out PRIVATE ${CMAKE_SOURCE_DIR}/third-party/pcg-cpp/include ${ARG_INCLUDE_DIRS})
   target_compile_options(${target}.out PRIVATE ${policy_options})
+  target_link_options(${target}.out PRIVATE ${policy_options})
   add_backward(${target}.out)
 
   install(TARGETS ${target}.out

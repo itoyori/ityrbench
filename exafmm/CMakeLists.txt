@@ -13,7 +13,7 @@ function(build_exafmm_kernel kernel_name)
   build_bench(exafmm exafmm_${kernel_name}
     FILES        examples/fmm.cxx
     INCLUDE_DIRS ${EXAFMM_INCLUDE_DIRS}
-    CXXFLAGS     "${ARG_CXXFLAGS} -ffast-math"
+    CXXFLAGS     "${ARG_CXXFLAGS} -ffast-math -funroll-loops"
   )
 endfunction()
 

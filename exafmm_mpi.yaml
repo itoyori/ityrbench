@@ -12,7 +12,7 @@ default_params:
     - value: 6
       machines: [local]
   n_input: 10000
-  repeats: 1
+  repeats: 11
   theta: 0.2
   nspawn: 1000
   ncrit: 32
@@ -24,7 +24,7 @@ default_params:
 
 default_name: exafmm_mpi
 default_queue: node_${nodes}
-default_duplicates: 3
+default_duplicates: 1
 
 batches:
   scale1M:
@@ -36,7 +36,6 @@ batches:
         - value: [1, 2, 4, 8, 16]
           machines: [squid-c]
       n_input: 1_000_000
-      repeats: 11
     artifacts:
       - type: stdout
         dest: exafmm_mpi/${batch_name}/nodes_${nodes}_${duplicate}.log
@@ -54,7 +53,6 @@ batches:
         - value: [1, 2:torus, 2x3:torus, 2x3x2:torus, 3x4x3:torus, 6x6x4:torus, 8x9x8:torus]
           machines: [wisteria-o]
       n_input: 10_000_000
-      repeats: 11
       accuracy_test: 0
     artifacts:
       - type: stdout
@@ -74,7 +72,6 @@ batches:
         - value: [1, 2, 4, 8, 16]
           machines: [squid-c]
       n_input: "`eval('$nodes'.split(':')[0].replace('x', '*')) * 1_000_000`"
-      repeats: 11
     artifacts:
       - type: stdout
         dest: exafmm_mpi/${batch_name}/nodes_${nodes}_${duplicate}.log
@@ -106,7 +103,7 @@ build:
     make -j
 
 run:
-  depend_params: [nodes, cores, n_input, repeats, theta, nspawn, ncrit, P, kernel, accuracy_test, serial, debugger]
+  depend_params: [nodes, cores, n_input, repeats, theta, nspawn, ncrit, P, kernel, accuracy_test, debugger]
   script: |
     source run_common.bash
 
@@ -114,14 +111,8 @@ run:
     # export OMP_WAIT_POLICY=active
     # export OMP_PROC_BIND=false
 
-    if [[ $KOCHI_PARAM_SERIAL == 1 ]]; then
-      executable=${KOCHI_PARAM_KERNEL}
-    else
-      executable=${KOCHI_PARAM_KERNEL}_mpi
-    fi
-
     commands="
-      ./exafmm_mpi/examples/${executable}
+      ./exafmm_mpi/examples/${KOCHI_PARAM_KERNEL}_mpi
         -v -T $KOCHI_PARAM_CORES -D
         $([[ $KOCHI_PARAM_ACCURACY_TEST == 0 ]] || echo -a)
         -n $KOCHI_PARAM_N_INPUT
