@@ -38,20 +38,22 @@ default_duplicates: 1
 
 batches:
   serial:
+    name: uts++_${batch_name}
+    queue: serial
     params:
       nodes: 1
       cores: 1
       exec_type: serial
       tree: T1L
-      cache_policy: [serial, writeback_lazy]
+      serial: 1
     artifacts:
       - type: stdout
-        dest: uts++/${batch_name}/tree_${tree}_p_${cache_policy}_${duplicate}.log
+        dest: uts++/${batch_name}/tree_${tree}_${duplicate}.log
       - type: stats
-        dest: uts++/${batch_name}/tree_${tree}_p_${cache_policy}_${duplicate}.stats
+        dest: uts++/${batch_name}/tree_${tree}_${duplicate}.stats
       - type: file
         src: mpirun_out.txt
-        dest: uts++/${batch_name}/tree_${tree}_p_${cache_policy}_${duplicate}.out
+        dest: uts++/${batch_name}/tree_${tree}_${duplicate}.out
 
   T1L:
     name: uts++_${batch_name}

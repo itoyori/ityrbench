@@ -40,12 +40,13 @@ default_duplicates: 1
 
 batches:
   serial:
+    name: exafmm_${batch_name}
+    queue: serial
     params:
       nodes: 1
       cores: 1
-      n_input: 1_000_000
-      cache_policy: serial
-    duplicates: 1
+      n_input: [1_000_000, 10_000_000]
+      serial: 1
     artifacts:
       - type: stdout
         dest: exafmm/${batch_name}/n_${n_input}_${duplicate}.log

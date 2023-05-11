@@ -39,6 +39,8 @@ default_duplicates: 1
 
 batches:
   serial:
+    name: cilksort_${batch_name}
+    queue: serial
     params:
       nodes: 1
       cores: 1
