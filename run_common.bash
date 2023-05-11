@@ -15,6 +15,14 @@ case $KOCHI_MACHINE in
     ityr_mpirun() {
       local n_processes=$1
       local n_processes_per_node=$2
+      local bind_to=$3
+
+      if [[ $bind_to == none ]]; then
+        set_cpu_affinity=0
+      else
+        set_cpu_affinity=1
+      fi
+
       (
         vcoordfile=$(mktemp)
         if [[ $PJM_ENVIRONMENT == INTERACT ]]; then
@@ -68,7 +76,8 @@ case $KOCHI_MACHINE in
         fi
         $MPIEXEC $of_opt -n $n_processes \
           --vcoordfile $vcoordfile \
-          -- setarch $(uname -m) --addr-no-randomize "${@:3}" | $tee_cmd
+          --mca plm_ple_cpu_affinity $set_cpu_affinity \
+          -- setarch $(uname -m) --addr-no-randomize "${@:4}" | $tee_cmd
       )
     }
     ;;
@@ -79,11 +88,12 @@ case $KOCHI_MACHINE in
     ityr_mpirun() {
       local n_processes=$1
       local n_processes_per_node=$2
+      local bind_to=$3
 
       trap "compgen -G ${STDOUT_FILE}.* && tail -n +1 \$(ls ${STDOUT_FILE}.* -v) > $STDOUT_FILE && rm ${STDOUT_FILE}.*" EXIT
 
       $MPIEXEC -n $n_processes -N $n_processes_per_node \
-        --bind-to core \
+        --bind-to $bind_to \
         --output file=$STDOUT_FILE \
         --prtemca ras simulator \
         --prtemca plm_ssh_agent ssh \
@@ -91,16 +101,18 @@ case $KOCHI_MACHINE in
         --hostfile $NQSII_MPINODES \
         --mca btl ^ofi \
         --mca osc_ucx_acc_single_intrinsic true \
-        -- setarch $(uname -m) --addr-no-randomize "${@:3}"
+        -- setarch $(uname -m) --addr-no-randomize "${@:4}"
     }
     ;;
   *)
     ityr_mpirun() {
       local n_processes=$1
       local n_processes_per_node=$2
+      local bind_to=$3
       $MPIEXEC -n $n_processes -N $n_processes_per_node \
+        --bind-to $bind_to \
         --mca osc ucx \
-        -- setarch $(uname -m) --addr-no-randomize "${@:3}" | tee $STDOUT_FILE
+        -- setarch $(uname -m) --addr-no-randomize "${@:4}" | tee $STDOUT_FILE
     }
     ;;
 esac

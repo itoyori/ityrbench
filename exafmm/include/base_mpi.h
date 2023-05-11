@@ -22,10 +22,8 @@ namespace EXAFMM_NAMESPACE {
   public:
     //! Constructor
     BaseMPI() : external(0), wait(100) {                        // Initialize variables
-      int argc(0);                                              // Dummy argument count
-      char **argv;                                              // Dummy argument value
       MPI_Initialized(&external);                               // Check if MPI_Init has been called
-      if (!external) MPI_Init(&argc, &argv);                    // Initialize MPI communicator
+      if (!external) MPI_Init(nullptr, nullptr);                    // Initialize MPI communicator
       MPI_Comm_rank(MPI_COMM_WORLD, &mpirank);                  // Get rank of current MPI process
       MPI_Comm_size(MPI_COMM_WORLD, &mpisize);                  // Get number of MPI processes
     }

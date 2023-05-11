@@ -23,7 +23,7 @@ default_params:
   block_size: 65536 # bytes
   sub_block_size: 4096 # bytes
   max_dirty: $cache_size # MB
-  noncoll_alloc_size: 1 # MB
+  noncoll_alloc_size: 2 # MB
   shared_mem: 1
   prof: disabled # disabled/stats/trace
   dag_prof: disabled # disabled/workspan
@@ -67,9 +67,9 @@ run:
     n_nodes=$(echo $KOCHI_PARAM_NODES | cut -f 1 -d ":" | sed 's/x/*/g' | bc)
 
     if [[ $KOCHI_PARAM_DEBUGGER == 0 ]]; then
-      ityr_mpirun $((n_nodes * KOCHI_PARAM_CORES)) $KOCHI_PARAM_CORES $commands
+      ityr_mpirun $((n_nodes * KOCHI_PARAM_CORES)) $KOCHI_PARAM_CORES core $commands
     else
-      MPIEXEC=mpitx ityr_mpirun $((n_nodes * KOCHI_PARAM_CORES)) $KOCHI_PARAM_CORES gdb --args $commands
+      MPIEXEC=mpitx ityr_mpirun $((n_nodes * KOCHI_PARAM_CORES)) $KOCHI_PARAM_CORES core gdb --args $commands
     fi
 
     if [[ $KOCHI_PARAM_PROF == trace ]]; then run_trace_viewer; fi

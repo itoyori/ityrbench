@@ -1,6 +1,9 @@
 depends:
   - name: massivethreads
     recipe: release
+  - name: openmpi
+    recipe: v5.0.0rc11
+    machines: [squid-c, local]
 
 default_params:
   nodes: 1
@@ -31,9 +34,10 @@ batches:
     name: exafmm_mpi_${batch_name}
     params:
       nodes:
+        # - value: [1, 2:torus, 2x3:torus, 2x3x2:torus, 3x4x3:torus, 6x6x4:torus, 8x9x8:torus]
         - value: [1, 2:torus, 2x3:torus, 2x3x2:torus, 3x4x3:torus, 6x6x4:torus]
           machines: [wisteria-o]
-        - value: [1, 2, 4, 8, 16]
+        - value: [1, 2, 4, 8, 16, 32]
           machines: [squid-c]
       n_input: 1_000_000
     artifacts:
@@ -49,9 +53,11 @@ batches:
     name: exafmm_mpi_${batch_name}
     params:
       nodes:
-        # - value: [2x3:torus, 2x3x2:torus, 3x4x3:torus, 6x6x4:torus, 8x9x8:torus]
-        - value: [1, 2:torus, 2x3:torus, 2x3x2:torus, 3x4x3:torus, 6x6x4:torus, 8x9x8:torus]
+        # - value: [1, 2:torus, 2x3:torus, 2x3x2:torus, 3x4x3:torus, 6x6x4:torus, 8x9x8:torus]
+        - value: [1, 2:torus, 2x3:torus, 2x3x2:torus, 3x4x3:torus, 6x6x4:torus]
           machines: [wisteria-o]
+        - value: [1, 2, 4, 8, 16, 32]
+          machines: [squid-c]
       n_input: 10_000_000
       accuracy_test: 0
     artifacts:
@@ -103,11 +109,16 @@ build:
     make -j
 
 run:
-  depend_params: [nodes, cores, n_input, repeats, theta, nspawn, ncrit, P, kernel, accuracy_test, debugger]
+  depend_params: [nodes, cores, n_input, repeats, theta, nspawn, ncrit, P, kernel, accuracy_test, serial, debugger]
   script: |
     source run_common.bash
 
-    export OMPI_MCA_plm_ple_cpu_affinity=0
+    if [[ $KOCHI_PARAM_SERIAL == 1 ]]; then
+      bind_to=core
+    else
+      bind_to=none
+    fi
+
     # export OMP_WAIT_POLICY=active
     # export OMP_PROC_BIND=false
 
@@ -125,7 +136,7 @@ run:
     n_nodes=$(echo $KOCHI_PARAM_NODES | cut -f 1 -d ":" | sed 's/x/*/g' | bc)
 
     if [[ $KOCHI_PARAM_DEBUGGER == 0 ]]; then
-      ityr_mpirun $((n_nodes)) 1 $commands
+      ityr_mpirun $((n_nodes)) 1 $bind_to $commands
     else
-      MPIEXEC=mpitx ityr_mpirun $((n_nodes)) 1 gdb --args $commands
+      MPIEXEC=mpitx ityr_mpirun $((n_nodes)) 1 $bind_to gdb --args $commands
     fi
