@@ -100,6 +100,8 @@ void run_fmm(const Args& args) {
       cells_vec = buildTree.buildTree(bodies, buffer, bounds);
       cells = {cells_vec.begin(), cells_vec.end()};
 
+      ityr::ori::collect_deallocated();
+
       upDownPass.upwardPass(cells);
       traversal.initListCount(cells);
       traversal.initWeight(cells);
