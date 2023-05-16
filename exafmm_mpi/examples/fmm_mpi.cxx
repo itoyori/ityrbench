@@ -190,75 +190,79 @@ int main(int argc, char ** argv) {
 
       upDownPass.downwardPass(cells);
     }
-    logger::stopPAPI();
-    double totalFMM = logger::stopTimer("Total FMM", 0);
-    totalFMM /= numIteration;
-    if (args.write) {
-      logger::writeTime(baseMPI.mpirank);
-    }
-    traversal.writeList(cells, baseMPI.mpirank);
+    if (args.accuracy) {
+      logger::stopPAPI();
+      double totalFMM = logger::stopTimer("Total FMM", 0);
+      totalFMM /= numIteration;
+      if (args.write) {
+        logger::writeTime(baseMPI.mpirank);
+      }
+      traversal.writeList(cells, baseMPI.mpirank);
 
-    if (!isTime) {
-      logger::printTitle("MPI direct sum");
-      const int numTargets = 100;
-      buffer = bodies;
-      data.sampleBodies(bodies, numTargets);
-      bodies2 = bodies;
-      data.initTarget(bodies);
-      logger::startTimer("Total Direct");
-      for (int i=0; i<baseMPI.mpisize; i++) {
-        if (args.verbose) std::cout << "Direct loop          : " << i+1 << "/" << baseMPI.mpisize << std::endl;
-        treeMPI.shiftBodies(jbodies);
-        traversal.direct(bodies, jbodies, cycle);
-      }
-      logger::printTitle("Total runtime");
-      logger::printTime("Total FMM");
-      logger::stopTimer("Total Direct");
-      logger::resetTimer("Total FMM");
-      logger::resetTimer("Total Direct");
-      double potDif = verify.getDifScalar(bodies, bodies2);
-      double potNrm = verify.getNrmScalar(bodies);
-      double accDif = verify.getDifVector(bodies, bodies2);
-      double accNrm = verify.getNrmVector(bodies);
-      double potDifGlob, potNrmGlob, accDifGlob, accNrmGlob;
-      MPI_Reduce(&potDif, &potDifGlob, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
-      MPI_Reduce(&potNrm, &potNrmGlob, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
-      MPI_Reduce(&accDif, &accDifGlob, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
-      MPI_Reduce(&accNrm, &accNrmGlob, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
-      double potRel = std::sqrt(potDifGlob/potNrmGlob);
-      double accRel = std::sqrt(accDifGlob/accNrmGlob);
-      logger::printTitle("FMM vs. direct");
-      verify.print("Rel. L2 Error (pot)",potRel);
-      verify.print("Rel. L2 Error (acc)",accRel);
-      localTree.printTreeData(cells);
-      traversal.printTraversalData();
-      logger::printPAPI();
-      bodies = buffer;
-      if (!baseMPI.mpirank) {
-        pass = verify.regression(args.getKey(baseMPI.mpisize), isTime, t, potRel, accRel);
-      }
-      MPI_Bcast(&pass, 1, MPI_BYTE, 0, MPI_COMM_WORLD);
-      if (pass) {
-        if (verify.verbose) std::cout << "passed accuracy regression at t: " << t << std::endl;
-        /* if (args.accuracy) break; */
-        /* t = -1; */
-        /* isTime = true; */
+      if (!isTime) {
+        logger::printTitle("MPI direct sum");
+        const int numTargets = 100;
+        buffer = bodies;
+        data.sampleBodies(bodies, numTargets);
+        bodies2 = bodies;
+        data.initTarget(bodies);
+        logger::startTimer("Total Direct");
+        for (int i=0; i<baseMPI.mpisize; i++) {
+          if (args.verbose) std::cout << "Direct loop          : " << i+1 << "/" << baseMPI.mpisize << std::endl;
+          treeMPI.shiftBodies(jbodies);
+          traversal.direct(bodies, jbodies, cycle);
+        }
+        logger::printTitle("Total runtime");
+        logger::printTime("Total FMM");
+        logger::stopTimer("Total Direct");
+        logger::resetTimer("Total FMM");
+        logger::resetTimer("Total Direct");
+        double potDif = verify.getDifScalar(bodies, bodies2);
+        double potNrm = verify.getNrmScalar(bodies);
+        double accDif = verify.getDifVector(bodies, bodies2);
+        double accNrm = verify.getNrmVector(bodies);
+        double potDifGlob, potNrmGlob, accDifGlob, accNrmGlob;
+        MPI_Reduce(&potDif, &potDifGlob, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
+        MPI_Reduce(&potNrm, &potNrmGlob, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
+        MPI_Reduce(&accDif, &accDifGlob, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
+        MPI_Reduce(&accNrm, &accNrmGlob, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
+        double potRel = std::sqrt(potDifGlob/potNrmGlob);
+        double accRel = std::sqrt(accDifGlob/accNrmGlob);
+        logger::printTitle("FMM vs. direct");
+        verify.print("Rel. L2 Error (pot)",potRel);
+        verify.print("Rel. L2 Error (acc)",accRel);
+        localTree.printTreeData(cells);
+        traversal.printTraversalData();
+        logger::printPAPI();
+        bodies = buffer;
+        if (!baseMPI.mpirank) {
+          pass = verify.regression(args.getKey(baseMPI.mpisize), isTime, t, potRel, accRel);
+        }
+        MPI_Bcast(&pass, 1, MPI_BYTE, 0, MPI_COMM_WORLD);
+        if (pass) {
+          if (verify.verbose) std::cout << "passed accuracy regression at t: " << t << std::endl;
+          /* if (args.accuracy) break; */
+          /* t = -1; */
+          /* isTime = true; */
+        } else {
+          if (verify.verbose) std::cout << "failed accuracy regression" << std::endl;
+          break;
+        }
       } else {
-        if (verify.verbose) std::cout << "failed accuracy regression" << std::endl;
-        break;
+        /* double totalFMMGlob; */
+        /* MPI_Reduce(&totalFMM, &totalFMMGlob, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD); */
+        /* totalFMMGlob /= baseMPI.mpisize; */
+        /* if (!baseMPI.mpirank) { */
+        /*   pass = verify.regression(args.getKey(baseMPI.mpisize), isTime, t, totalFMMGlob); */
+        /* } */
+        /* MPI_Bcast(&pass, 1, MPI_BYTE, 0, MPI_COMM_WORLD); */
+        /* if (pass) { */
+        /*   if (verify.verbose) std::cout << "passed time regression at t: " << t << std::endl; */
+        /*   break; */
+        /* } */
       }
     } else {
-      /* double totalFMMGlob; */
-      /* MPI_Reduce(&totalFMM, &totalFMMGlob, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD); */
-      /* totalFMMGlob /= baseMPI.mpisize; */
-      /* if (!baseMPI.mpirank) { */
-      /*   pass = verify.regression(args.getKey(baseMPI.mpisize), isTime, t, totalFMMGlob); */
-      /* } */
-      /* MPI_Bcast(&pass, 1, MPI_BYTE, 0, MPI_COMM_WORLD); */
-      /* if (pass) { */
-      /*   if (verify.verbose) std::cout << "passed time regression at t: " << t << std::endl; */
-      /*   break; */
-      /* } */
+      localTree.printTreeData(cells);
     }
   }
   /* if (!pass) { */

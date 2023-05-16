@@ -97,7 +97,7 @@ void run_fmm(const Args& args) {
 #endif
       }
 
-      cells_vec = buildTree.buildTree(bodies, buffer, bounds);
+      buildTree.buildTree(bodies, buffer, bounds, cells_vec);
       cells = {cells_vec.begin(), cells_vec.end()};
 
       ityr::ori::collect_deallocated();

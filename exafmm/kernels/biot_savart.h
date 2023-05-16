@@ -235,12 +235,12 @@ namespace EXAFMM_NAMESPACE {
     }
 
     void P2M(const Cell* C) {
-      complex_t Ynm[P*P], YnmTheta[P*P];
-
       ityr::ori::with_checkout(
           C->M.data(), C->M.size(), ityr::ori::mode::read_write,
           C->BODY    , C->NBODY   , ityr::ori::mode::read,
           [&](complex_t* CM, const Body* Bp) {
+        complex_t Ynm[P*P], YnmTheta[P*P];
+
         for (auto B=Bp; B!=Bp+C->NBODY; B++) {
           vec3 dX = B->X - C->X;
           real_t rho, alpha, beta;
@@ -310,17 +310,18 @@ namespace EXAFMM_NAMESPACE {
     }
 
     void M2L(const Cell* Ci, const Cell* Cj) {
-      complex_t Ynm2[4*P*P];
-      vec3 dX = Ci->X - Cj->X - Xperiodic;
-      real_t rho, alpha, beta;
-      cart2sph(dX, rho, alpha, beta);
-      evalLocal(rho, alpha, beta, Ynm2);
-
       ityr::ori::with_checkout(
           Ci->L.data(), Ci->L.size(), ityr::ori::mode::read_write,
           Cj->M.data(), Cj->M.size(), ityr::ori::mode::read,
           [&](complex_t* CiL, const complex_t* CjM) {
         ITYR_PROFILER_RECORD(prof_event_user_M2L_kernel);
+
+        complex_t Ynm2[4*P*P];
+        vec3 dX = Ci->X - Cj->X - Xperiodic;
+        real_t rho, alpha, beta;
+        cart2sph(dX, rho, alpha, beta);
+        evalLocal(rho, alpha, beta, Ynm2);
+
         for (int j=0; j<P; j++) {
           for (int k=0; k<=j; k++) {
             int jk = j * j + j + k;
@@ -354,18 +355,17 @@ namespace EXAFMM_NAMESPACE {
       });
     }
 
-    void L2L(const Cell* Ci, const Cell* Cj0) {
-      complex_t Ynm[P*P], YnmTheta[P*P];
-      const Cell* Cj = Cj0;
-      vec3 dX = Ci->X - Cj->X;
-      real_t rho, alpha, beta;
-      cart2sph(dX, rho, alpha, beta);
-      evalMultipole(rho, alpha, beta, Ynm, YnmTheta);
-
+    void L2L(const Cell* Ci, const Cell* Cj) {
       ityr::ori::with_checkout(
           Ci->L.data(), Ci->L.size(), ityr::ori::mode::read_write,
           Cj->L.data(), Cj->L.size(), ityr::ori::mode::read,
           [&](complex_t* CiL, const complex_t* CjL) {
+        complex_t Ynm[P*P], YnmTheta[P*P];
+        vec3 dX = Ci->X - Cj->X;
+        real_t rho, alpha, beta;
+        cart2sph(dX, rho, alpha, beta);
+        evalMultipole(rho, alpha, beta, Ynm, YnmTheta);
+
         for (int j=0; j<P; j++) {
           for (int k=0; k<=j; k++) {
             int jk = j * j + j + k;
@@ -402,11 +402,11 @@ namespace EXAFMM_NAMESPACE {
     }
 
     void L2P(const Cell* C) {
-      complex_t Ynm[P*P], YnmTheta[P*P];
       ityr::ori::with_checkout(
           C->BODY    , C->NBODY   , ityr::ori::mode::read_write,
           C->L.data(), C->L.size(), ityr::ori::mode::read,
           [&](Body* Bp, const complex_t* CL) {
+        complex_t Ynm[P*P], YnmTheta[P*P];
         for (auto B=Bp; B!=Bp+C->NBODY; B++) {
           vec3 dX = B->X - C->X + EPS;
           vec3 spherical[3] = {0, 0, 0};

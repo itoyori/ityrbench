@@ -490,11 +490,10 @@ namespace EXAFMM_NAMESPACE {
     }
 
     //! Link tree structure
-    global_vec<Cell> linkTree(Box box) {
+    void linkTree(Box box, global_vec<Cell>& cells_vec) {
       if (ityr::is_master()) {
         logger::startTimer("Link tree");                          // Start timer
       }
-      global_vec<Cell> cells_vec(global_vec_coll_opts);                                              // Initialize cell array
 
       if (N0 != nullptr) {                                         // If the node tree is not empty
         std::size_t ncells = N0->*(&OctreeNode::NNODE);
@@ -512,15 +511,13 @@ namespace EXAFMM_NAMESPACE {
       if (ityr::is_master()) {
         logger::stopTimer("Link tree");                           // Stop timer
       }
-
-      return cells_vec;                                             // Return cells array
     }
 
   public:
     BuildTree(int _ncrit, int _nspawn) : ncrit(_ncrit), nspawn(_nspawn), numLevels(0) {}
 
     //! Build tree structure top down
-    global_vec<Cell> buildTree(GBodies bodies, GBodies buffer, Bounds bounds) {
+    void buildTree(GBodies bodies, GBodies buffer, Bounds bounds, global_vec<Cell>& cells_vec) {
       Box box = bounds2box(bounds);                             // Get box from bounds
       if (bodies.empty()) {                                     // If bodies vector is empty
 	N0 = nullptr;                                              //  Reinitialize N0 with NULL
@@ -532,7 +529,7 @@ namespace EXAFMM_NAMESPACE {
 #endif
 	growTree(bodies, buffer, box);                          //  Grow tree from root
       }                                                         // End if for empty root
-      return linkTree(box);                                     // Form parent-child links in tree
+      linkTree(box, cells_vec);                                     // Form parent-child links in tree
     }
 
     //! Print tree structure statistics

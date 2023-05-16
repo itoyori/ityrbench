@@ -392,8 +392,6 @@ namespace EXAFMM_NAMESPACE {
     }
 
     void P2P(const Cell* Ci, const Cell* Cj) {
-      real_t wave_r = std::real(wavek);
-      real_t wave_i = std::imag(wavek);
       GB_iter GBi = Ci->BODY;
       GB_iter GBj = Cj->BODY;
       int ni = Ci->NBODY;
@@ -403,6 +401,9 @@ namespace EXAFMM_NAMESPACE {
           GBj, nj, ityr::ori::mode::read,
           [&](Body* Bi, const Body* Bj) {
         ITYR_PROFILER_RECORD(prof_event_user_P2P_kernel);
+
+        real_t wave_r = std::real(wavek);
+        real_t wave_i = std::imag(wavek);
         int i = 0;
 #if EXAFMM_USE_SIMD
         simdvec wave_rvec = wave_r;
@@ -521,8 +522,6 @@ namespace EXAFMM_NAMESPACE {
     }
 
     void P2P_direct(const Cell* Ci, const Cell* Cj) {
-      real_t wave_r = std::real(wavek);
-      real_t wave_i = std::imag(wavek);
       GB_iter GBi = Ci->BODY;
       GB_iter GBj = Cj->BODY;
       int ni = Ci->NBODY;
@@ -530,6 +529,8 @@ namespace EXAFMM_NAMESPACE {
       ityr::ori::with_checkout(
           GBi, ni, ityr::ori::mode::read_write,
           [&](Body* Bi) {
+        real_t wave_r = std::real(wavek);
+        real_t wave_i = std::imag(wavek);
         int i = 0;
 #if EXAFMM_USE_SIMD
         simdvec wave_rvec = wave_r;
@@ -659,16 +660,16 @@ namespace EXAFMM_NAMESPACE {
     }
 
     void P2M(const Cell* C) {
-      real_t Ynm[P*(P+1)/2];
-      complex_t ephi[P], jn[P+1], jnd[P+1];
-      complex_t Mnm[P*P];
-      for (int n=0; n<P*P; n++) Mnm[n] = complex_t(0,0);
-      real_t kscale = 2 * C->R * abs(wavek);
-
       ityr::ori::with_checkout(
           C->M.data(), C->M.size(), ityr::ori::mode::read_write,
           C->BODY    , C->NBODY   , ityr::ori::mode::read,
           [&](complex_t* CM, const Body* Bp) {
+        real_t Ynm[P*(P+1)/2];
+        complex_t ephi[P], jn[P+1], jnd[P+1];
+        complex_t Mnm[P*P];
+        for (int n=0; n<P*P; n++) Mnm[n] = complex_t(0,0);
+        real_t kscale = 2 * C->R * abs(wavek);
+
         for (auto B=Bp; B!=Bp+C->NBODY; B++) {
           vec3 dX = B->X - C->X;
           real_t r, theta, phi;
@@ -788,40 +789,42 @@ namespace EXAFMM_NAMESPACE {
     }
 
     void M2L(const Cell* Ci, const Cell* Cj) {
-      real_t Ynm[P*(P+1)/2], Ynmd[P*(P+1)/2];
-      complex_t phitemp[2*P], phitempn[2*P];
-      complex_t hn[P], hnd[P], jn[P+1], jnd[P+1], ephi[2*P];
-      complex_t Mnm[P*P], Mrot[P*P], Lnm[P*P], Lrot[P*P], Lnmd[P*P];
-      for (int n=0; n<P*P; n++) Lnm[n] = Lrot[n] = complex_t(0,0);
-      real_t kscalej = 2 * Cj->R * abs(wavek);
-      real_t kscalei = 2 * Ci->R * abs(wavek);
-      real_t radius = 2 * Cj->R * sqrt(3.0) * .5;
-      vec3 dX = Ci->X - Cj->X - Xperiodic;
-      real_t r, theta, phi;
-      cart2sph(dX, r, theta, phi);
-      dX /= 2 * Cj->R;
-      if (fabs(dX[0]) > EPS) dX[0] = fabs(dX[0]) - .5;
-      if (fabs(dX[1]) > EPS) dX[1] = fabs(dX[1]) - .5;
-      if (fabs(dX[2]) > EPS) dX[2] = fabs(dX[2]) - .5;
-      real_t rr = sqrt(norm(dX));
-      real_t coef1 = P * 1.65 - 15.5;
-      real_t coef2 = P * 0.25 + 3.0;
-      int Popt = coef1 / (rr * rr) + coef2;
-      assert(0 < Popt);
-      assert(Popt <= 2*P);
-      if(Popt > P) Popt = P;
-      ephi[P+1] = exp(I * phi);
-      ephi[P] = 1;
-      ephi[P-1] = conj(ephi[P+1]);
-      for (int n=2; n<P; n++) {
-	ephi[P+n] = ephi[P+n-1] * ephi[P+1];
-	ephi[P-n] = conj(ephi[P+n]);
-      }
       ityr::ori::with_checkout(
           Ci->L.data(), Ci->L.size(), ityr::ori::mode::read_write,
           Cj->M.data(), Cj->M.size(), ityr::ori::mode::read,
           [&](complex_t* CiL, const complex_t* CjM) {
         ITYR_PROFILER_RECORD(prof_event_user_M2L_kernel);
+
+        real_t Ynm[P*(P+1)/2], Ynmd[P*(P+1)/2];
+        complex_t phitemp[2*P], phitempn[2*P];
+        complex_t hn[P], hnd[P], jn[P+1], jnd[P+1], ephi[2*P];
+        complex_t Mnm[P*P], Mrot[P*P], Lnm[P*P], Lrot[P*P], Lnmd[P*P];
+        for (int n=0; n<P*P; n++) Lnm[n] = Lrot[n] = complex_t(0,0);
+        real_t kscalej = 2 * Cj->R * abs(wavek);
+        real_t kscalei = 2 * Ci->R * abs(wavek);
+        real_t radius = 2 * Cj->R * sqrt(3.0) * .5;
+        vec3 dX = Ci->X - Cj->X - Xperiodic;
+        real_t r, theta, phi;
+        cart2sph(dX, r, theta, phi);
+        dX /= 2 * Cj->R;
+        if (fabs(dX[0]) > EPS) dX[0] = fabs(dX[0]) - .5;
+        if (fabs(dX[1]) > EPS) dX[1] = fabs(dX[1]) - .5;
+        if (fabs(dX[2]) > EPS) dX[2] = fabs(dX[2]) - .5;
+        real_t rr = sqrt(norm(dX));
+        real_t coef1 = P * 1.65 - 15.5;
+        real_t coef2 = P * 0.25 + 3.0;
+        int Popt = coef1 / (rr * rr) + coef2;
+        assert(0 < Popt);
+        assert(Popt <= 2*P);
+        if(Popt > P) Popt = P;
+        ephi[P+1] = exp(I * phi);
+        ephi[P] = 1;
+        ephi[P-1] = conj(ephi[P+1]);
+        for (int n=2; n<P; n++) {
+          ephi[P+n] = ephi[P+n-1] * ephi[P+1];
+          ephi[P-n] = conj(ephi[P+n]);
+        }
+
         for (int n=0; n<Popt; n++) {
           for (int m=-n; m<=n; m++) {
             int nm = n * n + n + m;
@@ -915,29 +918,29 @@ namespace EXAFMM_NAMESPACE {
       });
     }
 
-    void L2L(const Cell* Ci, const Cell* Cj0) {
-      real_t Ynm[P*(P+1)/2], Ynmd[P*(P+1)/2];
-      complex_t phitemp[2*P], phitempn[2*P];
-      complex_t jn[P+1], jnd[P+1], ephi[2*P];
-      complex_t Lnm[P*P], Lrot[P*P], Lnmd[P*P];
-      real_t kscalei = 2 * Ci->R * abs(wavek);
-      const Cell* Cj = Cj0;
-      real_t kscalej = 2 * Cj->R * abs(wavek);
-      real_t radius = 2 * Cj->R * sqrt(3.0) * .5;
-      vec3 dX = Ci->X - Cj->X;
-      real_t r, theta, phi;
-      cart2sph(dX, r, theta, phi);
-      ephi[P+1] = exp(I * phi);
-      ephi[P] = 1;
-      ephi[P-1] = conj(ephi[P+1]);
-      for (int n=2; n<P; n++) {
-	ephi[P+n] = ephi[P+n-1] * ephi[P+1];
-	ephi[P-n] = conj(ephi[P+n]);
-      }
+    void L2L(const Cell* Ci, const Cell* Cj) {
       ityr::ori::with_checkout(
           Ci->L.data(), Ci->L.size(), ityr::ori::mode::read_write,
           Cj->L.data(), Cj->L.size(), ityr::ori::mode::read,
           [&](complex_t* CiL, const complex_t* CjL) {
+        real_t Ynm[P*(P+1)/2], Ynmd[P*(P+1)/2];
+        complex_t phitemp[2*P], phitempn[2*P];
+        complex_t jn[P+1], jnd[P+1], ephi[2*P];
+        complex_t Lnm[P*P], Lrot[P*P], Lnmd[P*P];
+        real_t kscalei = 2 * Ci->R * abs(wavek);
+        real_t kscalej = 2 * Cj->R * abs(wavek);
+        real_t radius = 2 * Cj->R * sqrt(3.0) * .5;
+        vec3 dX = Ci->X - Cj->X;
+        real_t r, theta, phi;
+        cart2sph(dX, r, theta, phi);
+        ephi[P+1] = exp(I * phi);
+        ephi[P] = 1;
+        ephi[P-1] = conj(ephi[P+1]);
+        for (int n=2; n<P; n++) {
+          ephi[P+n] = ephi[P+n-1] * ephi[P+1];
+          ephi[P-n] = conj(ephi[P+n]);
+        }
+
         for (int n=0; n<P; n++) {
           for (int m=-n; m<=n; m++) {
             int nm = n * n + n + m;
@@ -1039,13 +1042,14 @@ namespace EXAFMM_NAMESPACE {
     }
 
     void L2P(const Cell* C) {
-      real_t Ynm[P*(P+1)/2], Ynmd[P*(P+1)/2];
-      complex_t ephi[P], jn[P+1], jnd[P+1];
-      real_t kscale = 2 * C->R * abs(wavek);
       ityr::ori::with_checkout(
           C->BODY    , C->NBODY   , ityr::ori::mode::read_write,
           C->L.data(), C->L.size(), ityr::ori::mode::read,
           [&](Body* Bp, const complex_t* CL) {
+        real_t Ynm[P*(P+1)/2], Ynmd[P*(P+1)/2];
+        complex_t ephi[P], jn[P+1], jnd[P+1];
+        real_t kscale = 2 * C->R * abs(wavek);
+
         for (auto B=Bp; B!=Bp+C->NBODY; B++) {
           complex_t Lj[P*P];
           for (int n=0; n<P*P; n++) Lj[n]= CL[n];
