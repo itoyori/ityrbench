@@ -111,25 +111,24 @@ dependencies:
         machines: [local, squid-c]
       - name: boost
         recipe: v1.80.0
-        machines: [wisteria-o]
     recipes:
       - name: release
         branch: master
         script:
-          - CC=$MPICC CXX=$MPICXX cmake -DCMAKE_INSTALL_PREFIX=$KOCHI_INSTALL_PREFIX -DBUILD_TESTING=off -DBUILD_EXAMPLES=off .
+          - CC=$MPICC CXX=$MPICXX cmake -DCMAKE_INSTALL_PREFIX=$KOCHI_INSTALL_PREFIX -DBUILD_TESTING=off -DBUILD_EXAMPLES=off -DITYR_USE_BOOST_MEMORY_RESOURCE=on .
           - make -j all install
       - name: develop
         mirror: true
         mirror_dir: ../itoyori
         script:
-          - CC=$MPICC CXX=$MPICXX cmake -DCMAKE_INSTALL_PREFIX=$KOCHI_INSTALL_PREFIX -DBUILD_TESTING=off -DBUILD_EXAMPLES=off .
+          - CC=$MPICC CXX=$MPICXX cmake -DCMAKE_INSTALL_PREFIX=$KOCHI_INSTALL_PREFIX -DBUILD_TESTING=off -DBUILD_EXAMPLES=off -DITYR_USE_BOOST_MEMORY_RESOURCE=on .
           - make -j all install
       - name: develop_test
         on_machine: true
         mirror: true
         mirror_dir: ../itoyori
         script:
-          - CC=$MPICC CXX=$MPICXX cmake -DCMAKE_INSTALL_PREFIX=$KOCHI_INSTALL_PREFIX .
+          - CC=$MPICC CXX=$MPICXX cmake -DCMAKE_INSTALL_PREFIX=$KOCHI_INSTALL_PREFIX -DITYR_USE_BOOST_MEMORY_RESOURCE=on .
           - make -j all test install
 
   massivethreads:

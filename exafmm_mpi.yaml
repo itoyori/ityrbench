@@ -136,7 +136,7 @@ run:
     n_nodes=$(echo $KOCHI_PARAM_NODES | cut -f 1 -d ":" | sed 's/x/*/g' | bc)
 
     if [[ $KOCHI_PARAM_DEBUGGER == 0 ]]; then
-      ityr_mpirun $((n_nodes)) 1 $bind_to $commands
+      ityr_mpirun $((n_nodes)) 1 $bind_to numactl -iall $commands
     else
       MPIEXEC=mpitx ityr_mpirun $((n_nodes)) 1 $bind_to gdb --args $commands
     fi
