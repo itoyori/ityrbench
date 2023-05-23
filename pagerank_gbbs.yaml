@@ -40,9 +40,9 @@ run:
     source run_common.bash
 
     commands="
-      ./gbbs/benchmarks/PageRank/PageRank
+      ./gbbs/benchmarks/PageRank/PageRank -b
         -rounds $KOCHI_PARAM_REPEATS
-        ${KOCHI_INSTALL_PREFIX_GBBS}/${KOCHI_PARAM_DATASET}.adj"
+        ${KOCHI_INSTALL_PREFIX_GBBS}/${KOCHI_PARAM_DATASET}.bin"
 
     n_nodes=$(echo $KOCHI_PARAM_NODES | cut -f 1 -d ":" | sed 's/x/*/g' | bc)
 

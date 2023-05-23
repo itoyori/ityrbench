@@ -156,3 +156,4 @@ dependencies:
       - make -j -C utils/generators
       - ./utils/generators/RMAT -n 1048576 -m 16777216 -outfile ${KOCHI_INSTALL_PREFIX}/rmat_22_24
       - ./utils/snap_converter -i ${KOCHI_INSTALL_PREFIX}/rmat_22_24 -o ${KOCHI_INSTALL_PREFIX}/rmat_22_24.adj
+      - ./utils/converter -enc binary -o ${KOCHI_INSTALL_PREFIX}/rmat_22_24.bin ${KOCHI_INSTALL_PREFIX}/rmat_22_24.adj
