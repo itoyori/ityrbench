@@ -1,5 +1,5 @@
 # git root directory
-ROOTDIR = $(strip $(shell git rev-parse --show-cdup))
+ROOTDIR = $(strip $(shell git rev-parse --show-cdup))gbbs/
 
 include $(ROOTDIR)makefile.variables
 

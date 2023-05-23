@@ -23,6 +23,7 @@ endif
 OPT = -O3 -DNDEBUG
 #OPT = -O2 -g
 
+ifndef CFLAGS
 CFLAGS = \
 	-U_FORTIFY_SOURCE \
 	'-D__DATE__="redacted"' \
@@ -57,6 +58,7 @@ else ifeq ($(OS), mac)
 	-Wself-assign \
 	-Wthread-safety
 endif
+endif
 
 OMPFLAGS = -DPARLAY_OPENMP -fopenmp
 CILKFLAGS = -DPARLAY_CILK -fcilkplus
@@ -71,17 +73,17 @@ CC = g++
 PFLAGS = $(CILKFLAGS)
 LFLAGS = -lcilkrts
 else ifdef OPENMP
-CC = g++
+CC = $(or $(CXX),g++)
 PFLAGS = $(OMPFLAGS)
 LFLAGS = -fopenmp
 else ifdef HOMEGROWN
-CC = g++
+CC = $(or $(CXX),g++)
 PFLAGS = $(HGFLAGS)
 else ifdef SERIAL
-CC = g++
+CC = $(or $(CXX),g++)
 PFLAGS = $(SERIALFLAGS)
 else # default is homegrown
-CC = g++
+CC = $(or $(CXX),g++)
 PFLAGS = $(HGFLAGS)
 endif
 

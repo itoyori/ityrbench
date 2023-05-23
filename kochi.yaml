@@ -145,3 +145,14 @@ dependencies:
       - fi
       - make -j
       - make install
+
+  gbbs:
+    git: https://github.com/ParAlg/gbbs.git
+    recipes:
+      - name: dataset
+        commit_hash: b1a90f5fa3b36b8be9fa5c336e3dc5783ae75d76
+    script:
+      - make -j -C utils
+      - make -j -C utils/generators
+      - ./utils/generators/RMAT -n 1048576 -m 16777216 -outfile ${KOCHI_INSTALL_PREFIX}/rmat_22_24
+      - ./utils/snap_converter -i ${KOCHI_INSTALL_PREFIX}/rmat_22_24 -o ${KOCHI_INSTALL_PREFIX}/rmat_22_24.adj
