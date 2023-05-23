@@ -60,7 +60,8 @@ double PageRank_runner(Graph& G, commandLine P) {
   }
   double tt = t.stop();
 
-  std::cout << "### Running Time: " << tt << std::endl;
+  static int count = 0;
+  std::cout << "[" << count++ << "] " << "Running Time: " << tt << std::endl;
   return tt;
 }
 

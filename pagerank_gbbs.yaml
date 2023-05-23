@@ -53,8 +53,14 @@ run:
 
     export PARLAY_NUM_THREADS=$KOCHI_PARAM_CORES
 
+    if [[ $KOCHI_PARAM_SERIAL == 1 || $KOCHI_PARAM_CORES == 1 ]]; then
+      numactl_cmd=""
+    else
+      numactl_cmd="numactl -iall"
+    fi
+
     if [[ $KOCHI_PARAM_DEBUGGER == 0 ]]; then
-      numactl -iall $commands
+      $numactl_cmd $commands
     else
       gdb --args $commands
     fi
