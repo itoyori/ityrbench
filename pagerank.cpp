@@ -21,6 +21,8 @@ struct graph {
 
 int         n_repeats        = 10;
 const char* dataset_filename = nullptr;
+std::size_t cutoff_v         = 4096;
+std::size_t cutoff_e         = 4096;
 
 ityr::global_vector_options global_vec_coll_opts {
   .collective         = true,
@@ -76,26 +78,15 @@ graph load_dataset(const char* filename) {
   static uintE* in_edges = reinterpret_cast<uintE*>(data + skip);
   skip += m * sizeof(uintE);
 
-  ityr::global_vector<vertex_data> v_out_data(global_vec_coll_opts, n + 1);
-  ityr::global_vector<vertex_data> v_in_data(global_vec_coll_opts, n + 1);
+  ityr::global_vector<vertex_data> v_in_data(global_vec_coll_opts, n);
+  ityr::global_vector<vertex_data> v_out_data(global_vec_coll_opts, n);
 
-  // TODO: really size of `m`?
-  ityr::global_vector<uintE> out_edges_vec(global_vec_coll_opts, m);
   ityr::global_vector<uintE> in_edges_vec(global_vec_coll_opts, m);
+  ityr::global_vector<uintE> out_edges_vec(global_vec_coll_opts, m);
 
   ityr::root_exec([&]() {
     ityr::parallel_for_each(
-        {.cutoff_count = 1024, .checkout_count = 1024},
-        ityr::count_iterator<long>(0),
-        ityr::count_iterator<long>(n),
-        ityr::make_global_iterator(v_out_data.begin(), ityr::ori::mode::write),
-        [&](long i, vertex_data& vd) {
-      vd.offset = out_offsets[i];
-      vd.degree = out_offsets[i + 1] - out_offsets[i];
-    });
-
-    ityr::parallel_for_each(
-        {.cutoff_count = 1024, .checkout_count = 1024},
+        {.cutoff_count = cutoff_v, .checkout_count = cutoff_v},
         ityr::count_iterator<long>(0),
         ityr::count_iterator<long>(n),
         ityr::make_global_iterator(v_in_data.begin(), ityr::ori::mode::write),
@@ -105,21 +96,31 @@ graph load_dataset(const char* filename) {
     });
 
     ityr::parallel_for_each(
-        {.cutoff_count = 1024, .checkout_count = 1024},
+        {.cutoff_count = cutoff_v, .checkout_count = cutoff_v},
         ityr::count_iterator<long>(0),
-        ityr::count_iterator<long>(m),
-        ityr::make_global_iterator(out_edges_vec.begin(), ityr::ori::mode::write),
-        [&](long i, uintE& e) {
-      e = out_edges[i];
+        ityr::count_iterator<long>(n),
+        ityr::make_global_iterator(v_out_data.begin(), ityr::ori::mode::write),
+        [&](long i, vertex_data& vd) {
+      vd.offset = out_offsets[i];
+      vd.degree = out_offsets[i + 1] - out_offsets[i];
     });
 
     ityr::parallel_for_each(
-        {.cutoff_count = 1024, .checkout_count = 1024},
+        {.cutoff_count = cutoff_e, .checkout_count = cutoff_e},
         ityr::count_iterator<long>(0),
         ityr::count_iterator<long>(m),
         ityr::make_global_iterator(in_edges_vec.begin(), ityr::ori::mode::write),
         [&](long i, uintE& e) {
       e = in_edges[i];
+    });
+
+    ityr::parallel_for_each(
+        {.cutoff_count = cutoff_e, .checkout_count = cutoff_e},
+        ityr::count_iterator<long>(0),
+        ityr::count_iterator<long>(m),
+        ityr::make_global_iterator(out_edges_vec.begin(), ityr::ori::mode::write),
+        [&](long i, uintE& e) {
+      e = out_edges[i];
     });
   });
 
@@ -173,7 +174,7 @@ void pagerank(const graph&              g,
   auto in_edges_begin = g.in_edges.begin();
 
   ityr::parallel_for_each(
-      {.cutoff_count = 1024, .checkout_count = 1024},
+      {.cutoff_count = cutoff_v, .checkout_count = cutoff_v},
       ityr::make_global_iterator(p_curr.begin(), ityr::ori::mode::write),
       ityr::make_global_iterator(p_curr.end()  , ityr::ori::mode::write),
       [=](double& p) {
@@ -181,7 +182,7 @@ void pagerank(const graph&              g,
       });
 
   ityr::parallel_for_each(
-      {.cutoff_count = 1024, .checkout_count = 1024},
+      {.cutoff_count = cutoff_v, .checkout_count = cutoff_v},
       ityr::make_global_iterator(p_next.begin(), ityr::ori::mode::write),
       ityr::make_global_iterator(p_next.end()  , ityr::ori::mode::write),
       [=](double& p) {
@@ -189,7 +190,7 @@ void pagerank(const graph&              g,
       });
 
   ityr::parallel_for_each(
-      {.cutoff_count = 1024, .checkout_count = 1024},
+      {.cutoff_count = cutoff_v, .checkout_count = cutoff_v},
       ityr::make_global_iterator(p_div.begin()       , ityr::ori::mode::write),
       ityr::make_global_iterator(p_div.end()         , ityr::ori::mode::write),
       ityr::make_global_iterator(g.v_out_data.begin(), ityr::ori::mode::read),
@@ -211,7 +212,7 @@ void pagerank(const graph&              g,
 
           double contribution =
             ityr::parallel_reduce(
-                {.cutoff_count = 1024, .checkout_count = 1024},
+                {.cutoff_count = cutoff_e, .checkout_count = cutoff_e},
                 nghs.begin(), nghs.end(),
                 double(0), std::plus<double>{},
                 [=](const uintE& idx) {
@@ -222,7 +223,7 @@ void pagerank(const graph&              g,
         });
 
     ityr::parallel_for_each(
-        {.cutoff_count = 1024, .checkout_count = 1024},
+        {.cutoff_count = cutoff_v, .checkout_count = cutoff_v},
         ityr::make_global_iterator(g.v_out_data.begin(), ityr::ori::mode::read),
         ityr::make_global_iterator(g.v_out_data.end()  , ityr::ori::mode::read),
         ityr::make_global_iterator(p_next.begin()      , ityr::ori::mode::read),
@@ -232,7 +233,7 @@ void pagerank(const graph&              g,
         });
 
     ityr::parallel_for_each(
-        {.cutoff_count = 1024, .checkout_count = 1024},
+        {.cutoff_count = cutoff_v, .checkout_count = cutoff_v},
         ityr::make_global_iterator(p_curr.begin()     , ityr::ori::mode::read),
         ityr::make_global_iterator(p_curr.end()       , ityr::ori::mode::read),
         ityr::make_global_iterator(p_next.begin()     , ityr::ori::mode::read),
@@ -243,7 +244,7 @@ void pagerank(const graph&              g,
 
     double L1_norm =
       ityr::parallel_reduce(
-          {.cutoff_count = 1024, .checkout_count = 1024},
+          {.cutoff_count = cutoff_v, .checkout_count = cutoff_v},
           ityr::make_global_iterator(differences.begin(), ityr::ori::mode::read),
           ityr::make_global_iterator(differences.end()  , ityr::ori::mode::read),
           double(0), std::plus<double>{});
@@ -258,7 +259,7 @@ void pagerank(const graph&              g,
 
   double max_pr =
     ityr::parallel_reduce(
-        {.cutoff_count = 1024, .checkout_count = 1024},
+        {.cutoff_count = cutoff_v, .checkout_count = cutoff_v},
         ityr::make_global_iterator(p_next.begin(), ityr::ori::mode::read),
         ityr::make_global_iterator(p_next.end()  , ityr::ori::mode::read),
         std::numeric_limits<double>::lowest(),
@@ -309,7 +310,9 @@ void show_help_and_exit(int argc [[maybe_unused]], char** argv) {
     printf("Usage: %s [options]\n"
            "  options:\n"
            "    -r : # of repeats (int)\n"
-           "    -i : path to the dataset binary file (string)\n", argv[0]);
+           "    -i : path to the dataset binary file (string)\n"
+           "    -v : cutoff count for vertices (size_t)\n"
+           "    -e : cutoff count for edges (size_t)\n", argv[0]);
   }
   exit(1);
 }
@@ -320,13 +323,19 @@ int main(int argc, char** argv) {
   set_signal_handlers();
 
   int opt;
-  while ((opt = getopt(argc, argv, "r:i:h")) != EOF) {
+  while ((opt = getopt(argc, argv, "r:i:v:e:h")) != EOF) {
     switch (opt) {
       case 'r':
         n_repeats = atoi(optarg);
         break;
       case 'i':
         dataset_filename = optarg;
+        break;
+      case 'v':
+        cutoff_v = atol(optarg);
+        break;
+      case 'e':
+        cutoff_e = atol(optarg);
         break;
       default:
         show_help_and_exit(argc, argv);
@@ -346,8 +355,10 @@ int main(int argc, char** argv) {
            "[PageRank]\n"
            "# of processes:               %d\n"
            "Dataset:                      %s\n"
+           "Cutoff for vertices:          %ld\n"
+           "Cutoff for edges:             %ld\n"
            "-------------------------------------------------------------\n",
-           ityr::n_ranks(), dataset_filename);
+           ityr::n_ranks(), dataset_filename, cutoff_v, cutoff_e);
 
     printf("[Compile Options]\n");
     ityr::print_compile_options();
