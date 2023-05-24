@@ -14,7 +14,7 @@ default_params:
     - value: 6
       machines: [local]
   repeats: 11
-  dataset: rmat_22_24
+  dataset: rmat_20_24
   # common params
   serial: 0
   sched: randws # randws/adws
