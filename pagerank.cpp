@@ -139,6 +139,8 @@ graph load_dataset(const char* filename) {
 
   if (ityr::is_master()) {
     printf("Dataset loaded (%ld ns).\n", t1 - t0);
+    printf("N = %ld M = %ld\n", n, m);
+    printf("\n");
     fflush(stdout);
   }
 
@@ -154,60 +156,58 @@ graph load_dataset(const char* filename) {
 
 using neighbors = ityr::global_span<uintE>;
 
-struct pr_vertex {
-  double p[2];
-  double p_div[2];
-
-  neighbors in_nghs;
-  neighbors out_nghs;
-
-  neighbors in_neighbors() const { return in_nghs; }
-  neighbors out_neighbors() const { return out_nghs; }
-
-  uintE in_degree() { return in_nghs.size(); }
-  uintE out_degree() { return out_nghs.size(); }
-};
-
-void pagerank(const graph&                 g,
-              ityr::global_span<pr_vertex> pr_vertices,
-              double                       eps       = 0.000001,
-              std::size_t                  max_iters = 100) {
+void pagerank(const graph&              g,
+              ityr::global_span<double> p_curr,
+              ityr::global_span<double> p_next,
+              ityr::global_span<double> p_div,
+              ityr::global_span<double> p_div_next,
+              ityr::global_span<double> differences,
+              double                    eps       = 0.000001,
+              std::size_t               max_iters = 100) {
   const double damping = 0.85;
   auto n = g.n;
   const double addedConstant = (1 - damping) * (1 / static_cast<double>(n));
 
   double one_over_n = 1 / static_cast<double>(n);
 
-  auto in_edges_begin  = g.in_edges.begin();
-  auto out_edges_begin = g.out_edges.begin();
+  auto in_edges_begin = g.in_edges.begin();
 
   ityr::parallel_for_each(
       {.cutoff_count = 1024, .checkout_count = 1024},
-      ityr::make_global_iterator(pr_vertices.begin() , ityr::ori::mode::write),
-      ityr::make_global_iterator(pr_vertices.end()   , ityr::ori::mode::write),
-      ityr::make_global_iterator(g.v_in_data.begin() , ityr::ori::mode::read),
-      ityr::make_global_iterator(g.v_out_data.begin(), ityr::ori::mode::read),
-      [=](pr_vertex& pv, const vertex_data& vin, const vertex_data& vout) {
-        pv.in_nghs  = {in_edges_begin + vin.offset, vin.degree};
-        pv.out_nghs = {out_edges_begin + vout.offset, vout.degree};
-        pv.p[0]     = one_over_n;
-        pv.p[1]     = 0;
-        pv.p_div[0] = one_over_n / static_cast<double>(vout.degree);
-        pv.p_div[1] = 0;
+      ityr::make_global_iterator(p_curr.begin(), ityr::ori::mode::write),
+      ityr::make_global_iterator(p_curr.end()  , ityr::ori::mode::write),
+      [=](double& p) {
+        p = one_over_n;
       });
 
-  int flip = 0;
+  ityr::parallel_for_each(
+      {.cutoff_count = 1024, .checkout_count = 1024},
+      ityr::make_global_iterator(p_next.begin(), ityr::ori::mode::write),
+      ityr::make_global_iterator(p_next.end()  , ityr::ori::mode::write),
+      [=](double& p) {
+        p = 0;
+      });
+
+  ityr::parallel_for_each(
+      {.cutoff_count = 1024, .checkout_count = 1024},
+      ityr::make_global_iterator(p_div.begin()       , ityr::ori::mode::write),
+      ityr::make_global_iterator(p_div.end()         , ityr::ori::mode::write),
+      ityr::make_global_iterator(g.v_out_data.begin(), ityr::ori::mode::read),
+      [=](double& p, const vertex_data& vout) {
+        p = one_over_n / static_cast<double>(vout.degree);
+      });
 
   size_t iter = 0;
   while (iter++ < max_iters) {
     ityr::parallel_for_each(
         {.cutoff_count = 1, .checkout_count = 1},
-        ityr::make_global_iterator(pr_vertices.begin(), ityr::ori::mode::no_access),
-        ityr::make_global_iterator(pr_vertices.end()  , ityr::ori::mode::no_access),
-        [=](ityr::ori::global_ref<pr_vertex> ur) {
-          pr_vertex u = ur;
+        ityr::make_global_iterator(g.v_in_data.begin(), ityr::ori::mode::no_access),
+        ityr::make_global_iterator(g.v_in_data.end()  , ityr::ori::mode::no_access),
+        ityr::make_global_iterator(p_next.begin()     , ityr::ori::mode::no_access),
+        [=](auto vin_, auto pn_) {
+          vertex_data vin = vin_;
 
-          auto nghs = u.in_neighbors();
+          neighbors nghs = {in_edges_begin + vin.offset, vin.degree};
 
           double contribution =
             ityr::parallel_reduce(
@@ -215,58 +215,66 @@ void pagerank(const graph&                 g,
                 nghs.begin(), nghs.end(),
                 double(0), std::plus<double>{},
                 [=](const uintE& idx) {
-                  /* pr_vertex v = pr_vertices[idx]; */
-                  /* return v.p_div[flip]; */
-                  return (&((&pr_vertices[idx])->*(&pr_vertex::p_div)))[flip];
+                  return p_div[idx];
                 });
 
-          /* double contribution = 0; */
-          /* ityr::ori::with_checkout(nghs.data(), nghs.size(), ityr::ori::mode::read, */
-          /*                          [&](const uintE* nghs_) { */
-          /*   for (std::size_t i = 0; i < nghs.size(); i++) { */
-          /*     uintE idx = nghs_[i]; */
-          /*     contribution += (&((&pr_vertices[idx])->*(&pr_vertex::p_div)))[flip]; */
-          /*   } */
-          /* }); */
+          pn_ = damping * contribution + addedConstant;
+        });
 
-          u.p[!flip] = damping * contribution + addedConstant;
-          u.p_div[!flip] = u.p[!flip] / static_cast<double>(u.out_degree());
+    ityr::parallel_for_each(
+        {.cutoff_count = 1024, .checkout_count = 1024},
+        ityr::make_global_iterator(g.v_out_data.begin(), ityr::ori::mode::read),
+        ityr::make_global_iterator(g.v_out_data.end()  , ityr::ori::mode::read),
+        ityr::make_global_iterator(p_next.begin()      , ityr::ori::mode::read),
+        ityr::make_global_iterator(p_div_next.begin()  , ityr::ori::mode::write),
+        [=](const vertex_data& vout, const double& pn, double& pdn) {
+          pdn = pn / static_cast<double>(vout.degree);
+        });
 
-          ur = u;
+    ityr::parallel_for_each(
+        {.cutoff_count = 1024, .checkout_count = 1024},
+        ityr::make_global_iterator(p_curr.begin()     , ityr::ori::mode::read),
+        ityr::make_global_iterator(p_curr.end()       , ityr::ori::mode::read),
+        ityr::make_global_iterator(p_next.begin()     , ityr::ori::mode::read),
+        ityr::make_global_iterator(differences.begin(), ityr::ori::mode::write),
+        [=](const double& pc, const double& pn, double& d) {
+          d = fabs(pc - pn);
         });
 
     double L1_norm =
       ityr::parallel_reduce(
           {.cutoff_count = 1024, .checkout_count = 1024},
-          pr_vertices.begin(), pr_vertices.end(),
-          double(0), std::plus<double>{},
-          [=](const pr_vertex& v) {
-            return fabs(v.p[flip] - v.p[!flip]);
-          });
+          ityr::make_global_iterator(differences.begin(), ityr::ori::mode::read),
+          ityr::make_global_iterator(differences.end()  , ityr::ori::mode::read),
+          double(0), std::plus<double>{});
 
     if (L1_norm < eps) break;
 
     /* std::cout << "L1_norm = " << L1_norm << std::endl; */
 
-    flip = !flip;
+    std::swap(p_curr, p_next);
+    std::swap(p_div, p_div_next);
   }
 
   double max_pr =
     ityr::parallel_reduce(
         {.cutoff_count = 1024, .checkout_count = 1024},
-        pr_vertices.begin(), pr_vertices.end(),
+        ityr::make_global_iterator(p_next.begin(), ityr::ori::mode::read),
+        ityr::make_global_iterator(p_next.end()  , ityr::ori::mode::read),
         std::numeric_limits<double>::lowest(),
-        [](double a, double b) { return std::max(a, b); },
-        [=](const pr_vertex& v) {
-          return v.p[!flip];
-        });
+        [](double a, double b) { return std::max(a, b); });
 
   std::cout << "max_pr = " << max_pr << " iter = " << iter << std::endl;
 }
 
 void run() {
   static std::optional<graph> g = load_dataset(dataset_filename);
-  ityr::global_vector<pr_vertex> pr_vertices(global_vec_coll_opts, g->n);
+
+  ityr::global_vector<double> p_curr     (global_vec_coll_opts, g->n);
+  ityr::global_vector<double> p_next     (global_vec_coll_opts, g->n);
+  ityr::global_vector<double> p_div      (global_vec_coll_opts, g->n);
+  ityr::global_vector<double> p_div_next (global_vec_coll_opts, g->n);
+  ityr::global_vector<double> differences(global_vec_coll_opts, g->n);
 
   for (int r = 0; r < n_repeats; r++) {
     ityr::profiler_begin();
@@ -274,7 +282,11 @@ void run() {
     auto t0 = ityr::gettime_ns();
 
     ityr::root_exec([&]{
-      pagerank(*g, {pr_vertices.data(), pr_vertices.size()});
+      pagerank(*g, {p_curr.data()     , p_curr.size()     },
+                   {p_next.data()     , p_next.size()     },
+                   {p_div.data()      , p_div.size()      },
+                   {p_div_next.data() , p_div_next.size() },
+                   {differences.data(), differences.size()});
     });
 
     auto t1 = ityr::gettime_ns();
