@@ -60,18 +60,20 @@ graph load_dataset(const char* filename) {
 
   std::size_t skip = 3 * sizeof(long);
 
-  uintT* out_offsets = reinterpret_cast<uintT*>(data + skip);
+  // Put `static` keyword here so that the variable has the same virtual address
+  // TODO: better handle this issue
+  static uintT* out_offsets = reinterpret_cast<uintT*>(data + skip);
   skip += (n + 1) * sizeof(uintT);
 
-  uintE* out_edges = reinterpret_cast<uintE*>(data + skip);
+  static uintE* out_edges = reinterpret_cast<uintE*>(data + skip);
   skip += m * sizeof(uintE);
 
   skip += 3 * sizeof(long);
 
-  uintT* in_offsets = reinterpret_cast<uintT*>(data + skip);
+  static uintT* in_offsets = reinterpret_cast<uintT*>(data + skip);
   skip += (n + 1) * sizeof(uintT);
 
-  uintE* in_edges = reinterpret_cast<uintE*>(data + skip);
+  static uintE* in_edges = reinterpret_cast<uintE*>(data + skip);
   skip += m * sizeof(uintE);
 
   ityr::global_vector<vertex_data> v_out_data(global_vec_coll_opts, n + 1);
@@ -83,6 +85,7 @@ graph load_dataset(const char* filename) {
 
   ityr::root_exec([&]() {
     ityr::parallel_for_each(
+        {.cutoff_count = 1024, .checkout_count = 1024},
         ityr::count_iterator<long>(0),
         ityr::count_iterator<long>(n),
         ityr::make_global_iterator(v_out_data.begin(), ityr::ori::mode::write),
@@ -92,6 +95,7 @@ graph load_dataset(const char* filename) {
     });
 
     ityr::parallel_for_each(
+        {.cutoff_count = 1024, .checkout_count = 1024},
         ityr::count_iterator<long>(0),
         ityr::count_iterator<long>(n),
         ityr::make_global_iterator(v_in_data.begin(), ityr::ori::mode::write),
@@ -101,6 +105,7 @@ graph load_dataset(const char* filename) {
     });
 
     ityr::parallel_for_each(
+        {.cutoff_count = 1024, .checkout_count = 1024},
         ityr::count_iterator<long>(0),
         ityr::count_iterator<long>(m),
         ityr::make_global_iterator(out_edges_vec.begin(), ityr::ori::mode::write),
@@ -109,6 +114,7 @@ graph load_dataset(const char* filename) {
     });
 
     ityr::parallel_for_each(
+        {.cutoff_count = 1024, .checkout_count = 1024},
         ityr::count_iterator<long>(0),
         ityr::count_iterator<long>(m),
         ityr::make_global_iterator(in_edges_vec.begin(), ityr::ori::mode::write),
@@ -208,10 +214,20 @@ void pagerank(const graph&                 g,
                 {.cutoff_count = 1024, .checkout_count = 1024},
                 nghs.begin(), nghs.end(),
                 double(0), std::plus<double>{},
-                [=](const uintE& i) {
-                  pr_vertex v = pr_vertices[i];
-                  return v.p_div[flip];
+                [=](const uintE& idx) {
+                  /* pr_vertex v = pr_vertices[idx]; */
+                  /* return v.p_div[flip]; */
+                  return (&((&pr_vertices[idx])->*(&pr_vertex::p_div)))[flip];
                 });
+
+          /* double contribution = 0; */
+          /* ityr::ori::with_checkout(nghs.data(), nghs.size(), ityr::ori::mode::read, */
+          /*                          [&](const uintE* nghs_) { */
+          /*   for (std::size_t i = 0; i < nghs.size(); i++) { */
+          /*     uintE idx = nghs_[i]; */
+          /*     contribution += (&((&pr_vertices[idx])->*(&pr_vertex::p_div)))[flip]; */
+          /*   } */
+          /* }); */
 
           u.p[!flip] = damping * contribution + addedConstant;
           u.p_div[!flip] = u.p[!flip] / static_cast<double>(u.out_degree());
@@ -249,8 +265,8 @@ void pagerank(const graph&                 g,
 }
 
 void run() {
-  graph g = load_dataset(dataset_filename);
-  ityr::global_vector<pr_vertex> pr_vertices(global_vec_coll_opts, g.n);
+  static std::optional<graph> g = load_dataset(dataset_filename);
+  ityr::global_vector<pr_vertex> pr_vertices(global_vec_coll_opts, g->n);
 
   for (int r = 0; r < n_repeats; r++) {
     ityr::profiler_begin();
@@ -258,7 +274,7 @@ void run() {
     auto t0 = ityr::gettime_ns();
 
     ityr::root_exec([&]{
-      pagerank(g, {pr_vertices.data(), pr_vertices.size()});
+      pagerank(*g, {pr_vertices.data(), pr_vertices.size()});
     });
 
     auto t1 = ityr::gettime_ns();
@@ -272,6 +288,8 @@ void run() {
 
     ityr::profiler_flush();
   }
+
+  g = std::nullopt; // call destructor here
 }
 
 void show_help_and_exit(int argc [[maybe_unused]], char** argv) {
