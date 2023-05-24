@@ -108,10 +108,12 @@ function(build_bench bench_name config_name)
 endfunction()
 
 add_custom_target(cilksort)
+add_custom_target(pagerank)
 add_custom_target(uts)
 add_custom_target(uts++)
 
 build_bench(cilksort cilksort FILES cilksort.cpp)
+build_bench(pagerank pagerank FILES pagerank.cpp)
 build_bench(uts      uts      FILES uts/main.cc   uts/uts.c uts/rng/brg_sha1.c CXXFLAGS -DBRG_RNG=1)
 build_bench(uts++    uts++    FILES uts/main++.cc uts/uts.c uts/rng/brg_sha1.c CXXFLAGS -DBRG_RNG=1)
 set_source_files_properties(uts/uts.c uts/rng/brg_sha1.c PROPERTIES LANGUAGE CXX)
