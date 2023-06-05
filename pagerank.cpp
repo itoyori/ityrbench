@@ -95,7 +95,9 @@ graph load_dataset(const char* filename) {
       vd.offset = in_offsets[i];
       vd.degree = in_offsets[i + 1] - in_offsets[i];
     });
+  });
 
+  ityr::root_exec([&]() {
     ityr::parallel_for_each(
         {.cutoff_count = cutoff_v, .checkout_count = cutoff_v},
         ityr::count_iterator<long>(0),
@@ -105,7 +107,9 @@ graph load_dataset(const char* filename) {
       vd.offset = out_offsets[i];
       vd.degree = out_offsets[i + 1] - out_offsets[i];
     });
+  });
 
+  ityr::root_exec([&]() {
     ityr::parallel_for_each(
         {.cutoff_count = cutoff_e, .checkout_count = cutoff_e},
         ityr::count_iterator<long>(0),
@@ -114,7 +118,9 @@ graph load_dataset(const char* filename) {
         [&](long i, uintE& e) {
       e = in_edges[i];
     });
+  });
 
+  ityr::root_exec([&]() {
     ityr::parallel_for_each(
         {.cutoff_count = cutoff_e, .checkout_count = cutoff_e},
         ityr::count_iterator<long>(0),
