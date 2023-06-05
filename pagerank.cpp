@@ -20,6 +20,7 @@ struct graph {
 };
 
 int         n_repeats        = 10;
+int         max_iters        = 100;
 const char* dataset_filename = nullptr;
 std::size_t cutoff_v         = 4096;
 std::size_t cutoff_e         = 4096;
@@ -163,8 +164,7 @@ void pagerank(const graph&              g,
               ityr::global_span<double> p_div,
               ityr::global_span<double> p_div_next,
               ityr::global_span<double> differences,
-              double                    eps       = 0.000001,
-              std::size_t               max_iters = 100) {
+              double                    eps       = 0.000001) {
   const double damping = 0.85;
   auto n = g.n;
   const double addedConstant = (1 - damping) * (1 / static_cast<double>(n));
@@ -198,7 +198,7 @@ void pagerank(const graph&              g,
         p = one_over_n / static_cast<double>(vout.degree);
       });
 
-  size_t iter = 0;
+  int iter = 0;
   while (iter++ < max_iters) {
     ityr::parallel_for_each(
         {.cutoff_count = 1, .checkout_count = 1},
@@ -310,7 +310,8 @@ void show_help_and_exit(int argc [[maybe_unused]], char** argv) {
     printf("Usage: %s [options]\n"
            "  options:\n"
            "    -r : # of repeats (int)\n"
-           "    -i : path to the dataset binary file (string)\n"
+           "    -i : # of maximum iterations (int)\n"
+           "    -f : path to the dataset binary file (string)\n"
            "    -v : cutoff count for vertices (size_t)\n"
            "    -e : cutoff count for edges (size_t)\n", argv[0]);
   }
@@ -323,12 +324,15 @@ int main(int argc, char** argv) {
   set_signal_handlers();
 
   int opt;
-  while ((opt = getopt(argc, argv, "r:i:v:e:h")) != EOF) {
+  while ((opt = getopt(argc, argv, "r:i:f:v:e:h")) != EOF) {
     switch (opt) {
       case 'r':
         n_repeats = atoi(optarg);
         break;
       case 'i':
+        max_iters = atoi(optarg);
+        break;
+      case 'f':
         dataset_filename = optarg;
         break;
       case 'v':
@@ -354,11 +358,12 @@ int main(int argc, char** argv) {
     printf("=============================================================\n"
            "[PageRank]\n"
            "# of processes:               %d\n"
+           "Max iterations:               %d\n"
            "Dataset:                      %s\n"
            "Cutoff for vertices:          %ld\n"
            "Cutoff for edges:             %ld\n"
            "-------------------------------------------------------------\n",
-           ityr::n_ranks(), dataset_filename, cutoff_v, cutoff_e);
+           ityr::n_ranks(), max_iters, dataset_filename, cutoff_v, cutoff_e);
 
     printf("[Compile Options]\n");
     ityr::print_compile_options();

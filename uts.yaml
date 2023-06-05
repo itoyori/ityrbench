@@ -27,12 +27,13 @@ default_params:
   shared_mem: 1
   prof: disabled # disabled/stats/trace
   dag_prof: disabled # disabled/workspan
+  cache_prof: disabled # disabled/stats
   debugger: 0
 
 default_name: uts
 
 build:
-  depend_params: [exec_type, dist_policy, block_size, prof, dag_prof]
+  depend_params: [exec_type, dist_policy, block_size, prof, dag_prof, cache_prof]
   script: |
     source build_common.bash
 

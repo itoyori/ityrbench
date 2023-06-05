@@ -32,6 +32,7 @@ default_params:
   shared_mem: 1
   prof: disabled # disabled/stats/trace
   dag_prof: disabled # disabled/workspan
+  cache_prof: disabled # disabled/stats
   debugger: 0
 
 default_name: exafmm
@@ -123,7 +124,7 @@ batches:
         dest: exafmm/${batch_name}/n_${n_input}_s_${sub_block_size}_${duplicate}.out
 
 build:
-  depend_params: [dist_policy, block_size, prof, dag_prof]
+  depend_params: [dist_policy, block_size, prof, dag_prof, cache_prof]
   script: |
     source build_common.bash
 

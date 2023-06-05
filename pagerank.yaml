@@ -14,6 +14,7 @@ default_params:
     - value: 6
       machines: [local]
   repeats: 11
+  max_iters: 100
   dataset: rmat_20_24
   # common params
   serial: 0
@@ -28,6 +29,7 @@ default_params:
   shared_mem: 1
   prof: disabled # disabled/stats/trace
   dag_prof: disabled # disabled/workspan
+  cache_prof: disabled # disabled/stats
   debugger: 0
 
 default_name: pagerank
@@ -35,7 +37,7 @@ default_queue: node_${nodes}
 default_duplicates: 1
 
 build:
-  depend_params: [dist_policy, block_size, prof, dag_prof]
+  depend_params: [dist_policy, block_size, prof, dag_prof, cache_prof]
   script: |
     source build_common.bash
 
@@ -46,7 +48,7 @@ build:
     make -j pagerank
 
 run:
-  depend_params: [nodes, cores, repeats, dataset, serial, sched, cache_policy, cache_size, sub_block_size, max_dirty, noncoll_alloc_size, shared_mem, prof, debugger]
+  depend_params: [nodes, cores, repeats, max_iters, dataset, serial, sched, cache_policy, cache_size, sub_block_size, max_dirty, noncoll_alloc_size, shared_mem, prof, debugger]
   script: |
     source run_common.bash
 
@@ -59,7 +61,8 @@ run:
     commands="
       ./pagerank_${config_name}.out
         -r $KOCHI_PARAM_REPEATS
-        -i ${KOCHI_INSTALL_PREFIX_GBBS}/${KOCHI_PARAM_DATASET}.bin"
+        -i $KOCHI_PARAM_MAX_ITERS
+        -f ${KOCHI_INSTALL_PREFIX_GBBS}/${KOCHI_PARAM_DATASET}.bin"
 
     n_nodes=$(echo $KOCHI_PARAM_NODES | cut -f 1 -d ":" | sed 's/x/*/g' | bc)
 
