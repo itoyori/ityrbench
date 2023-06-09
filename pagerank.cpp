@@ -545,6 +545,11 @@ void pagerank_naive(const graph&              g,
     std::swap(p_div, p_div_next);
   }
 
+  if (iter > max_iters) {
+    std::swap(p_curr, p_next);
+    iter--;
+  }
+
   double max_pr =
     ityr::parallel_reduce(
         {.cutoff_count = cutoff_v, .checkout_count = cutoff_v},
@@ -711,6 +716,11 @@ void pagerank_gpop(const graph&              g,
 
     std::swap(p_curr, p_next);
     std::swap(p_div, p_div_next);
+  }
+
+  if (iter > max_iters) {
+    std::swap(p_curr, p_next);
+    iter--;
   }
 
   double max_pr =

@@ -19,7 +19,7 @@ default_params:
   cutoff_v: 4096
   cutoff_e: 4096
   exec_type: gpop # naive/gpop
-  bin_width: 32768
+  bin_width: 16384
   # common params
   serial: 0
   sched: randws # randws/adws

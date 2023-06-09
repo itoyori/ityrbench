@@ -117,6 +117,10 @@ sequence<double> PageRank_edgeMap(Graph& G, double eps = 0.000001,
 
     gbbs_debug(t.stop(); t.next("iteration time"););
   }
+  if (iter > max_iters) {
+    std::swap(p_curr, p_next);
+    iter--;
+  }
   auto max_pr = parlay::reduce_max(p_next);
   std::cout << "max_pr = " << max_pr << " iter = " << iter << std::endl;
   return p_next;
@@ -191,6 +195,10 @@ sequence<double> PageRank(Graph& G, double eps = 0.000001,
     std::swap(p_div, p_div_next);
     t.stop();
     t.next("iteration time");
+  }
+  if (iter > max_iters) {
+    std::swap(p_curr, p_next);
+    iter--;
   }
   auto max_pr = parlay::reduce_max(p_next);
   std::cout << "max_pr = " << max_pr << " iter = " << iter << std::endl;
