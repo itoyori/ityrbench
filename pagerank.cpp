@@ -610,30 +610,20 @@ void pagerank_gpop(const graph&              g,
 
         ityr::serial_for_each(
             {.checkout_count = std::size_t(n_parts)},
-            ityr::count_iterator<long>(0),
-            ityr::count_iterator<long>(n_parts),
-            ityr::make_global_iterator(p.update_bins.begin(), ityr::ori::mode::read),
-            [&](long pid, const ityr::global_vector<double>& update_bin) {
-          long e_begin = p.bin_edge_offsets[pid];
-          long e_end   = p.bin_edge_offsets[pid + 1];
+            ityr::make_global_iterator(p.update_bins.begin()     , ityr::ori::mode::read),
+            ityr::make_global_iterator(p.update_bins.end()       , ityr::ori::mode::read),
+            ityr::make_global_iterator(p.bin_edge_offsets.begin(), ityr::ori::mode::read),
+            [&](const ityr::global_vector<double>& update_bins, long e_begin) {
 
-          assert(update_bin.size() == std::size_t(e_end - e_begin));
-
-          ityr::ori::with_checkout(
-              update_bin.data(), update_bin.size(), ityr::ori::mode::write,
-              [&](double* update_bin_buf) {
-
-            long offset = 0;
-            ityr::serial_for_each(
-                {.checkout_count = cutoff_e},
-                ityr::make_global_iterator(&p.bin_edges[e_begin], ityr::ori::mode::read),
-                ityr::make_global_iterator(&p.bin_edges[e_end]  , ityr::ori::mode::read),
-                [&](uintE vid) {
-              assert(vid >= p.v_begin);
-              assert(vid - p.v_begin < p.n);
-              assert(std::size_t(offset) < update_bin.size());
-              update_bin_buf[offset++] = p_div_buf[vid - p.v_begin];
-            });
+          ityr::serial_for_each(
+              {.checkout_count = cutoff_e},
+              ityr::make_global_iterator(update_bins.begin()  , ityr::ori::mode::write),
+              ityr::make_global_iterator(update_bins.end()    , ityr::ori::mode::write),
+              ityr::make_global_iterator(&p.bin_edges[e_begin], ityr::ori::mode::read),
+              [&](double& update, uintE vid) {
+            assert(vid >= p.v_begin);
+            assert(vid - p.v_begin < p.n);
+            update = p_div_buf[vid - p.v_begin];
           });
         });
       });
@@ -659,25 +649,27 @@ void pagerank_gpop(const graph&              g,
             ityr::make_global_iterator(p.update_bins_ref.begin() , ityr::ori::mode::read),
             [&](const ityr::global_span<uintE>& dest_bin, const ityr::global_span<double>& update_bin) {
 
-          ityr::ori::with_checkout(
-              update_bin.data(), update_bin.size(), ityr::ori::mode::read,
-              [&](const double* update_bin_buf) {
+          if (update_bin.size() > 0) {
+            ityr::ori::with_checkout(
+                update_bin.data(), update_bin.size(), ityr::ori::mode::read,
+                [&](const double* update_bin_buf) {
 
-            long update_bin_offset = -1;
-            ityr::serial_for_each(
-                {.checkout_count = dest_bin.size()},
-                ityr::make_global_iterator(dest_bin.begin(), ityr::ori::mode::read),
-                ityr::make_global_iterator(dest_bin.end()  , ityr::ori::mode::read),
-                [&](uintE dest_vid) {
-              update_bin_offset += (dest_vid >> MSB_ROT);
-              dest_vid &= MAX_POS;
+              long update_bin_offset = -1;
+              ityr::serial_for_each(
+                  {.checkout_count = dest_bin.size()},
+                  ityr::make_global_iterator(dest_bin.begin(), ityr::ori::mode::read),
+                  ityr::make_global_iterator(dest_bin.end()  , ityr::ori::mode::read),
+                  [&](uintE dest_vid) {
+                update_bin_offset += (dest_vid >> MSB_ROT);
+                dest_vid &= MAX_POS;
 
-              assert(dest_vid >= p.v_begin);
-              assert(dest_vid - p.v_begin < p.n);
-              assert(std::size_t(update_bin_offset) < update_bin.size());
-              p_next_buf[dest_vid - p.v_begin] += update_bin_buf[update_bin_offset];
+                assert(dest_vid >= p.v_begin);
+                assert(dest_vid - p.v_begin < p.n);
+                assert(std::size_t(update_bin_offset) < update_bin.size());
+                p_next_buf[dest_vid - p.v_begin] += update_bin_buf[update_bin_offset];
+              });
             });
-          });
+          }
         });
 
         for (long i = 0; i < p.n; i++) {
