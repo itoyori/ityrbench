@@ -16,6 +16,10 @@ default_params:
   repeats: 11
   max_iters: 100
   dataset: rmat_20_24
+  cutoff_v: 4096
+  cutoff_e: 4096
+  exec_type: gpop # naive/gpop
+  bin_width: 32768
   # common params
   serial: 0
   sched: randws # randws/adws
@@ -48,7 +52,7 @@ build:
     make -j pagerank
 
 run:
-  depend_params: [nodes, cores, repeats, max_iters, dataset, serial, sched, cache_policy, cache_size, sub_block_size, max_dirty, noncoll_alloc_size, shared_mem, prof, debugger]
+  depend_params: [nodes, cores, repeats, max_iters, dataset, cutoff_v, cutoff_e, exec_type, bin_width, serial, sched, cache_policy, cache_size, sub_block_size, max_dirty, noncoll_alloc_size, shared_mem, prof, debugger]
   script: |
     source run_common.bash
 
@@ -58,11 +62,21 @@ run:
       config_name=${KOCHI_PARAM_SCHED}_${KOCHI_PARAM_CACHE_POLICY}
     fi
 
+    case $KOCHI_PARAM_EXEC_TYPE in
+      naive) exec_type_num=0 ;;
+      gpop)  exec_type_num=1 ;;
+      *)     echo "Unknown exec type"; exit 1 ;;
+    esac
+
     commands="
       ./pagerank_${config_name}.out
         -r $KOCHI_PARAM_REPEATS
         -i $KOCHI_PARAM_MAX_ITERS
-        -f ${KOCHI_INSTALL_PREFIX_GBBS}/${KOCHI_PARAM_DATASET}.bin"
+        -f ${KOCHI_INSTALL_PREFIX_GBBS}/${KOCHI_PARAM_DATASET}.bin
+        -v $KOCHI_PARAM_CUTOFF_V
+        -e $KOCHI_PARAM_CUTOFF_E
+        -t $exec_type_num
+        -b $KOCHI_PARAM_BIN_WIDTH"
 
     n_nodes=$(echo $KOCHI_PARAM_NODES | cut -f 1 -d ":" | sed 's/x/*/g' | bc)
 
