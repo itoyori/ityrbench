@@ -15,6 +15,28 @@ template <>           constexpr inline const char* typename_str<long>()   { retu
 template <>           constexpr inline const char* typename_str<float>()  { return "float";   }
 template <>           constexpr inline const char* typename_str<double>() { return "double";  }
 
+template <typename T>
+constexpr inline bool is_pow2(T x) {
+  return !(x & (x - 1));
+}
+
+template <typename T>
+constexpr inline T round_down_pow2(T x, T alignment) {
+  return x & ~(alignment - 1);
+}
+
+template <typename T>
+constexpr inline T round_up_pow2(T x, T alignment) {
+  return (x + alignment - 1) & ~(alignment - 1);
+}
+
+template <typename T>
+constexpr inline auto log2_pow2(T n) {
+  int x = 0;
+  while (n >>= 1) x++;
+  return x;
+}
+
 inline timer_t* abort_timer_instance() {
   static timer_t timer;
   return &timer;

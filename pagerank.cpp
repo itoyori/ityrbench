@@ -214,7 +214,7 @@ void pagerank(const graph&              g,
         [=](auto vin_, auto pn_) {
           vertex_data vin = vin_;
 
-          neighbors nghs = {in_edges_begin + vin.offset, vin.degree};
+          neighbors nghs = neighbors{in_edges_begin + vin.offset, vin.degree};
 
           double contribution =
             ityr::parallel_reduce(
@@ -289,11 +289,11 @@ void run() {
     auto t0 = ityr::gettime_ns();
 
     ityr::root_exec([&]{
-      pagerank(*g, {p_curr.data()     , p_curr.size()     },
-                   {p_next.data()     , p_next.size()     },
-                   {p_div.data()      , p_div.size()      },
-                   {p_div_next.data() , p_div_next.size() },
-                   {differences.data(), differences.size()});
+      pagerank(*g, ityr::global_span<double>{p_curr.data()     , p_curr.size()     },
+                   ityr::global_span<double>{p_next.data()     , p_next.size()     },
+                   ityr::global_span<double>{p_div.data()      , p_div.size()      },
+                   ityr::global_span<double>{p_div_next.data() , p_div_next.size() },
+                   ityr::global_span<double>{differences.data(), differences.size()});
     });
 
     auto t1 = ityr::gettime_ns();

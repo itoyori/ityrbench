@@ -25,7 +25,7 @@ default_params:
   block_size: 65536 # bytes
   sub_block_size: 4096 # bytes
   max_dirty: $cache_size # MB
-  noncoll_alloc_size: 2 # MB
+  noncoll_alloc_size: 128 # MB
   shared_mem: 1
   prof: disabled # disabled/stats/trace
   dag_prof: disabled # disabled/workspan
