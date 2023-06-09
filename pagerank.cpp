@@ -333,25 +333,9 @@ ityr::global_vector<part> partition(const graph& g) {
 
       p.dest_id_bins.resize(n_parts);
       p.dest_id_bins_ref.resize(n_parts);
-      ityr::serial_for_each(
-          {.checkout_count = std::size_t(n_parts)},
-          ityr::make_global_iterator(p.dest_id_bins.begin()     , ityr::ori::mode::read_write),
-          ityr::make_global_iterator(p.dest_id_bins.end()       , ityr::ori::mode::read_write),
-          ityr::make_global_iterator(p.dest_id_bin_sizes.begin(), ityr::ori::mode::read),
-          [&](ityr::global_vector<uintE>& bin, long bin_size) {
-        bin.resize(bin_size);
-      });
 
       p.update_bins.resize(n_parts);
       p.update_bins_ref.resize(n_parts);
-      ityr::serial_for_each(
-          {.checkout_count = std::size_t(n_parts)},
-          ityr::make_global_iterator(p.update_bins.begin()     , ityr::ori::mode::read_write),
-          ityr::make_global_iterator(p.update_bins.end()       , ityr::ori::mode::read_write),
-          ityr::make_global_iterator(p.update_bin_sizes.begin(), ityr::ori::mode::read),
-          [&](ityr::global_vector<double>& bin, long bin_size) {
-        bin.resize(bin_size);
-      });
     });
 
     // store references to bins
@@ -368,11 +352,19 @@ ityr::global_vector<part> partition(const graph& g) {
           [&](const part& p2, ityr::global_span<uintE>& dest_id_bin_ref, ityr::global_span<double>& update_bin_ref) {
 
         ityr::ori::with_checkout(
-            &p2.dest_id_bins[p.id], 1, ityr::ori::mode::read,
-            &p2.update_bins[p.id] , 1, ityr::ori::mode::read,
-            [&](const ityr::global_vector<uintE>* dest_id_bin, const ityr::global_vector<double>* update_bin) {
-          dest_id_bin_ref = ityr::global_span<uintE> {dest_id_bin->data(), dest_id_bin->size()};
-          update_bin_ref  = ityr::global_span<double>{update_bin->data() , update_bin->size()};
+            &p2.dest_id_bins[p.id]     , 1, ityr::ori::mode::read_write,
+            &p2.dest_id_bin_sizes[p.id], 1, ityr::ori::mode::read,
+            [&](ityr::global_vector<uintE>* dest_id_bin, const long* bin_size) {
+          dest_id_bin->resize(*bin_size);
+          dest_id_bin_ref = ityr::global_span<uintE>{dest_id_bin->data(), dest_id_bin->size()};
+        });
+
+        ityr::ori::with_checkout(
+            &p2.update_bins[p.id]     , 1, ityr::ori::mode::read_write,
+            &p2.update_bin_sizes[p.id], 1, ityr::ori::mode::read,
+            [&](ityr::global_vector<double>* update_bin, const long* bin_size) {
+          update_bin->resize(*bin_size);
+          update_bin_ref = ityr::global_span<double>{update_bin->data(), update_bin->size()};
         });
       });
     });
@@ -603,6 +595,8 @@ void pagerank_gpop(const graph&              g,
 
   int iter = 0;
   while (iter++ < max_iters) {
+    auto t0 = ityr::gettime_ns();
+
     // scatter
     ityr::parallel_for_each(
         ityr::make_global_iterator(g.parts.begin(), ityr::ori::mode::read),
@@ -633,6 +627,8 @@ void pagerank_gpop(const graph&              g,
         });
       });
     });
+
+    auto t1 = ityr::gettime_ns();
 
     // gather
     ityr::parallel_for_each(
@@ -682,6 +678,11 @@ void pagerank_gpop(const graph&              g,
         }
       });
     });
+
+    auto t2 = ityr::gettime_ns();
+    printf("scatter: %ld ns\n", t1 - t0);
+    printf("gather:  %ld ns\n", t2 - t1);
+    fflush(stdout);
 
     ityr::parallel_for_each(
         {.cutoff_count = cutoff_v, .checkout_count = cutoff_v},
