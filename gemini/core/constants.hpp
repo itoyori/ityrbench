@@ -18,6 +18,11 @@ Copyright (c) 2015-2016 Xiaowei Zhu, Tsinghua University
 #define CONSTANTS_HPP
 
 #define CHUNKSIZE (1<<20)
+
+#if defined(__FUJITSU) || defined(__CLANG_FUJITSU)
+#define PAGESIZE (1<<16)
+#else
 #define PAGESIZE (1<<12)
+#endif
 
 #endif

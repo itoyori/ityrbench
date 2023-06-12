@@ -141,11 +141,28 @@ public:
   MessageBuffer *** recv_buffer; // MessageBuffer* [partitions] [sockets]; numa-aware
 
   Graph() {
-    threads = numa_num_configured_cpus();
+    /* threads = numa_num_configured_cpus(); */
+    #pragma omp parallel
+    {
+      #pragma omp single
+      threads = omp_get_num_threads();
+    }
+#if defined(__FUJITSU) || defined(__CLANG_FUJITSU)
+    assert(threads <= 48);
+    sockets = (threads + 11) / 12;
+#else
     sockets = numa_num_configured_nodes();
+#endif
     threads_per_socket = threads / sockets;
-
     init();
+  }
+
+  inline int get_real_socket_id(int socket_id) {
+#if defined(__FUJITSU) || defined(__CLANG_FUJITSU)
+    return socket_id + 4;
+#else
+    return socket_id;
+#endif
   }
 
   inline int get_socket_id(int thread_id) {
@@ -165,28 +182,30 @@ public:
     assert( sizeof(unsigned long) == 8 ); // assume unsigned long is 64-bit
 
     char nodestring[sockets*2+1];
-    nodestring[0] = '0';
+    nodestring[0] = '0' + get_real_socket_id(0);
     for (int s_i=1;s_i<sockets;s_i++) {
+      int real_s_i = get_real_socket_id(s_i);
       nodestring[s_i*2-1] = ',';
-      nodestring[s_i*2] = '0'+s_i;
+      nodestring[s_i*2] = '0'+real_s_i;
     }
     struct bitmask * nodemask = numa_parse_nodestring(nodestring);
     numa_set_interleave_mask(nodemask);
 
     omp_set_dynamic(0);
-    omp_set_num_threads(threads);
+    /* omp_set_num_threads(threads); */
     thread_state = new ThreadState * [threads];
     local_send_buffer_limit = 16;
     local_send_buffer = new MessageBuffer * [threads];
     for (int t_i=0;t_i<threads;t_i++) {
-      thread_state[t_i] = (ThreadState*)numa_alloc_onnode( sizeof(ThreadState), get_socket_id(t_i));
-      local_send_buffer[t_i] = (MessageBuffer*)numa_alloc_onnode( sizeof(MessageBuffer), get_socket_id(t_i));
-      local_send_buffer[t_i]->init(get_socket_id(t_i));
+      int real_s_i = get_real_socket_id(get_socket_id(t_i));
+      thread_state[t_i] = (ThreadState*)numa_alloc_onnode( sizeof(ThreadState), real_s_i);
+      local_send_buffer[t_i] = (MessageBuffer*)numa_alloc_onnode( sizeof(MessageBuffer), real_s_i);
+      local_send_buffer[t_i]->init(real_s_i);
     }
     #pragma omp parallel for
     for (int t_i=0;t_i<threads;t_i++) {
-      int s_i = get_socket_id(t_i);
-      assert(numa_run_on_node(s_i)==0);
+      int real_s_i = get_real_socket_id(get_socket_id(t_i));
+      assert(numa_run_on_node(real_s_i)==0);
       #ifdef PRINT_DEBUG_MESSAGES
       // printf("thread-%d bound to socket-%d\n", t_i, s_i);
       #endif
@@ -204,10 +223,11 @@ public:
       send_buffer[i] = new MessageBuffer * [sockets];
       recv_buffer[i] = new MessageBuffer * [sockets];
       for (int s_i=0;s_i<sockets;s_i++) {
-        send_buffer[i][s_i] = (MessageBuffer*)numa_alloc_onnode( sizeof(MessageBuffer), s_i);
-        send_buffer[i][s_i]->init(s_i);
-        recv_buffer[i][s_i] = (MessageBuffer*)numa_alloc_onnode( sizeof(MessageBuffer), s_i);
-        recv_buffer[i][s_i]->init(s_i);
+        int real_s_i = get_real_socket_id(s_i);
+        send_buffer[i][s_i] = (MessageBuffer*)numa_alloc_onnode( sizeof(MessageBuffer), real_s_i);
+        send_buffer[i][s_i]->init(real_s_i);
+        recv_buffer[i][s_i] = (MessageBuffer*)numa_alloc_onnode( sizeof(MessageBuffer), real_s_i);
+        recv_buffer[i][s_i]->init(real_s_i);
       }
     }
 
@@ -231,7 +251,8 @@ public:
     char * array = (char *)mmap(NULL, sizeof(T) * vertices, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     assert(array!=NULL);
     for (int s_i=0;s_i<sockets;s_i++) {
-      numa_tonode_memory(array + sizeof(T) * local_partition_offset[s_i], sizeof(T) * (local_partition_offset[s_i+1] - local_partition_offset[s_i]), s_i);
+      int real_s_i = get_real_socket_id(s_i);
+      numa_tonode_memory(array + sizeof(T) * local_partition_offset[s_i], sizeof(T) * (local_partition_offset[s_i+1] - local_partition_offset[s_i]), real_s_i);
     }
     return (T*)array;
   }
@@ -275,7 +296,7 @@ public:
     assert(fd!=-1);
     long offset = sizeof(T) * partition_offset[partition_id];
     long end_offset = sizeof(T) * partition_offset[partition_id+1];
-    void * data = (void *)array;
+    char * data = (char *)array;
     assert(lseek(fd, offset, SEEK_SET)!=-1);
     while (offset < end_offset) {
       long bytes = write(fd, data + offset, end_offset - offset);
@@ -296,7 +317,7 @@ public:
     assert(fd!=-1);
     long offset = sizeof(T) * partition_offset[partition_id];
     long end_offset = sizeof(T) * partition_offset[partition_id+1];
-    void * data = (void *)array;
+    char * data = (char *)array;
     assert(lseek(fd, offset, SEEK_SET)!=-1);
     while (offset < end_offset) {
       long bytes = read(fd, data + offset, end_offset - offset);
@@ -507,9 +528,10 @@ public:
     outgoing_adj_list = new AdjUnit<EdgeData>* [sockets];
     outgoing_adj_bitmap = new Bitmap * [sockets];
     for (int s_i=0;s_i<sockets;s_i++) {
+      int real_s_i = get_real_socket_id(s_i);
       outgoing_adj_bitmap[s_i] = new Bitmap (vertices);
       outgoing_adj_bitmap[s_i]->clear();
-      outgoing_adj_index[s_i] = (EdgeId*)numa_alloc_onnode(sizeof(EdgeId) * (vertices+1), s_i);
+      outgoing_adj_index[s_i] = (EdgeId*)numa_alloc_onnode(sizeof(EdgeId) * (vertices+1), real_s_i);
     }
     {
       std::thread recv_thread_dst([&](){
@@ -612,7 +634,8 @@ public:
           compressed_outgoing_adj_vertices[s_i] += 1;
         }
       }
-      compressed_outgoing_adj_index[s_i] = (CompressedAdjIndexUnit*)numa_alloc_onnode( sizeof(CompressedAdjIndexUnit) * (compressed_outgoing_adj_vertices[s_i] + 1) , s_i );
+      int real_s_i = get_real_socket_id(s_i);
+      compressed_outgoing_adj_index[s_i] = (CompressedAdjIndexUnit*)numa_alloc_onnode( sizeof(CompressedAdjIndexUnit) * (compressed_outgoing_adj_vertices[s_i] + 1) , real_s_i );
       compressed_outgoing_adj_index[s_i][0].index = 0;
       EdgeId last_e_i = 0;
       compressed_outgoing_adj_vertices[s_i] = 0;
@@ -633,7 +656,7 @@ public:
       #ifdef PRINT_DEBUG_MESSAGES
       printf("part(%d) E_%d has %lu symmetric edges\n", partition_id, s_i, outgoing_edges[s_i]);
       #endif
-      outgoing_adj_list[s_i] = (AdjUnit<EdgeData>*)numa_alloc_onnode(unit_size * outgoing_edges[s_i], s_i);
+      outgoing_adj_list[s_i] = (AdjUnit<EdgeData>*)numa_alloc_onnode(unit_size * outgoing_edges[s_i], real_s_i);
     }
     {
       std::thread recv_thread_dst([&](){
@@ -929,9 +952,10 @@ public:
     outgoing_adj_list = new AdjUnit<EdgeData>* [sockets];
     outgoing_adj_bitmap = new Bitmap * [sockets];
     for (int s_i=0;s_i<sockets;s_i++) {
+      int real_s_i = get_real_socket_id(s_i);
       outgoing_adj_bitmap[s_i] = new Bitmap (vertices);
       outgoing_adj_bitmap[s_i]->clear();
-      outgoing_adj_index[s_i] = (EdgeId*)numa_alloc_onnode(sizeof(EdgeId) * (vertices+1), s_i);
+      outgoing_adj_index[s_i] = (EdgeId*)numa_alloc_onnode(sizeof(EdgeId) * (vertices+1), real_s_i);
     }
     {
       std::thread recv_thread_dst([&](){
@@ -1019,7 +1043,8 @@ public:
           compressed_outgoing_adj_vertices[s_i] += 1;
         }
       }
-      compressed_outgoing_adj_index[s_i] = (CompressedAdjIndexUnit*)numa_alloc_onnode( sizeof(CompressedAdjIndexUnit) * (compressed_outgoing_adj_vertices[s_i] + 1) , s_i );
+      int real_s_i = get_real_socket_id(s_i);
+      compressed_outgoing_adj_index[s_i] = (CompressedAdjIndexUnit*)numa_alloc_onnode( sizeof(CompressedAdjIndexUnit) * (compressed_outgoing_adj_vertices[s_i] + 1) , real_s_i );
       compressed_outgoing_adj_index[s_i][0].index = 0;
       EdgeId last_e_i = 0;
       compressed_outgoing_adj_vertices[s_i] = 0;
@@ -1040,7 +1065,7 @@ public:
       #ifdef PRINT_DEBUG_MESSAGES
       printf("part(%d) E_%d has %lu sparse mode edges\n", partition_id, s_i, outgoing_edges[s_i]);
       #endif
-      outgoing_adj_list[s_i] = (AdjUnit<EdgeData>*)numa_alloc_onnode(unit_size * outgoing_edges[s_i], s_i);
+      outgoing_adj_list[s_i] = (AdjUnit<EdgeData>*)numa_alloc_onnode(unit_size * outgoing_edges[s_i], real_s_i);
     }
     {
       std::thread recv_thread_dst([&](){
@@ -1127,9 +1152,10 @@ public:
     incoming_adj_list = new AdjUnit<EdgeData>* [sockets];
     incoming_adj_bitmap = new Bitmap * [sockets];
     for (int s_i=0;s_i<sockets;s_i++) {
+      int real_s_i = get_real_socket_id(s_i);
       incoming_adj_bitmap[s_i] = new Bitmap (vertices);
       incoming_adj_bitmap[s_i]->clear();
-      incoming_adj_index[s_i] = (EdgeId*)numa_alloc_onnode(sizeof(EdgeId) * (vertices+1), s_i);
+      incoming_adj_index[s_i] = (EdgeId*)numa_alloc_onnode(sizeof(EdgeId) * (vertices+1), real_s_i);
     }
     {
       std::thread recv_thread_src([&](){
@@ -1216,7 +1242,8 @@ public:
           compressed_incoming_adj_vertices[s_i] += 1;
         }
       }
-      compressed_incoming_adj_index[s_i] = (CompressedAdjIndexUnit*)numa_alloc_onnode( sizeof(CompressedAdjIndexUnit) * (compressed_incoming_adj_vertices[s_i] + 1) , s_i );
+      int real_s_i = get_real_socket_id(s_i);
+      compressed_incoming_adj_index[s_i] = (CompressedAdjIndexUnit*)numa_alloc_onnode( sizeof(CompressedAdjIndexUnit) * (compressed_incoming_adj_vertices[s_i] + 1) , real_s_i );
       compressed_incoming_adj_index[s_i][0].index = 0;
       EdgeId last_e_i = 0;
       compressed_incoming_adj_vertices[s_i] = 0;
@@ -1237,7 +1264,7 @@ public:
       #ifdef PRINT_DEBUG_MESSAGES
       printf("part(%d) E_%d has %lu dense mode edges\n", partition_id, s_i, incoming_edges[s_i]);
       #endif
-      incoming_adj_list[s_i] = (AdjUnit<EdgeData>*)numa_alloc_onnode(unit_size * incoming_edges[s_i], s_i);
+      incoming_adj_list[s_i] = (AdjUnit<EdgeData>*)numa_alloc_onnode(unit_size * incoming_edges[s_i], real_s_i);
     }
     {
       std::thread recv_thread_src([&](){
@@ -1588,7 +1615,11 @@ public:
           bool condition = (recv_queue_size<=step);
           recv_queue_mutex.unlock();
           if (!condition) break;
+#if defined(__x86_64__)
           __asm volatile ("pause" ::: "memory");
+#elif defined(__aarch64__)
+          __asm volatile ("yield" ::: "memory");
+#endif
         }
         int i = recv_queue[step];
         MessageBuffer ** used_buffer;
@@ -1710,7 +1741,11 @@ public:
             bool condition = (send_queue_size<=step);
             send_queue_mutex.unlock();
             if (!condition) break;
+#if defined(__x86_64__)
             __asm volatile ("pause" ::: "memory");
+#elif defined(__aarch64__)
+            __asm volatile ("yield" ::: "memory");
+#endif
           }
           int i = send_queue[step];
           for (int s_i=0;s_i<sockets;s_i++) {
@@ -1804,7 +1839,11 @@ public:
           bool condition = (recv_queue_size<=step);
           recv_queue_mutex.unlock();
           if (!condition) break;
+#if defined(__x86_64__)
           __asm volatile ("pause" ::: "memory");
+#elif defined(__aarch64__)
+          __asm volatile ("yield" ::: "memory");
+#endif
         }
         int i = recv_queue[step];
         MessageBuffer ** used_buffer;

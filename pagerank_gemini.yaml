@@ -1,0 +1,56 @@
+depends:
+  - name: gbbs
+    recipe: dataset
+
+default_params:
+  nodes: 1
+  cores:
+    - value: 48
+      machines: [wisteria-o]
+    - value: 76
+      machines: [squid-c]
+    - value: 6
+      machines: [local]
+  repeats: 11
+  max_iters: 100
+  dataset: rmat_20_24
+  serial: 0
+  debugger: 0
+
+default_name: pagerank_gemini
+default_queue: node_${nodes}
+default_duplicates: 1
+
+build:
+  depend_params: [serial]
+  script: |
+    source build_common.bash
+
+    # CXXFLAGS="${CXXFLAGS:+$CXXFLAGS} -O3 -DNDEBUG -g"
+    CXXFLAGS="${CXXFLAGS:+$CXXFLAGS} -O0 -g -DPRINT_DEBUG_MESSAGES=1"
+
+    cd gemini
+    make clean
+    MPICXX="$MPICXX" CXXFLAGS="$CXXFLAGS" make -j
+
+run:
+  depend_params: [nodes, cores, repeats, max_iters, dataset, serial, debugger]
+  script: |
+    source run_common.bash
+
+    n_vertices=$(cat ${KOCHI_INSTALL_PREFIX_GBBS}/${KOCHI_PARAM_DATASET}.adj | head -2 | tail -1)
+
+    commands="
+      ./gemini/toolkits/pagerank
+        ${KOCHI_INSTALL_PREFIX_GBBS}/${KOCHI_PARAM_DATASET}.binedgelist $n_vertices $KOCHI_PARAM_MAX_ITERS"
+
+    export OMP_NUM_THREADS=$KOCHI_PARAM_CORES
+    # export OMP_PROC_BIND=false
+
+    n_nodes=$(echo $KOCHI_PARAM_NODES | cut -f 1 -d ":" | sed 's/x/*/g' | bc)
+
+    if [[ $KOCHI_PARAM_DEBUGGER == 0 ]]; then
+      ityr_mpirun $((n_nodes)) 1 none $commands
+    else
+      MPIEXEC=mpitx ityr_mpirun $((n_nodes)) 1 none gdb --args $commands
+    fi

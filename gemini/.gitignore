@@ -27,3 +27,9 @@
 *.exe
 *.out
 *.app
+
+toolkits/bc
+toolkits/bfs
+toolkits/cc
+toolkits/pagerank
+toolkits/sssp

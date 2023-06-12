@@ -159,4 +159,6 @@ dependencies:
         ./utils/generators/RMAT -n $(echo "2^$n" | bc) -m $(echo "2^$m" | bc) -outfile ${KOCHI_INSTALL_PREFIX}/rmat_${n}_${m}
         ./utils/snap_converter -i ${KOCHI_INSTALL_PREFIX}/rmat_${n}_${m} -o ${KOCHI_INSTALL_PREFIX}/rmat_${n}_${m}.adj
         ./utils/converter -enc binary -o ${KOCHI_INSTALL_PREFIX}/rmat_${n}_${m}.bin ${KOCHI_INSTALL_PREFIX}/rmat_${n}_${m}.adj
+        # awk '{printf("%08x%08x\n", $1, $2)}' ${KOCHI_INSTALL_PREFIX}/rmat_${n}_${m} | xxd -r -p - ${KOCHI_INSTALL_PREFIX}/rmat_${n}_${m}.binedgelist # for gemini (big endian)
+        awk '{printf("%02x%02x%02x%02x%02x%02x%02x%02x\n", and(0xff,$1), and(0xff,rshift($1,8)), and(0xff,rshift($1,16)), and(0xff,rshift($1,24)), and(0xff,$2), and(0xff,rshift($2,8)), and(0xff,rshift($2,16)), and(0xff,rshift($2,24)))}' ${KOCHI_INSTALL_PREFIX}/rmat_${n}_${m} | xxd -r -p - ${KOCHI_INSTALL_PREFIX}/rmat_${n}_${m}.binedgelist # for gemini (little endian)
       done
