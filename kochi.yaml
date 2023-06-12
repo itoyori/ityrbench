@@ -12,8 +12,8 @@ machines:
     load_env_script:
       on_login_node: |
         module load odyssey > /dev/null
-        export MPICC=mpifccpx
-        export MPICXX=mpiFCCpx
+        export CC=fccpx CXX=FCCpx
+        export MPICC=mpifccpx MPICXX=mpiFCCpx
         export fccpx_ENV="-Nclang -Knolargepage"
         export FCCpx_ENV="-Nclang -Knolargepage"
         module load cmake/3.22.2
@@ -21,8 +21,8 @@ machines:
         export PATH="/work/gc64/c64050/opt/odyssey/tmux/3.3a/bin:$PATH"
         export PATH="/work/gc64/c64050/opt/odyssey/htop/3.2.2/bin:$PATH"
         . /work/gc64/c64050/venv/odyssey/bin/activate
-        export MPICC=mpifcc
-        export MPICXX=mpiFCC
+        export CC=fcc CXX=FCC
+        export MPICC=mpifcc MPICXX=mpiFCC
         export fcc_ENV="-Nclang -Knolargepage"
         export FCC_ENV="-Nclang -Knolargepage"
         module load cmake/3.22.2

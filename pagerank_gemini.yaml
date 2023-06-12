@@ -1,6 +1,9 @@
 depends:
   - name: gbbs
     recipe: dataset
+  - name: openmpi
+    recipe: v5.0.0rc11
+    machines: [local, squid-c]
 
 default_params:
   nodes: 1
@@ -27,7 +30,8 @@ build:
     source build_common.bash
 
     # CXXFLAGS="${CXXFLAGS:+$CXXFLAGS} -O3 -DNDEBUG -g"
-    CXXFLAGS="${CXXFLAGS:+$CXXFLAGS} -O0 -g -DPRINT_DEBUG_MESSAGES=1"
+    CXXFLAGS="${CXXFLAGS:+$CXXFLAGS} -O3 -g"
+    # CXXFLAGS="${CXXFLAGS:+$CXXFLAGS} -O0 -g -DPRINT_DEBUG_MESSAGES=1"
 
     cd gemini
     make clean
@@ -38,11 +42,14 @@ run:
   script: |
     source run_common.bash
 
-    n_vertices=$(cat ${KOCHI_INSTALL_PREFIX_GBBS}/${KOCHI_PARAM_DATASET}.adj | head -2 | tail -1)
+    n_vertices=$(head -2 ${KOCHI_INSTALL_PREFIX_GBBS}/${KOCHI_PARAM_DATASET}.adj | tail -1)
 
     commands="
       ./gemini/toolkits/pagerank
-        ${KOCHI_INSTALL_PREFIX_GBBS}/${KOCHI_PARAM_DATASET}.binedgelist $n_vertices $KOCHI_PARAM_MAX_ITERS"
+        ${KOCHI_INSTALL_PREFIX_GBBS}/${KOCHI_PARAM_DATASET}.binedgelist
+        $n_vertices
+        $KOCHI_PARAM_MAX_ITERS
+        $KOCHI_PARAM_REPEATS"
 
     export OMP_NUM_THREADS=$KOCHI_PARAM_CORES
     # export OMP_PROC_BIND=false

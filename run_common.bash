@@ -3,7 +3,7 @@
 
 MPIEXEC=${MPIEXEC:-mpiexec}
 
-$MPIEXEC --version || true
+[[ -x "$(command -v $MPIEXEC)" ]] && $MPIEXEC --version || true
 
 STDOUT_FILE=mpirun_out.txt
 

@@ -4,7 +4,7 @@
 MPICC=${MPICC:-mpicc}
 MPICXX=${MPICXX:-mpicxx}
 
-$MPICXX --version
+[[ -x "$(command -v $MPICXX)" ]] && $MPICXX --version
 
 if [[ ! -z ${KOCHI_INSTALL_PREFIX_ITOYORI+x} ]]; then
   CXXFLAGS="${CXXFLAGS:+$CXXFLAGS} -DITYR_PROFILER_MODE=$KOCHI_PARAM_PROF"

@@ -33,7 +33,7 @@ build:
     fi
 
     make clean -C gbbs/benchmarks/PageRank
-    CXX=FCC CFLAGS="$CXXFLAGS" make -j -C gbbs/benchmarks/PageRank
+    CXX=${CXX:-g++} CFLAGS="$CXXFLAGS" make -j -C gbbs/benchmarks/PageRank
 
 run:
   depend_params: [nodes, cores, repeats, max_iters, dataset, serial, debugger]

@@ -259,8 +259,9 @@ public:
 
   // deallocate a vertex array
   template<typename T>
-  T * dealloc_vertex_array(T * array) {
-    numa_free(array, sizeof(T) * vertices);
+  void dealloc_vertex_array(T * array) {
+    /* numa_free(array, sizeof(T) * vertices); */
+    munmap(array, sizeof(T) * vertices);
   }
 
   // allocate a numa-oblivious vertex array
