@@ -80,12 +80,14 @@ exec_t      exec_type        = exec_t::Naive;
 long        bin_width        = 16 * 1024;
 long        bin_offset_bits  = log2_pow2(bin_width);
 
-ityr::global_vector_options global_vec_coll_opts {
-  .collective         = true,
-  .parallel_construct = true,
-  .parallel_destruct  = true,
-  .cutoff_count       = 4096,
-};
+ityr::global_vector_options global_vec_coll_opts(std::size_t cutoff_count) {
+  return {
+    .collective         = true,
+    .parallel_construct = true,
+    .parallel_destruct  = true,
+    .cutoff_count       = cutoff_count,
+  };
+}
 
 graph load_dataset(const char* filename) {
   auto t0 = ityr::gettime_ns();
@@ -134,11 +136,11 @@ graph load_dataset(const char* filename) {
   static uintE* in_edges = reinterpret_cast<uintE*>(data + skip);
   skip += m * sizeof(uintE);
 
-  ityr::global_vector<vertex_data> v_in_data(global_vec_coll_opts, n);
-  ityr::global_vector<vertex_data> v_out_data(global_vec_coll_opts, n);
+  ityr::global_vector<vertex_data> v_in_data(global_vec_coll_opts(cutoff_v), n);
+  ityr::global_vector<vertex_data> v_out_data(global_vec_coll_opts(cutoff_v), n);
 
-  ityr::global_vector<uintE> in_edges_vec(global_vec_coll_opts, m);
-  ityr::global_vector<uintE> out_edges_vec(global_vec_coll_opts, m);
+  ityr::global_vector<uintE> in_edges_vec(global_vec_coll_opts(cutoff_e), m);
+  ityr::global_vector<uintE> out_edges_vec(global_vec_coll_opts(cutoff_e), m);
 
   auto v_in_data_begin  = v_in_data.begin();
   auto v_out_data_begin = v_out_data.begin();
@@ -224,7 +226,7 @@ ityr::global_vector<part> partition(const graph& g) {
 
   auto n_parts = g.n_parts;
 
-  ityr::global_vector<part> parts(global_vec_coll_opts, n_parts);
+  ityr::global_vector<part> parts(global_vec_coll_opts(1), n_parts);
   ityr::global_span<part> parts_ref {parts.data(), parts.size()};
 
   auto n = g.n;
@@ -422,6 +424,31 @@ ityr::global_vector<part> partition(const graph& g) {
     fflush(stdout);
   }
 
+  std::size_t total_bin_size = ityr::root_exec([=]() {
+    return ityr::parallel_reduce(
+        parts_ref.begin(), parts_ref.end(),
+        std::size_t(0), std::plus<std::size_t>{},
+        [=](const part& p) {
+
+      std::size_t s = 0;
+      ityr::serial_for_each(
+          {.checkout_count = std::size_t(n_parts)},
+          ityr::make_global_iterator(p.dest_id_bins.begin(), ityr::ori::mode::read),
+          ityr::make_global_iterator(p.dest_id_bins.end()  , ityr::ori::mode::read),
+          ityr::make_global_iterator(p.update_bins.begin() , ityr::ori::mode::read),
+          [&](const ityr::global_vector<uintE>& dest_id_bin, const ityr::global_vector<double>& update_bin) {
+        s += dest_id_bin.size() * sizeof(uintE) + update_bin.size() * sizeof(double);
+      });
+      return s;
+    });
+  });
+
+  if (ityr::is_master()) {
+    printf("Total bin size = %ld bytes\n", total_bin_size);
+    printf("\n");
+    fflush(stdout);
+  }
+
   return parts;
 }
 
@@ -432,6 +459,11 @@ void init_gpop(graph& g) {
     }
     exit(1);
   }
+
+  // clear to save memory
+  /* g.in_edges = {}; */
+  /* g.v_in_data = {}; */
+
   g.n_parts = (g.n + bin_width - 1) / bin_width;
   g.parts = partition(g);
 }
@@ -553,7 +585,7 @@ void pagerank_naive(const graph&              g,
   std::cout << "max_pr = " << max_pr << " iter = " << iter << std::endl;
 }
 
-void pagerank_gpop(const graph&              g,
+void pagerank_gpop(graph&              g,
                    ityr::global_span<double> p_curr,
                    ityr::global_span<double> p_next,
                    ityr::global_span<double> p_div,
@@ -741,11 +773,11 @@ void run() {
     init_gpop(*g);
   }
 
-  ityr::global_vector<double> p_curr     (global_vec_coll_opts, g->n);
-  ityr::global_vector<double> p_next     (global_vec_coll_opts, g->n);
-  ityr::global_vector<double> p_div      (global_vec_coll_opts, g->n);
-  ityr::global_vector<double> p_div_next (global_vec_coll_opts, g->n);
-  ityr::global_vector<double> differences(global_vec_coll_opts, g->n);
+  ityr::global_vector<double> p_curr     (global_vec_coll_opts(cutoff_v), g->n);
+  ityr::global_vector<double> p_next     (global_vec_coll_opts(cutoff_v), g->n);
+  ityr::global_vector<double> p_div      (global_vec_coll_opts(cutoff_v), g->n);
+  ityr::global_vector<double> p_div_next (global_vec_coll_opts(cutoff_v), g->n);
+  ityr::global_vector<double> differences(global_vec_coll_opts(cutoff_v), g->n);
 
   for (int r = 0; r < n_repeats; r++) {
     ityr::profiler_begin();
