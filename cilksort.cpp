@@ -132,6 +132,7 @@ auto divide_two(const ityr::global_span<T>& s) {
 
 template <typename T>
 std::size_t binary_search(ityr::global_span<T> s, const T& v) {
+  // get() is internally called through ityr::global_ref
   auto it = std::lower_bound(s.begin(), s.end(), v);
   return it - s.begin();
 }
@@ -149,30 +150,28 @@ void cilkmerge(ityr::global_span<T> s1,
 
   if (s2.size() == 0) {
     ITYR_PROFILER_RECORD(prof_event_user_copy);
-    ityr::ori::with_checkout(s1.data()  , s1.size()  , ityr::ori::mode::read,
-                             dest.data(), dest.size(), ityr::ori::mode::write,
-                             [&](const T* s1_, T* dest_) {
-      std::copy(s1_, s1_ + s1.size(), dest_);
-    });
+    auto s1_   = ityr::make_checkout(s1.data()  , s1.size()  , ityr::checkout_mode::read);
+    auto dest_ = ityr::make_checkout(dest.data(), dest.size(), ityr::checkout_mode::write);
+    std::copy(s1_.begin(), s1_.end(), dest_.begin());
     return;
   }
 
   if (dest.size() < cutoff_merge) {
     ITYR_PROFILER_RECORD(prof_event_user_merge);
-    ityr::ori::with_checkout(s1.data()  , s1.size()  , ityr::ori::mode::read,
-                             s2.data()  , s2.size()  , ityr::ori::mode::read,
-                             dest.data(), dest.size(), ityr::ori::mode::write,
-                             [&](const T* s1_, const T* s2_, T* dest_) {
+    auto s1_   = ityr::make_checkout(s1.data()  , s1.size()  , ityr::checkout_mode::read);
+    auto s2_   = ityr::make_checkout(s2.data()  , s2.size()  , ityr::checkout_mode::read);
+    auto dest_ = ityr::make_checkout(dest.data(), dest.size(), ityr::checkout_mode::write);
+    {
       ITYR_PROFILER_RECORD(prof_event_user_merge_kernel);
-      std::merge(s1_, s1_ + s1.size(), s2_, s2_ + s2.size(), dest_);
-    });
+      std::merge(s1_.begin(), s1_.end(), s2_.begin(), s2_.end(), dest_.begin());
+    }
     return;
   }
 
   std::size_t split1 = (s1.size() + 1) / 2;
   std::size_t split2 = [&]() {
     ITYR_PROFILER_RECORD(prof_event_user_binary_search);
-    return binary_search(s2, T(s1[split1 - 1]));
+    return binary_search(s2, s1[split1 - 1].get());
   }();
 
   auto [s11  , s12  ] = divide(s1, split1);
@@ -191,11 +190,11 @@ void cilksort(ityr::global_span<T> a, ityr::global_span<T> b) {
 
   if (a.size() < cutoff_sort) {
     ITYR_PROFILER_RECORD(prof_event_user_sort);
-    ityr::ori::with_checkout(a.data(), a.size(), ityr::ori::mode::read_write,
-                             [&](T* a_) {
+    auto a_ = ityr::make_checkout(a.data(), a.size(), ityr::checkout_mode::read_write);
+    {
       ITYR_PROFILER_RECORD(prof_event_user_sort_kernel);
-      std::sort(a_, a_ + a.size());
-    });
+      std::sort(a_.begin(), a_.end());
+    }
     return;
   }
 
@@ -244,7 +243,7 @@ void fill_array(ityr::global_span<T> s) {
   ityr::parallel_for_each({.cutoff_count = cutoff_sort, .checkout_count = cutoff_sort},
                           ityr::count_iterator<std::size_t>(0),
                           ityr::count_iterator<std::size_t>(s.size()),
-                          ityr::make_global_iterator(s.begin(), ityr::ori::mode::write),
+                          ityr::make_global_iterator(s.begin(), ityr::checkout_mode::write),
                           [=](std::size_t i, T& x) {
     pcg32 rng(seed, i);
     x = gen_random_elem<T>(rng);
