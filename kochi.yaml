@@ -159,13 +159,13 @@ dependencies:
     recipes:
       - name: dataset
         script: |
+          # R-MAT
           for nm in "20 24" "24 28" "27 31"; do
             read -r n m <<< "$nm"
             ./utils/generators/RMAT -n $(echo "2^$n" | bc) -m $(echo "2^$m" | bc) -outfile ${KOCHI_INSTALL_PREFIX}/rmat_${n}_${m}
             convert_graph ${KOCHI_INSTALL_PREFIX}/rmat_${n}_${m}
           done
-      - name: dataset2
-        script: |
+          # twitter2010
           wget https://snap.stanford.edu/data/twitter-2010.txt.gz
           gunzip twitter-2010.txt.gz
           mv twitter-2010.txt ${KOCHI_INSTALL_PREFIX}/twitter2010
