@@ -41,10 +41,10 @@ void run_fmm(const Args& args) {
   logger::path = args.path;
 
   bodies_vec.resize(args.numBodies);
-  bodies = {bodies_vec.begin(), bodies_vec.end()};
+  bodies = GBodies{bodies_vec.begin(), bodies_vec.end()};
 
   buffer_vec.resize(args.numBodies);
-  buffer = {buffer_vec.begin(), buffer_vec.end()};
+  buffer = GBodies{buffer_vec.begin(), buffer_vec.end()};
 
   if (ityr::is_master()) {
     logger::printTitle("FMM Parameters");
@@ -98,7 +98,7 @@ void run_fmm(const Args& args) {
       }
 
       buildTree.buildTree(bodies, buffer, bounds, cells_vec);
-      cells = {cells_vec.begin(), cells_vec.end()};
+      cells = GCells{cells_vec.begin(), cells_vec.end()};
 
       ityr::ori::collect_deallocated();
 
@@ -117,7 +117,7 @@ void run_fmm(const Args& args) {
 
         if (args.accuracy) {
           jbodies_vec = bodies_vec;
-          jbodies = {jbodies_vec.begin(), jbodies_vec.end()};
+          jbodies = GBodies{jbodies_vec.begin(), jbodies_vec.end()};
         }
       }
 
@@ -141,39 +141,37 @@ void run_fmm(const Args& args) {
           const int numTargets = 100;
 
           global_vec<Body> bodies_sampled_vec = data.sampleBodies(bodies, numTargets);
-          GBodies bodies_sampled = {bodies_sampled_vec.begin(), bodies_sampled_vec.end()};
+          GBodies bodies_sampled = GBodies{bodies_sampled_vec.begin(), bodies_sampled_vec.end()};
 
           global_vec<Body> bodies2_vec = bodies_sampled_vec;
-          GBodies bodies2 = {bodies2_vec.begin(), bodies2_vec.end()};
+          GBodies bodies2 = GBodies{bodies2_vec.begin(), bodies2_vec.end()};
 
           data.initTarget(bodies_sampled);
           logger::startTimer("Total Direct");
           traversal.direct(bodies_sampled, jbodies, cycle);
           logger::stopTimer("Total Direct");
 
-          ityr::ori::with_checkout(
-              bodies_sampled.data(), bodies_sampled.size(), ityr::ori::mode::read_write,
-              bodies2.data()       , bodies2.size()       , ityr::ori::mode::read_write,
-              [&](Body* bodies_sampled_p, Body* bodies2_p) {
-            Bodies bodies_sampled_ = {bodies_sampled_p, bodies_sampled_p + bodies_sampled.size()};
-            Bodies bodies2_ = {bodies2_p, bodies2_p + bodies2.size()};
+          auto bs = ityr::make_checkout(bodies_sampled.data(), bodies_sampled.size(), ityr::checkout_mode::read_write);
+          auto b2 = ityr::make_checkout(bodies2.data()       , bodies2.size()       , ityr::checkout_mode::read_write);
 
-            double potDif = verify.getDifScalar(bodies_sampled_, bodies2_);
-            double potNrm = verify.getNrmScalar(bodies_sampled_);
-            double accDif = verify.getDifVector(bodies_sampled_, bodies2_);
-            double accNrm = verify.getNrmVector(bodies_sampled_);
-            double potRel = std::sqrt(potDif/potNrm);
-            double accRel = std::sqrt(accDif/accNrm);
-            logger::printTitle("FMM vs. direct");
-            verify.print("Rel. L2 Error (pot)",potRel);
-            verify.print("Rel. L2 Error (acc)",accRel);
+          Bodies bodies_sampled_(bs.data(), bs.size());
+          Bodies bodies2_(b2.data(), b2.size());
 
-            buildTree.printTreeData(cells);
-            traversal.printTraversalData();
-            logger::printPAPI();
+          double potDif = verify.getDifScalar(bodies_sampled_, bodies2_);
+          double potNrm = verify.getNrmScalar(bodies_sampled_);
+          double accDif = verify.getDifVector(bodies_sampled_, bodies2_);
+          double accNrm = verify.getNrmVector(bodies_sampled_);
+          double potRel = std::sqrt(potDif/potNrm);
+          double accRel = std::sqrt(accDif/accNrm);
+          logger::printTitle("FMM vs. direct");
+          verify.print("Rel. L2 Error (pot)",potRel);
+          verify.print("Rel. L2 Error (acc)",accRel);
 
-            pass = verify.regression(args.getKey(), isTime, t, potRel, accRel);
-          });
+          buildTree.printTreeData(cells);
+          traversal.printTraversalData();
+          logger::printPAPI();
+
+          pass = verify.regression(args.getKey(), isTime, t, potRel, accRel);
 
           if (pass) {
             if (verify.verbose) std::cout << "passed accuracy regression at t: " << t << std::endl;

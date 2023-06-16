@@ -105,63 +105,71 @@ namespace EXAFMM_NAMESPACE {
 
     //! Split cell and call traverse() recursively for child
     void splitCell(GC_iter Ci, GC_iter Cj, real_t remote) {
-      int nchild_i = Ci->*(static_cast<int Cell::*>(&CellBase::NCHILD));
-      int nchild_j = Cj->*(static_cast<int Cell::*>(&CellBase::NCHILD));
-      if (nchild_j == 0) {                                    // If Cj is leaf
-	assert(nchild_i > 0);                                 //  Make sure Ci is not leaf
-        int ichild_i = Ci->*(static_cast<int Cell::*>(&CellBase::ICHILD));
-        // TODO: bulk checkout?
-	for (GC_iter ci=Ci0+ichild_i; ci!=Ci0+ichild_i+nchild_i; ci++) {// Loop over Ci's children
-	  dualTreeTraversal(ci, Cj, remote);                    //   Traverse a single pair of cells
-	}                                                       //  End loop over Ci's children
-      } else if (nchild_i == 0) {                             // Else if Ci is leaf
-	assert(nchild_j > 0);                                 //  Make sure Cj is not leaf
-        int ichild_j = Cj->*(static_cast<int Cell::*>(&CellBase::ICHILD));
-	for (GC_iter cj=Cj0+ichild_j; cj!=Cj0+ichild_j+nchild_j; cj++) {// Loop over Cj's children
-	  dualTreeTraversal(Ci, cj, remote);                    //   Traverse a single pair of cells
-	}                                                       //  End loop over Cj's children
-      } else if (Ci->*(static_cast<int Cell::*>(&CellBase::NBODY)) +
-                 Cj->*(static_cast<int Cell::*>(&CellBase::NBODY)) >= nspawn || (Ci == Cj)) {// Else if cells are still large
-        int ichild_i = Ci->*(static_cast<int Cell::*>(&CellBase::ICHILD));
-        int ichild_j = Cj->*(static_cast<int Cell::*>(&CellBase::ICHILD));
-	TraverseRange traverseRange(this, Ci0+ichild_i, Ci0+ichild_i+nchild_i,// Instantiate recursive functor
-				    Cj0+ichild_j, Cj0+ichild_j+nchild_j, remote);
-	traverseRange();                                        //  Traverse for range of cell pairs
-      } else if (Ci->*(static_cast<real_t Cell::*>(&CellBase::R)) >=
-                 Cj->*(static_cast<real_t Cell::*>(&CellBase::R))) {                              // Else if Ci is larger than Cj
-        int ichild_i = Ci->*(static_cast<int Cell::*>(&CellBase::ICHILD));
-	for (GC_iter ci=Ci0+ichild_i; ci!=Ci0+ichild_i+nchild_i; ci++) {// Loop over Ci's children
-	  dualTreeTraversal(ci, Cj, remote);                    //   Traverse a single pair of cells
-	}                                                       //  End loop over Ci's children
+      auto csi = ityr::make_checkout(Ci, 1, ityr::checkout_mode::read);
+      auto csj = ityr::make_checkout(Cj, 1, ityr::checkout_mode::read);
+      auto& Ci_ = csi[0];
+      auto& Cj_ = csj[0];
+
+      if (Cj_.NCHILD == 0) {                                    // If Cj is leaf
+        assert(Ci_.NCHILD > 0);                                 //  Make sure Ci is not leaf
+        auto ichild = Ci_.ICHILD;
+        auto nchild = Ci_.NCHILD;
+        csi.checkin();
+        csj.checkin();
+        for (GC_iter ci=Ci0+ichild; ci!=Ci0+ichild+nchild; ci++) {// Loop over Ci's children
+          dualTreeTraversal(ci, Cj, remote);                    //   Traverse a single pair of cells
+        }                                                       //  End loop over Ci's children
+      } else if (Ci_.NCHILD == 0) {                             // Else if Ci is leaf
+        assert(Cj_.NCHILD > 0);                                 //  Make sure Cj is not leaf
+        auto ichild = Cj_.ICHILD;
+        auto nchild = Cj_.NCHILD;
+        csi.checkin();
+        csj.checkin();
+        for (GC_iter cj=Cj0+ichild; cj!=Cj0+ichild+nchild; cj++) {// Loop over Cj's children
+          dualTreeTraversal(Ci, cj, remote);                    //   Traverse a single pair of cells
+        }                                                       //  End loop over Cj's children
+      } else if (Ci_.NBODY + Cj_.NBODY >= nspawn || (Ci == Cj)) {// Else if cells are still large
+        TraverseRange traverseRange(this, Ci0+Ci_.ICHILD, Ci0+Ci_.ICHILD+Ci_.NCHILD,// Instantiate recursive functor
+                                    Cj0+Cj_.ICHILD, Cj0+Cj_.ICHILD+Cj_.NCHILD, remote);
+        csi.checkin();
+        csj.checkin();
+        traverseRange();                                        //  Traverse for range of cell pairs
+      } else if (Ci_.R >= Cj_.R) {                              // Else if Ci is larger than Cj
+        auto ichild = Ci_.ICHILD;
+        auto nchild = Ci_.NCHILD;
+        csi.checkin();
+        csj.checkin();
+        for (GC_iter ci=Ci0+ichild; ci!=Ci0+ichild+nchild; ci++) {// Loop over Ci's children
+          dualTreeTraversal(ci, Cj, remote);                    //   Traverse a single pair of cells
+        }                                                       //  End loop over Ci's children
       } else {                                                  // Else if Cj is larger than Ci
-        int ichild_j = Cj->*(static_cast<int Cell::*>(&CellBase::ICHILD));
-	for (GC_iter cj=Cj0+ichild_j; cj!=Cj0+ichild_j+nchild_j; cj++) {// Loop over Cj's children
-	  dualTreeTraversal(Ci, cj, remote);                    //   Traverse a single pair of cells
-	}                                                       //  End loop over Cj's children
+        auto ichild = Cj_.ICHILD;
+        auto nchild = Cj_.NCHILD;
+        csi.checkin();
+        csj.checkin();
+        for (GC_iter cj=Cj0+ichild; cj!=Cj0+ichild+nchild; cj++) {// Loop over Cj's children
+          dualTreeTraversal(Ci, cj, remote);                    //   Traverse a single pair of cells
+        }                                                       //  End loop over Cj's children
       }                                                         // End if for leafs and Ci Cj size
     }
 
     //! Dual tree traversal for a single pair of cells
     void dualTreeTraversal(GC_iter Ci, GC_iter Cj, real_t remote) {
-      int nchild_i = Ci->*(static_cast<int Cell::*>(&CellBase::NCHILD));
-      int nchild_j = Cj->*(static_cast<int Cell::*>(&CellBase::NCHILD));
-      vec3 dX = vec3(Ci->*(static_cast<vec3 Cell::*>(&CellBase::X))) -
-                vec3(Cj->*(static_cast<vec3 Cell::*>(&CellBase::X))) - kernel->Xperiodic;               // Distance vector from source to target
+      auto csi = ityr::make_checkout(Ci, 1, ityr::checkout_mode::read);
+      auto csj = ityr::make_checkout(Cj, 1, ityr::checkout_mode::read);
+      auto& Ci_ = csi[0];
+      auto& Cj_ = csj[0];
+
+      vec3 dX = Ci_.X - Cj_.X - kernel->Xperiodic;               // Distance vector from source to target
       real_t RT2 = norm(dX) * theta * theta;                    // Scalar distance squared
-      real_t Ri = Ci->*(static_cast<real_t Cell::*>(&CellBase::R));
-      real_t Rj = Cj->*(static_cast<real_t Cell::*>(&CellBase::R));
-      if (RT2 > (Ri+Rj) * (Ri+Rj) * (1 - 1e-3)) {   // If distance is far enough
+      if (RT2 > (Ci_.R+Cj_.R) * (Ci_.R+Cj_.R) * (1 - 1e-3)) {   // If distance is far enough
         ITYR_PROFILER_RECORD(prof_event_user_M2L);
-        ityr::ori::with_checkout(
-            Ci, 1, ityr::ori::mode::read,
-            Cj, 1, ityr::ori::mode::read,
-            [&](const Cell* Ci_, const Cell* Cj_) {
-          kernel->M2L(Ci_, Cj_);                                     //  M2L kernel
-          countKernel(numM2L);                                    //  Increment M2L counter
-          countList(Ci_, Cj_, false);                               //  Increment M2L list
-          countWeight(Ci_, Cj_, remote);                            //  Increment M2L weight
-        });
-      } else if (nchild_i == 0 && nchild_j == 0) {          // Else if both cells are bodies
+
+        kernel->M2L(&Ci_, &Cj_);                                     //  M2L kernel
+        countKernel(numM2L);                                    //  Increment M2L counter
+        countList(&Ci_, &Cj_, false);                               //  Increment M2L list
+        countWeight(&Ci_, &Cj_, remote);                            //  Increment M2L weight
+      } else if (Ci_.NCHILD == 0 && Cj_.NCHILD == 0) {          // Else if both cells are bodies
 #if 0
 #if EXAFMM_NO_P2P
 	int index = Ci->ICELL;
@@ -190,51 +198,37 @@ namespace EXAFMM_NAMESPACE {
 	}
 #endif
 #endif
-	if (Cj->*(static_cast<int Cell::*>(&CellBase::NBODY)) == 0) {                                   //  If the bodies weren't sent from remote node
+	if (Cj_.NBODY == 0) {                                   //  If the bodies weren't sent from remote node
 	  //std::cout << "Warning: icell " << Ci->ICELL << " needs bodies from jcell" << Cj->ICELL << std::endl;
           ITYR_PROFILER_RECORD(prof_event_user_M2L);
-          ityr::ori::with_checkout(
-              Ci, 1, ityr::ori::mode::read,
-              Cj, 1, ityr::ori::mode::read,
-              [&](const Cell* Ci_, const Cell* Cj_) {
-            kernel->M2L(Ci_, Cj_);                                   //   M2L kernel
-            countKernel(numM2L);                                  //   Increment M2L counter
-            countList(Ci_, Cj_, false);                             //   Increment M2L list
-            countWeight(Ci_, Cj_, remote);                          //   Increment M2L weight
-          });
+
+          kernel->M2L(&Ci_, &Cj_);                                   //   M2L kernel
+          countKernel(numM2L);                                  //   Increment M2L counter
+          countList(&Ci_, &Cj_, false);                             //   Increment M2L list
+          countWeight(&Ci_, &Cj_, remote);                          //   Increment M2L weight
 #if EXAFMM_NO_P2P
 	} else if (!isNeighbor) {                               //  If GROAMCS handles neighbors
           ITYR_PROFILER_RECORD(prof_event_user_M2L);
-          ityr::ori::with_checkout(
-              Ci, 1, ityr::ori::mode::read,
-              Cj, 1, ityr::ori::mode::read,
-            kernel->M2L(Ci_, Cj_);                                   //   M2L kernel
-            countKernel(numM2L);                                  //   Increment M2L counter
-            countList(Ci_, Cj_, false);                             //   Increment M2L list
-            countWeight(Ci_, Cj_, remote);                          //   Increment M2L weight
-          });
+
+          kernel->M2L(&Ci_, &Cj_);                                   //   M2L kernel
+          countKernel(numM2L);                                  //   Increment M2L counter
+          countList(&Ci_, &Cj_, false);                             //   Increment M2L list
+          countWeight(&Ci_, &Cj_, remote);                          //   Increment M2L weight
 	} else {
-          ityr::ori::with_checkout(
-              Ci, 1, ityr::ori::mode::read,
-              Cj, 1, ityr::ori::mode::read,
-              [&](const Cell* Ci_, const Cell* Cj_) {
-            countList(Ci_, Cj_, true);                              //   Increment P2P list
-          });
+          countList(&Ci_, &Cj_, true);                              //   Increment P2P list
 #else
 	} else {
           ITYR_PROFILER_RECORD(prof_event_user_P2P);
-          ityr::ori::with_checkout(
-              Ci, 1, ityr::ori::mode::read,
-              Cj, 1, ityr::ori::mode::read,
-              [&](const Cell* Ci_, const Cell* Cj_) {
-            kernel->P2P(Ci_, Cj_);                                   //   P2P kernel for pair of cells
-            countKernel(numP2P);                                  //   Increment P2P counter
-            countList(Ci_, Cj_, true);                              //   Increment P2P list
-            countWeight(Ci_, Cj_, remote);                          //   Increment P2P weight
-          });
+
+          kernel->P2P(&Ci_, &Cj_);                                   //   P2P kernel for pair of cells
+          countKernel(numP2P);                                  //   Increment P2P counter
+          countList(&Ci_, &Cj_, true);                              //   Increment P2P list
+          countWeight(&Ci_, &Cj_, remote);                          //   Increment P2P weight
 #endif
 	}                                                       //  End if for bodies
       } else {                                                  // Else if cells are close but not bodies
+        csi.checkin();
+        csj.checkin();
 	splitCell(Ci, Cj, remote);                              //  Split cell and call function recursively for child
       }                                                         // End if for multipole acceptance
     }

@@ -12,8 +12,10 @@ namespace EXAFMM_NAMESPACE {
   private:
     //! Post-order traversal for upward pass
     void postOrderTraversal(GC_iter C, GC_iter C0) const {
-      int ichild = C->*(static_cast<int Cell::*>(&CellBase::ICHILD));
-      int nchild = C->*(static_cast<int Cell::*>(&CellBase::NCHILD));
+      auto cs = ityr::make_checkout(C, 1, ityr::checkout_mode::read);
+      int ichild = cs[0].ICHILD;
+      int nchild = cs[0].NCHILD;
+      cs.checkin();
 
       ityr::parallel_for_each(
           ityr::count_iterator<int>(0),
@@ -22,46 +24,28 @@ namespace EXAFMM_NAMESPACE {
         postOrderTraversal(C0 + ichild + i, C0);
       });
 
+      auto cs2 = ityr::make_checkout(C, 1, ityr::checkout_mode::read);
+
       if(nchild==0) {
-        ityr::ori::with_checkout(
-            C, 1, ityr::ori::mode::read,
-            [&](const Cell* C_) {
-          kernel->P2M(C_);                           // P2M kernel
-        });
+        kernel->P2M(&cs2[0]);                           // P2M kernel
       } else {                                                    // If not leaf cell
-        ityr::ori::with_checkout(
-            C, 1, ityr::ori::mode::read,
-            [&](const Cell* C_) {
-          // TODO: refactor
-          ityr::ori::with_checkout(
-              C0 + C_->ICHILD, C_->NCHILD, ityr::ori::mode::read,
-              [&](const Cell* Cj0_) {
-            kernel->M2M(C_, Cj0_);                                      //  M2M kernel
-          });
-        });
+        auto csj = ityr::make_checkout(C0 + ichild, nchild, ityr::checkout_mode::read);
+        kernel->M2M(&cs2[0], csj.data());                                      //  M2M kernel
       }                                                         // End if for non leaf cell
     };
 
     //! Pre-order traversal for downward pass
     void preOrderTraversal(GC_iter C, GC_iter C0) const {
-      int ichild = C->*(static_cast<int Cell::*>(&CellBase::ICHILD));
-      int nchild = C->*(static_cast<int Cell::*>(&CellBase::NCHILD));
-      ityr::ori::with_checkout(
-          C, 1, ityr::ori::mode::read,
-          [&](const Cell* C_) {
-        // TODO: refactor
-        ityr::ori::with_checkout(
-            C0 + C_->IPARENT, 1, ityr::ori::mode::read,
-            [&](const Cell* Cj0_) {
-          kernel->L2L(C_, Cj0_);                                        //  L2L kernel
-        });
-      });
-      if (nchild==0) {                                       //  If leaf cell
-        ityr::ori::with_checkout(
-            C, 1, ityr::ori::mode::read,
-            [&](const Cell* C_) {
-          kernel->L2P(C_);                                          //  L2P kernel
-        });
+      auto cs = ityr::make_checkout(C, 1, ityr::checkout_mode::read);
+      auto& C_ = cs[0];
+
+      auto csj = ityr::make_checkout(C0 + C_.IPARENT, 1, ityr::checkout_mode::read);
+      auto& Cj0_ = csj[0];
+
+      kernel->L2L(&C_, &Cj0_);                                        //  L2L kernel
+
+      if (C_.NCHILD==0) {                                       //  If leaf cell
+        kernel->L2P(&C_);                                          //  L2P kernel
       }                                                         // End if for leaf cell
 #if 0
 #if EXAFMM_USE_WEIGHT
@@ -75,15 +59,17 @@ namespace EXAFMM_NAMESPACE {
 #endif
 #endif
 
+      int ichild = C_.ICHILD;
+      int nchild = C_.NCHILD;
+      cs.checkin();
+      csj.checkin();
+
       ityr::parallel_for_each(
           ityr::count_iterator<int>(0),
           ityr::count_iterator<int>(nchild),
           [=, *this](int i) {
         preOrderTraversal(C0 + ichild + i, C0);
       });
-
-      for (GC_iter CC=C0+ichild; CC!=C0+ichild+nchild; CC++) {// Loop over child cells
-      }                                                         // End loop over chlid cells
     };
 
   public:
@@ -100,8 +86,8 @@ namespace EXAFMM_NAMESPACE {
           GC_iter C0 = cells.begin();                              //  Set iterator of target root cell
           ityr::parallel_for_each(
               {.cutoff_count = cutoff_cell, .checkout_count = cutoff_cell},
-              ityr::make_global_iterator(cells.begin(), ityr::ori::mode::read_write),
-              ityr::make_global_iterator(cells.end()  , ityr::ori::mode::read_write),
+              ityr::make_global_iterator(cells.begin(), ityr::checkout_mode::read_write),
+              ityr::make_global_iterator(cells.end()  , ityr::checkout_mode::read_write),
               [=, *this](Cell& c) {
             c.M.resize(kernel->NTERM, 0.0);                       //   Allocate & initialize M coefs
             c.L.resize(kernel->NTERM, 0.0);                       //   Allocate & initialize L coefs
@@ -122,18 +108,19 @@ namespace EXAFMM_NAMESPACE {
       ityr::root_exec([=, *this] {
         if (!cells.empty()) {                                     // If cell vector is not empty
           GC_iter C0 = cells.begin();                              //  Root cell
-          int ichild = C0->*(static_cast<int Cell::*>(&CellBase::ICHILD));
-          int nchild = C0->*(static_cast<int Cell::*>(&CellBase::NCHILD));
+          auto cs = ityr::make_checkout(C0, 1, ityr::checkout_mode::read);
+          int ichild = cs[0].ICHILD;
+          int nchild = cs[0].NCHILD;
           if (nchild == 0) {                                 //  If root is the only cell
-            ityr::ori::with_checkout(
-                C0, 1, ityr::ori::mode::read,
-                [&](const Cell* C0_) {
-              kernel->L2P(C0_);                                       //   L2P kernel
-            });
+            kernel->L2P(&cs[0]);                                       //   L2P kernel
           }                                                       //  End if root is the only cell
-          for (GC_iter CC=C0+ichild; CC!=C0+ichild+nchild; CC++) {// Loop over child cells
-            preOrderTraversal(CC, C0);                            //   Start pre-order traversal from root
-          }                                                       //  End loop over child cells
+          cs.checkin();
+          ityr::parallel_for_each(
+              ityr::count_iterator<int>(0),
+              ityr::count_iterator<int>(nchild),
+              [=, *this](int i) {
+            preOrderTraversal(C0 + ichild + i, C0);                            //   Start pre-order traversal from root
+          });
         }                                                         // End if for empty cell vector
       });
       if (ityr::is_master()) {

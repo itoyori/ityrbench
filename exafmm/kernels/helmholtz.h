@@ -396,10 +396,11 @@ namespace EXAFMM_NAMESPACE {
       GB_iter GBj = Cj->BODY;
       int ni = Ci->NBODY;
       int nj = Cj->NBODY;
-      ityr::ori::with_checkout(
-          GBi, ni, ityr::ori::mode::read_write,
-          GBj, nj, ityr::ori::mode::read,
-          [&](Body* Bi, const Body* Bj) {
+
+      auto Bi = ityr::make_checkout(GBi, ni, ityr::checkout_mode::read_write);
+      auto Bj = ityr::make_checkout(GBj, nj, ityr::checkout_mode::read);
+
+      {
         ITYR_PROFILER_RECORD(prof_event_user_P2P_kernel);
 
         real_t wave_r = std::real(wavek);
@@ -518,7 +519,7 @@ namespace EXAFMM_NAMESPACE {
           Bi[i].TRG[2] += complex_t(ay_r, ay_i);
           Bi[i].TRG[3] += complex_t(az_r, az_i);
         }
-      });
+      }
     }
 
     void P2P_direct(const Cell* Ci, const Cell* Cj) {
@@ -526,181 +527,178 @@ namespace EXAFMM_NAMESPACE {
       GB_iter GBj = Cj->BODY;
       int ni = Ci->NBODY;
       int nj = Cj->NBODY;
-      ityr::ori::with_checkout(
-          GBi, ni, ityr::ori::mode::read_write,
-          [&](Body* Bi) {
-        real_t wave_r = std::real(wavek);
-        real_t wave_i = std::imag(wavek);
-        int i = 0;
+
+      auto Bi = ityr::make_checkout(GBi, ni, ityr::checkout_mode::read_write);
+
+      real_t wave_r = std::real(wavek);
+      real_t wave_i = std::imag(wavek);
+      int i = 0;
 #if EXAFMM_USE_SIMD
-        simdvec wave_rvec = wave_r;
-        simdvec wave_ivec = wave_i;
-        for ( ; i<=ni-NSIMD; i+=NSIMD) {
-          simdvec zero = 0.0;
-          simdvec one = 1.0;
-          ksimdvec pot_r = zero;
-          ksimdvec pot_i = zero;
-          ksimdvec ax_r = zero;
-          ksimdvec ax_i = zero;
-          ksimdvec ay_r = zero;
-          ksimdvec ay_i = zero;
-          ksimdvec az_r = zero;
-          ksimdvec az_i = zero;
+      simdvec wave_rvec = wave_r;
+      simdvec wave_ivec = wave_i;
+      for ( ; i<=ni-NSIMD; i+=NSIMD) {
+        simdvec zero = 0.0;
+        simdvec one = 1.0;
+        ksimdvec pot_r = zero;
+        ksimdvec pot_i = zero;
+        ksimdvec ax_r = zero;
+        ksimdvec ax_i = zero;
+        ksimdvec ay_r = zero;
+        ksimdvec ay_i = zero;
+        ksimdvec az_r = zero;
+        ksimdvec az_i = zero;
 
-          simdvec xi = SIMD<simdvec,B_iter,0,NSIMD>::setBody(Bi,i);
-          simdvec yi = SIMD<simdvec,B_iter,1,NSIMD>::setBody(Bi,i);
-          simdvec zi = SIMD<simdvec,B_iter,2,NSIMD>::setBody(Bi,i);
+        simdvec xi = SIMD<simdvec,B_iter,0,NSIMD>::setBody(Bi,i);
+        simdvec yi = SIMD<simdvec,B_iter,1,NSIMD>::setBody(Bi,i);
+        simdvec zi = SIMD<simdvec,B_iter,2,NSIMD>::setBody(Bi,i);
 
-          simdvec dx = Xperiodic[0];
-          xi -= dx;
-          simdvec dy = Xperiodic[1];
-          yi -= dy;
-          simdvec dz = Xperiodic[2];
-          zi -= dz;
+        simdvec dx = Xperiodic[0];
+        xi -= dx;
+        simdvec dy = Xperiodic[1];
+        yi -= dy;
+        simdvec dz = Xperiodic[2];
+        zi -= dz;
 
-          ityr::serial_for_each(
-              {.checkout_count = cutoff_body},
-              ityr::make_global_iterator(GBj     , ityr::ori::mode::read),
-              ityr::make_global_iterator(GBj + nj, ityr::ori::mode::read),
-              [&](const Body& Bj) {
-            dx = Bj.X[0];
-            dx -= xi;
-            dy = Bj.X[1];
-            dy -= yi;
-            dz = Bj.X[2];
-            dz -= zi;
+        ityr::serial_for_each(
+            {.checkout_count = cutoff_body},
+            ityr::make_global_iterator(GBj     , ityr::ori::mode::read),
+            ityr::make_global_iterator(GBj + nj, ityr::ori::mode::read),
+            [&](const Body& Bj) {
+          dx = Bj.X[0];
+          dx -= xi;
+          dy = Bj.X[1];
+          dy -= yi;
+          dz = Bj.X[2];
+          dz -= zi;
 
-            simdvec R2 = eps2;
-            R2 += dx * dx;
-            simdvec mj_r = std::real(Bj.SRC);
-            R2 += dy * dy;
-            simdvec mj_i = std::imag(Bj.SRC);
-            R2 += dz * dz;
-            simdvec invR = rsqrt(R2);
-            simdvec R = one / invR;
-            invR &= R2 > zero;
-            R &= R2 > zero;
+          simdvec R2 = eps2;
+          R2 += dx * dx;
+          simdvec mj_r = std::real(Bj.SRC);
+          R2 += dy * dy;
+          simdvec mj_i = std::imag(Bj.SRC);
+          R2 += dz * dz;
+          simdvec invR = rsqrt(R2);
+          simdvec R = one / invR;
+          invR &= R2 > zero;
+          R &= R2 > zero;
 
-            simdvec tmp = invR / exp(wave_ivec * R);
-            simdvec coef_r = cos(wave_rvec * R) * tmp;
-            simdvec coef_i = sin(wave_rvec * R) * tmp;
-            tmp = mj_r * coef_r - mj_i * coef_i;
-            coef_i = mj_r * coef_i + mj_i * coef_r;
-            coef_r = tmp;
-            mj_r = (one + wave_ivec * R) * invR * invR;
-            mj_i = - wave_rvec * invR;
-            pot_r += coef_r;
-            pot_i += coef_i;
-            tmp = mj_r * coef_r - mj_i * coef_i;
-            coef_i = mj_r * coef_i + mj_i * coef_r;
-            coef_r = tmp;
-            ax_r += coef_r * dx;
-            ax_i += coef_i * dx;
-            ay_r += coef_r * dy;
-            ay_i += coef_i * dy;
-            az_r += coef_r * dz;
-            az_i += coef_i * dz;
-          });
+          simdvec tmp = invR / exp(wave_ivec * R);
+          simdvec coef_r = cos(wave_rvec * R) * tmp;
+          simdvec coef_i = sin(wave_rvec * R) * tmp;
+          tmp = mj_r * coef_r - mj_i * coef_i;
+          coef_i = mj_r * coef_i + mj_i * coef_r;
+          coef_r = tmp;
+          mj_r = (one + wave_ivec * R) * invR * invR;
+          mj_i = - wave_rvec * invR;
+          pot_r += coef_r;
+          pot_i += coef_i;
+          tmp = mj_r * coef_r - mj_i * coef_i;
+          coef_i = mj_r * coef_i + mj_i * coef_r;
+          coef_r = tmp;
+          ax_r += coef_r * dx;
+          ax_i += coef_i * dx;
+          ay_r += coef_r * dy;
+          ay_i += coef_i * dy;
+          az_r += coef_r * dz;
+          az_i += coef_i * dz;
+        });
 
-          for (int k=0; k<NSIMD; k++) {
-            Bi[i+k].TRG[0] += transpose(pot_r, pot_i, k);
-            Bi[i+k].TRG[1] -= transpose(ax_r, ax_i, k);
-            Bi[i+k].TRG[2] -= transpose(ay_r, ay_i, k);
-            Bi[i+k].TRG[3] -= transpose(az_r, az_i, k);
-          }
+        for (int k=0; k<NSIMD; k++) {
+          Bi[i+k].TRG[0] += transpose(pot_r, pot_i, k);
+          Bi[i+k].TRG[1] -= transpose(ax_r, ax_i, k);
+          Bi[i+k].TRG[2] -= transpose(ay_r, ay_i, k);
+          Bi[i+k].TRG[3] -= transpose(az_r, az_i, k);
         }
+      }
 #endif
-        for ( ; i<ni; i++) {
-          real_t pot_r = 0.0;
-          real_t pot_i = 0.0;
-          real_t ax_r = 0.0;
-          real_t ax_i = 0.0;
-          real_t ay_r = 0.0;
-          real_t ay_i = 0.0;
-          real_t az_r = 0.0;
-          real_t az_i = 0.0;
+      for ( ; i<ni; i++) {
+        real_t pot_r = 0.0;
+        real_t pot_i = 0.0;
+        real_t ax_r = 0.0;
+        real_t ax_i = 0.0;
+        real_t ay_r = 0.0;
+        real_t ay_i = 0.0;
+        real_t az_r = 0.0;
+        real_t az_i = 0.0;
 
-          ityr::serial_for_each(
-              {.checkout_count = cutoff_body},
-              ityr::make_global_iterator(GBj     , ityr::ori::mode::read),
-              ityr::make_global_iterator(GBj + nj, ityr::ori::mode::read),
-              [&](const Body& Bj) {
-            real_t mj_r = std::real(Bj.SRC);
-            real_t mj_i = std::imag(Bj.SRC);
-            vec3 dX = Bi[i].X - Bj.X - Xperiodic;
-            real_t R2 = norm(dX) + eps2;
-            if (R2 != 0) {
-              real_t R = sqrt(R2);
-              real_t expikr = std::exp(wave_i * R) * R;
-              real_t expikr_r = std::cos(wave_r * R) / expikr;
-              real_t expikr_i = std::sin(wave_r * R) / expikr;
-              real_t coef1_r = mj_r * expikr_r - mj_i * expikr_i;
-              real_t coef1_i = mj_r * expikr_i + mj_i * expikr_r;
-              real_t kr_r = (1 + wave_i * R) / R2;
-              real_t kr_i = - wave_r / R;
-              real_t coef2_r = kr_r * coef1_r - kr_i * coef1_i;
-              real_t coef2_i = kr_r * coef1_i + kr_i * coef1_r;
-              pot_r += coef1_r;
-              pot_i += coef1_i;
-              ax_r += coef2_r * dX[0];
-              ax_i += coef2_i * dX[0];
-              ay_r += coef2_r * dX[1];
-              ay_i += coef2_i * dX[1];
-              az_r += coef2_r * dX[2];
-              az_i += coef2_i * dX[2];
-            }
-          });
+        ityr::serial_for_each(
+            {.checkout_count = cutoff_body},
+            ityr::make_global_iterator(GBj     , ityr::ori::mode::read),
+            ityr::make_global_iterator(GBj + nj, ityr::ori::mode::read),
+            [&](const Body& Bj) {
+          real_t mj_r = std::real(Bj.SRC);
+          real_t mj_i = std::imag(Bj.SRC);
+          vec3 dX = Bi[i].X - Bj.X - Xperiodic;
+          real_t R2 = norm(dX) + eps2;
+          if (R2 != 0) {
+            real_t R = sqrt(R2);
+            real_t expikr = std::exp(wave_i * R) * R;
+            real_t expikr_r = std::cos(wave_r * R) / expikr;
+            real_t expikr_i = std::sin(wave_r * R) / expikr;
+            real_t coef1_r = mj_r * expikr_r - mj_i * expikr_i;
+            real_t coef1_i = mj_r * expikr_i + mj_i * expikr_r;
+            real_t kr_r = (1 + wave_i * R) / R2;
+            real_t kr_i = - wave_r / R;
+            real_t coef2_r = kr_r * coef1_r - kr_i * coef1_i;
+            real_t coef2_i = kr_r * coef1_i + kr_i * coef1_r;
+            pot_r += coef1_r;
+            pot_i += coef1_i;
+            ax_r += coef2_r * dX[0];
+            ax_i += coef2_i * dX[0];
+            ay_r += coef2_r * dX[1];
+            ay_i += coef2_i * dX[1];
+            az_r += coef2_r * dX[2];
+            az_i += coef2_i * dX[2];
+          }
+        });
 
-          Bi[i].TRG[0] += complex_t(pot_r, pot_i);
-          Bi[i].TRG[1] += complex_t(ax_r, ax_i);
-          Bi[i].TRG[2] += complex_t(ay_r, ay_i);
-          Bi[i].TRG[3] += complex_t(az_r, az_i);
-        }
-      });
+        Bi[i].TRG[0] += complex_t(pot_r, pot_i);
+        Bi[i].TRG[1] += complex_t(ax_r, ax_i);
+        Bi[i].TRG[2] += complex_t(ay_r, ay_i);
+        Bi[i].TRG[3] += complex_t(az_r, az_i);
+      }
     }
 
     void P2M(const Cell* C) {
-      ityr::ori::with_checkout(
-          C->M.data(), C->M.size(), ityr::ori::mode::read_write,
-          C->BODY    , C->NBODY   , ityr::ori::mode::read,
-          [&](complex_t* CM, const Body* Bp) {
-        real_t Ynm[P*(P+1)/2];
-        complex_t ephi[P], jn[P+1], jnd[P+1];
-        complex_t Mnm[P*P];
-        for (int n=0; n<P*P; n++) Mnm[n] = complex_t(0,0);
-        real_t kscale = 2 * C->R * abs(wavek);
+      auto CM = ityr::make_checkout(C->M.data(), C->M.size(), ityr::checkout_mode::read_write);
+      auto Bp = ityr::make_checkout(C->BODY    , C->NBODY   , ityr::checkout_mode::read);
 
-        for (auto B=Bp; B!=Bp+C->NBODY; B++) {
-          vec3 dX = B->X - C->X;
-          real_t r, theta, phi;
-          cart2sph(dX, r, theta, phi);
-          real_t ctheta = std::cos(theta);
-          ephi[1] = exp(I * phi);
-          for (int n=2; n<P; n++) {
-            ephi[n] = ephi[n-1] * ephi[1];
-          }
-          get_Ynm(P, ctheta, Ynm);
-          complex_t z = wavek * r;
-          get_jn(P, z, kscale, jn, 0, jnd);
-          for (int n=0; n<P; n++) {
-            jn[n] *= B->SRC;
-          }
-          for (int n=0; n<P; n++) {
-            int nm = n * n + n;
-            int nms = n * (n + 1) / 2;
-            Mnm[nm] += Ynm[nms] * jn[n];
-            for (int m=1; m<=n; m++) {
-              nms = n * (n + 1) / 2 + m;
-              int npm = n * n + n + m;
-              int nmm = n * n + n - m;
-              complex_t Ynmjn = Ynm[nms] * jn[n];
-              Mnm[npm] += Ynmjn * conj(ephi[m]);
-              Mnm[nmm] += Ynmjn * ephi[m];
-            }
+      real_t Ynm[P*(P+1)/2];
+      complex_t ephi[P], jn[P+1], jnd[P+1];
+      complex_t Mnm[P*P];
+      for (int n=0; n<P*P; n++) Mnm[n] = complex_t(0,0);
+      real_t kscale = 2 * C->R * abs(wavek);
+
+      for (const auto& B : Bp) {
+        vec3 dX = B.X - C->X;
+        real_t r, theta, phi;
+        cart2sph(dX, r, theta, phi);
+        real_t ctheta = std::cos(theta);
+        ephi[1] = exp(I * phi);
+        for (int n=2; n<P; n++) {
+          ephi[n] = ephi[n-1] * ephi[1];
+        }
+        get_Ynm(P, ctheta, Ynm);
+        complex_t z = wavek * r;
+        get_jn(P, z, kscale, jn, 0, jnd);
+        for (int n=0; n<P; n++) {
+          jn[n] *= B.SRC;
+        }
+        for (int n=0; n<P; n++) {
+          int nm = n * n + n;
+          int nms = n * (n + 1) / 2;
+          Mnm[nm] += Ynm[nms] * jn[n];
+          for (int m=1; m<=n; m++) {
+            nms = n * (n + 1) / 2 + m;
+            int npm = n * n + n + m;
+            int nmm = n * n + n - m;
+            complex_t Ynmjn = Ynm[nms] * jn[n];
+            Mnm[npm] += Ynmjn * conj(ephi[m]);
+            Mnm[nmm] += Ynmjn * ephi[m];
           }
         }
-        for (int n=0; n<P; n++) CM[n] += Mnm[n] * I * wavek;
-      });
+      }
+      for (int n=0; n<P; n++) CM[n] += Mnm[n] * I * wavek;
     }
 
     void M2M(const Cell* Ci, const Cell* Cj0) {
@@ -722,77 +720,76 @@ namespace EXAFMM_NAMESPACE {
 	  ephi[P+n] = ephi[P+n-1] * ephi[P+1];
 	  ephi[P-n] = conj(ephi[P+n]);
 	}
-        ityr::ori::with_checkout(
-            Ci->M.data(), Ci->M.size(), ityr::ori::mode::read_write,
-            Cj->M.data(), Cj->M.size(), ityr::ori::mode::read,
-            [&](complex_t* CiM, const complex_t* CjM) {
-          for (int n=0; n<P; n++) {
-            for (int m=-n; m<=n; m++) {
+
+        auto CiM = ityr::make_checkout(Ci->M.data(), Ci->M.size(), ityr::checkout_mode::read_write);
+        auto CjM = ityr::make_checkout(Cj->M.data(), Cj->M.size(), ityr::checkout_mode::read);
+
+        for (int n=0; n<P; n++) {
+          for (int m=-n; m<=n; m++) {
+            int nm = n * n + n + m;
+            Mnm[nm] = CjM[nm] * ephi[P+m];
+          }
+        }
+        rotate(theta, P, Mnm, Mrot);
+        for (int n=0; n<P; n++) {
+          for (int m=-n; m<=n; m++) {
+            int nm = n * n + n + m;
+            Mnm[nm] = 0;
+          }
+        }
+        for (int l=0; l<nquad2; l++) {
+          real_t ctheta = xquad2[l];
+          real_t stheta = sqrt(1 - ctheta * ctheta);
+          real_t rj = (r + radius * ctheta) * (r + radius * ctheta) + (radius * stheta) * (radius * stheta);
+          rj = sqrt(rj);
+          real_t cthetaj = (r + radius * ctheta) / rj;
+          complex_t z = wavek * rj;
+          get_Ynm(P, cthetaj, Ynm);
+          get_hn(P, z, kscalej, hn);
+          for (int m=-P+1; m<P; m++) {
+            int mabs = abs(m);
+            phitemp[P+m] = 0;
+            for (int n=mabs; n<P; n++) {
               int nm = n * n + n + m;
-              Mnm[nm] = CjM[nm] * ephi[P+m];
+              int nms = n * (n + 1) / 2 + mabs;
+              phitemp[P+m] += Mrot[nm] * hn[n] * Ynm[nms];
             }
           }
-          rotate(theta, P, Mnm, Mrot);
-          for (int n=0; n<P; n++) {
-            for (int m=-n; m<=n; m++) {
+          get_Ynm(P, xquad2[l], Ynm);
+          for (int m=-P+1; m<P; m++) {
+            int mabs = abs(m);
+            z = phitemp[P+m] * wquad2[l] * real_t(.5);
+            for (int n=mabs; n<P; n++) {
               int nm = n * n + n + m;
-              Mnm[nm] = 0;
+              int nms = n * (n + 1) / 2 + mabs;
+              Mnm[nm] += z * Ynm[nms];
             }
           }
-          for (int l=0; l<nquad2; l++) {
-            real_t ctheta = xquad2[l];
-            real_t stheta = sqrt(1 - ctheta * ctheta);
-            real_t rj = (r + radius * ctheta) * (r + radius * ctheta) + (radius * stheta) * (radius * stheta);
-            rj = sqrt(rj);
-            real_t cthetaj = (r + radius * ctheta) / rj;
-            complex_t z = wavek * rj;
-            get_Ynm(P, cthetaj, Ynm);
-            get_hn(P, z, kscalej, hn);
-            for (int m=-P+1; m<P; m++) {
-              int mabs = abs(m);
-              phitemp[P+m] = 0;
-              for (int n=mabs; n<P; n++) {
-                int nm = n * n + n + m;
-                int nms = n * (n + 1) / 2 + mabs;
-                phitemp[P+m] += Mrot[nm] * hn[n] * Ynm[nms];
-              }
-            }
-            get_Ynm(P, xquad2[l], Ynm);
-            for (int m=-P+1; m<P; m++) {
-              int mabs = abs(m);
-              z = phitemp[P+m] * wquad2[l] * real_t(.5);
-              for (int n=mabs; n<P; n++) {
-                int nm = n * n + n + m;
-                int nms = n * (n + 1) / 2 + mabs;
-                Mnm[nm] += z * Ynm[nms];
-              }
-            }
+        }
+        complex_t z = wavek * radius;
+        get_hn(P, z, kscalei, hn);
+        for (int n=0; n<P; n++) {
+          for (int m=-n; m<=n; m++) {
+            int nm = n * n + n + m;
+            Mnm[nm] /= hn[n];
           }
-          complex_t z = wavek * radius;
-          get_hn(P, z, kscalei, hn);
-          for (int n=0; n<P; n++) {
-            for (int m=-n; m<=n; m++) {
-              int nm = n * n + n + m;
-              Mnm[nm] /= hn[n];
-            }
+        }
+        rotate(-theta, P, Mnm, Mrot);
+        for (int n=0; n<P; n++) {
+          for (int m=-n; m<=n; m++) {
+            int nm = n * n + n + m;
+            Mnm[nm] = ephi[P-m] * Mrot[nm];
           }
-          rotate(-theta, P, Mnm, Mrot);
-          for (int n=0; n<P; n++) {
-            for (int m=-n; m<=n; m++) {
-              int nm = n * n + n + m;
-              Mnm[nm] = ephi[P-m] * Mrot[nm];
-            }
-          }
-          for (int n=0; n<P*P; n++) CiM[n] += Mnm[n];
-        });
+        }
+        for (int n=0; n<P*P; n++) CiM[n] += Mnm[n];
       }
     }
 
     void M2L(const Cell* Ci, const Cell* Cj) {
-      ityr::ori::with_checkout(
-          Ci->L.data(), Ci->L.size(), ityr::ori::mode::read_write,
-          Cj->M.data(), Cj->M.size(), ityr::ori::mode::read,
-          [&](complex_t* CiL, const complex_t* CjM) {
+      auto CiL = ityr::make_checkout(Ci->L.data(), Ci->L.size(), ityr::checkout_mode::read_write);
+      auto CjM = ityr::make_checkout(Cj->M.data(), Cj->M.size(), ityr::checkout_mode::read);
+
+      {
         ITYR_PROFILER_RECORD(prof_event_user_M2L_kernel);
 
         real_t Ynm[P*(P+1)/2], Ynmd[P*(P+1)/2];
@@ -915,207 +912,203 @@ namespace EXAFMM_NAMESPACE {
           }
         }
         for (int n=0; n<P*P; n++) CiL[n] += Lnm[n];
-      });
+      }
     }
 
     void L2L(const Cell* Ci, const Cell* Cj) {
-      ityr::ori::with_checkout(
-          Ci->L.data(), Ci->L.size(), ityr::ori::mode::read_write,
-          Cj->L.data(), Cj->L.size(), ityr::ori::mode::read,
-          [&](complex_t* CiL, const complex_t* CjL) {
-        real_t Ynm[P*(P+1)/2], Ynmd[P*(P+1)/2];
-        complex_t phitemp[2*P], phitempn[2*P];
-        complex_t jn[P+1], jnd[P+1], ephi[2*P];
-        complex_t Lnm[P*P], Lrot[P*P], Lnmd[P*P];
-        real_t kscalei = 2 * Ci->R * abs(wavek);
-        real_t kscalej = 2 * Cj->R * abs(wavek);
-        real_t radius = 2 * Cj->R * sqrt(3.0) * .5;
-        vec3 dX = Ci->X - Cj->X;
-        real_t r, theta, phi;
-        cart2sph(dX, r, theta, phi);
-        ephi[P+1] = exp(I * phi);
-        ephi[P] = 1;
-        ephi[P-1] = conj(ephi[P+1]);
-        for (int n=2; n<P; n++) {
-          ephi[P+n] = ephi[P+n-1] * ephi[P+1];
-          ephi[P-n] = conj(ephi[P+n]);
-        }
+      auto CiL = ityr::make_checkout(Ci->L.data(), Ci->L.size(), ityr::checkout_mode::read_write);
+      auto CjL = ityr::make_checkout(Cj->L.data(), Cj->L.size(), ityr::checkout_mode::read);
 
+      real_t Ynm[P*(P+1)/2], Ynmd[P*(P+1)/2];
+      complex_t phitemp[2*P], phitempn[2*P];
+      complex_t jn[P+1], jnd[P+1], ephi[2*P];
+      complex_t Lnm[P*P], Lrot[P*P], Lnmd[P*P];
+      real_t kscalei = 2 * Ci->R * abs(wavek);
+      real_t kscalej = 2 * Cj->R * abs(wavek);
+      real_t radius = 2 * Cj->R * sqrt(3.0) * .5;
+      vec3 dX = Ci->X - Cj->X;
+      real_t r, theta, phi;
+      cart2sph(dX, r, theta, phi);
+      ephi[P+1] = exp(I * phi);
+      ephi[P] = 1;
+      ephi[P-1] = conj(ephi[P+1]);
+      for (int n=2; n<P; n++) {
+        ephi[P+n] = ephi[P+n-1] * ephi[P+1];
+        ephi[P-n] = conj(ephi[P+n]);
+      }
+
+      for (int n=0; n<P; n++) {
+        for (int m=-n; m<=n; m++) {
+          int nm = n * n + n + m;
+          Lnm[nm] = CjL[nm] * ephi[P+m];
+        }
+      }
+      rotate(theta, P, Lnm, Lrot);
+      for (int n=0; n<P; n++) {
+        for (int m=-n; m<=n; m++) {
+          int nm = n * n + n + m;
+          Lnm[nm] = 0;
+          Lnmd[nm] = 0;
+        }
+      }
+      for (int l=0; l<nquad; l++) {
+        real_t ctheta = xquad[l];
+        real_t stheta = sqrt(1 - ctheta * ctheta);
+        real_t rj = (r + radius * ctheta) * (r + radius * ctheta) + (radius * stheta) * (radius * stheta);
+        rj = sqrt(rj);
+        real_t cthetaj = (r + radius * ctheta) / rj;
+        real_t sthetaj = sqrt(1 - cthetaj * cthetaj);
+        real_t rn = sthetaj * stheta + cthetaj * ctheta;
+        real_t thetan = (cthetaj * stheta - ctheta * sthetaj) / rj;
+        complex_t z = wavek * rj;
+        get_Ynmd(P, cthetaj, Ynm, Ynmd);
+        get_jn(P, z, kscalej, jn, 1, jnd);
         for (int n=0; n<P; n++) {
-          for (int m=-n; m<=n; m++) {
+          jnd[n] *= wavek;
+        }
+        for (int n=1; n<P; n++) {
+          for (int m=1; m<=n; m++) {
+            int nms = n * (n + 1) / 2 + m;
+            Ynm[nms] *= sthetaj;
+          }
+        }
+        for (int m=-P+1; m<P; m++) {
+          phitemp[P+m] = 0;
+          phitempn[P+m] = 0;
+        }
+        phitemp[P] = Lrot[0] * jn[0];
+        phitempn[P] = Lrot[0] * jnd[0] * rn;
+        for (int n=1; n<P; n++) {
+          int nm = n * n + n;
+          int nms = n * (n + 1) / 2;
+          phitemp[P] += Lrot[nm] * jn[n] * Ynm[nms];
+          complex_t ut1 = jnd[n] * rn;
+          complex_t ut2 = jn[n] * thetan;
+          complex_t ut3 = ut1 * Ynm[nms] - ut2 * Ynmd[nms] * sthetaj;
+          phitempn[P] += ut3 * Lrot[nm];
+          for (int m=1; m<=n; m++) {
+            nms = n * (n + 1) / 2 + m;
+            int npm = n * n + n + m;
+            int nmm = n * n + n - m;
+            z = jn[n] * Ynm[nms];
+            phitemp[P+m] += Lrot[npm] * z;
+            phitemp[P-m] += Lrot[nmm] * z;
+            ut3 = ut1 * Ynm[nms] - ut2 * Ynmd[nms];
+            phitempn[P+m] += ut3 * Lrot[npm];
+            phitempn[P-m] += ut3 * Lrot[nmm];
+          }
+        }
+        get_Ynm(P, xquad[l], Ynm);
+        for (int m=-P+1; m<P; m++) {
+          int mabs = abs(m);
+          z = phitemp[P+m] * wquad[l] * real_t(.5);
+          for (int n=mabs; n<P; n++) {
             int nm = n * n + n + m;
-            Lnm[nm] = CjL[nm] * ephi[P+m];
+            int nms = n * (n + 1) / 2 + mabs;
+            Lnm[nm] += z * Ynm[nms];
           }
-        }
-        rotate(theta, P, Lnm, Lrot);
-        for (int n=0; n<P; n++) {
-          for (int m=-n; m<=n; m++) {
+          z = phitempn[P+m] * wquad[l] * real_t(.5);
+          for (int n=mabs; n<P; n++) {
             int nm = n * n + n + m;
-            Lnm[nm] = 0;
-            Lnmd[nm] = 0;
+            int nms = n * (n + 1) / 2 + mabs;
+            Lnmd[nm] += z * Ynm[nms];
           }
         }
-        for (int l=0; l<nquad; l++) {
-          real_t ctheta = xquad[l];
-          real_t stheta = sqrt(1 - ctheta * ctheta);
-          real_t rj = (r + radius * ctheta) * (r + radius * ctheta) + (radius * stheta) * (radius * stheta);
-          rj = sqrt(rj);
-          real_t cthetaj = (r + radius * ctheta) / rj;
-          real_t sthetaj = sqrt(1 - cthetaj * cthetaj);
-          real_t rn = sthetaj * stheta + cthetaj * ctheta;
-          real_t thetan = (cthetaj * stheta - ctheta * sthetaj) / rj;
-          complex_t z = wavek * rj;
-          get_Ynmd(P, cthetaj, Ynm, Ynmd);
-          get_jn(P, z, kscalej, jn, 1, jnd);
-          for (int n=0; n<P; n++) {
-            jnd[n] *= wavek;
-          }
-          for (int n=1; n<P; n++) {
-            for (int m=1; m<=n; m++) {
-              int nms = n * (n + 1) / 2 + m;
-              Ynm[nms] *= sthetaj;
-            }
-          }
-          for (int m=-P+1; m<P; m++) {
-            phitemp[P+m] = 0;
-            phitempn[P+m] = 0;
-          }
-          phitemp[P] = Lrot[0] * jn[0];
-          phitempn[P] = Lrot[0] * jnd[0] * rn;
-          for (int n=1; n<P; n++) {
-            int nm = n * n + n;
-            int nms = n * (n + 1) / 2;
-            phitemp[P] += Lrot[nm] * jn[n] * Ynm[nms];
-            complex_t ut1 = jnd[n] * rn;
-            complex_t ut2 = jn[n] * thetan;
-            complex_t ut3 = ut1 * Ynm[nms] - ut2 * Ynmd[nms] * sthetaj;
-            phitempn[P] += ut3 * Lrot[nm];
-            for (int m=1; m<=n; m++) {
-              nms = n * (n + 1) / 2 + m;
-              int npm = n * n + n + m;
-              int nmm = n * n + n - m;
-              z = jn[n] * Ynm[nms];
-              phitemp[P+m] += Lrot[npm] * z;
-              phitemp[P-m] += Lrot[nmm] * z;
-              ut3 = ut1 * Ynm[nms] - ut2 * Ynmd[nms];
-              phitempn[P+m] += ut3 * Lrot[npm];
-              phitempn[P-m] += ut3 * Lrot[nmm];
-            }
-          }
-          get_Ynm(P, xquad[l], Ynm);
-          for (int m=-P+1; m<P; m++) {
-            int mabs = abs(m);
-            z = phitemp[P+m] * wquad[l] * real_t(.5);
-            for (int n=mabs; n<P; n++) {
-              int nm = n * n + n + m;
-              int nms = n * (n + 1) / 2 + mabs;
-              Lnm[nm] += z * Ynm[nms];
-            }
-            z = phitempn[P+m] * wquad[l] * real_t(.5);
-            for (int n=mabs; n<P; n++) {
-              int nm = n * n + n + m;
-              int nms = n * (n + 1) / 2 + mabs;
-              Lnmd[nm] += z * Ynm[nms];
-            }
-          }
+      }
+      complex_t z = wavek * radius;
+      get_jn(P, z, kscalei, jn, 1, jnd);
+      for (int n=0; n<P; n++) {
+        for (int m=-n; m<=n; m++) {
+          int nm = n * n + n + m;
+          complex_t zh = jn[n];
+          complex_t zhn = jnd[n] * wavek;
+          z = zh * zh + zhn * zhn;
+          Lnm[nm] = (zh * Lnm[nm] + zhn * Lnmd[nm]) / z;
         }
-        complex_t z = wavek * radius;
-        get_jn(P, z, kscalei, jn, 1, jnd);
-        for (int n=0; n<P; n++) {
-          for (int m=-n; m<=n; m++) {
-            int nm = n * n + n + m;
-            complex_t zh = jn[n];
-            complex_t zhn = jnd[n] * wavek;
-            z = zh * zh + zhn * zhn;
-            Lnm[nm] = (zh * Lnm[nm] + zhn * Lnmd[nm]) / z;
-          }
+      }
+      rotate(-theta, P, Lnm, Lrot);
+      for (int n=0; n<P; n++) {
+        for (int m=-n; m<=n; m++) {
+          int nm = n * n + n + m;
+          Lnm[nm] = ephi[P-m] * Lrot[nm];
         }
-        rotate(-theta, P, Lnm, Lrot);
-        for (int n=0; n<P; n++) {
-          for (int m=-n; m<=n; m++) {
-            int nm = n * n + n + m;
-            Lnm[nm] = ephi[P-m] * Lrot[nm];
-          }
-        }
-        for (int n=0; n<P*P; n++) CiL[n] += Lnm[n];
-      });
+      }
+      for (int n=0; n<P*P; n++) CiL[n] += Lnm[n];
     }
 
     void L2P(const Cell* C) {
-      ityr::ori::with_checkout(
-          C->BODY    , C->NBODY   , ityr::ori::mode::read_write,
-          C->L.data(), C->L.size(), ityr::ori::mode::read,
-          [&](Body* Bp, const complex_t* CL) {
-        real_t Ynm[P*(P+1)/2], Ynmd[P*(P+1)/2];
-        complex_t ephi[P], jn[P+1], jnd[P+1];
-        real_t kscale = 2 * C->R * abs(wavek);
+      auto Bp = ityr::make_checkout(C->BODY    , C->NBODY   , ityr::checkout_mode::read_write);
+      auto CL = ityr::make_checkout(C->L.data(), C->L.size(), ityr::checkout_mode::read);
 
-        for (auto B=Bp; B!=Bp+C->NBODY; B++) {
-          complex_t Lj[P*P];
-          for (int n=0; n<P*P; n++) Lj[n]= CL[n];
-          kcvec4 TRG = kcomplex_t(0,0);
-          vec3 dX = B->X - C->X;
-          real_t r, theta, phi;
-          cart2sph(dX, r, theta, phi);
-          real_t ctheta = std::cos(theta);
-          real_t stheta = std::sin(theta);
-          real_t cphi = std::cos(phi);
-          real_t sphi = std::sin(phi);
-          ephi[1] = std::exp(I * phi);
-          for (int n=2; n<P; n++) {
-            ephi[n] = ephi[n-1] * ephi[1];
-          }
-          real_t rx = stheta * cphi;
-          real_t thetax = ctheta * cphi;
-          real_t phix = -sphi;
-          real_t ry = stheta * sphi;
-          real_t thetay = ctheta * sphi;
-          real_t phiy = cphi;
-          real_t rz = ctheta;
-          real_t thetaz = -stheta;
-          real_t phiz = 0;
-          get_Ynmd(P, ctheta, Ynm, Ynmd);
-          complex_t z = wavek * r;
-          get_jn(P, z, kscale, jn, 1, jnd);
-          TRG[0] += Lj[0] * jn[0];
-          for (int n=0; n<P; n++) {
-            jnd[n] *= wavek;
-          }
-          complex_t ur = Lj[0] * jnd[0];
-          complex_t utheta = 0;
-          complex_t uphi = 0;
-          for (int n=1; n<P; n++) {
-            int nm = n * n + n;
-            int nms = n * (n + 1) / 2;
-            TRG[0] += Lj[nm] * jn[n] * Ynm[nms];
-            ur += jnd[n] * Ynm[nms] * Lj[nm];
-            complex_t jnuse = jn[n+1] * kscale + jn[n-1] / kscale;
-            jnuse = wavek * jnuse / real_t(2 * n + 1.0);
-            utheta -= Lj[nm] * jnuse * Ynmd[nms] * stheta;
-            for (int m=1; m<=n; m++) {
-              int npm = n * n + n + m;
-              int nmm = n * n + n - m;
-              nms = n * (n + 1) / 2 + m;
-              complex_t ztmp1 = jn[n] * Ynm[nms] * stheta;
-              complex_t ztmp2 = Lj[npm] * ephi[m];
-              complex_t ztmp3 = Lj[nmm] * conj(ephi[m]);
-              complex_t ztmpsum = ztmp2 + ztmp3;
-              TRG[0] += ztmp1 * ztmpsum;
-              ur += jnd[n] * Ynm[nms] * stheta * ztmpsum;
-              utheta -= ztmpsum * jnuse * Ynmd[nms];
-              ztmpsum = real_t(m) * I * (ztmp2 - ztmp3);
-              uphi += jnuse * Ynm[nms] * ztmpsum;
-            }
-          }
-          complex_t ux = ur * rx + utheta * thetax + uphi * phix;
-          complex_t uy = ur * ry + utheta * thetay + uphi * phiy;
-          complex_t uz = ur * rz + utheta * thetaz + uphi * phiz;
-          TRG[1] -= ux;
-          TRG[2] -= uy;
-          TRG[3] -= uz;
-          B->TRG += TRG;
+      real_t Ynm[P*(P+1)/2], Ynmd[P*(P+1)/2];
+      complex_t ephi[P], jn[P+1], jnd[P+1];
+      real_t kscale = 2 * C->R * abs(wavek);
+
+      for (auto& B : Bp) {
+        complex_t Lj[P*P];
+        for (int n=0; n<P*P; n++) Lj[n]= CL[n];
+        kcvec4 TRG = kcomplex_t(0,0);
+        vec3 dX = B.X - C->X;
+        real_t r, theta, phi;
+        cart2sph(dX, r, theta, phi);
+        real_t ctheta = std::cos(theta);
+        real_t stheta = std::sin(theta);
+        real_t cphi = std::cos(phi);
+        real_t sphi = std::sin(phi);
+        ephi[1] = std::exp(I * phi);
+        for (int n=2; n<P; n++) {
+          ephi[n] = ephi[n-1] * ephi[1];
         }
-      });
+        real_t rx = stheta * cphi;
+        real_t thetax = ctheta * cphi;
+        real_t phix = -sphi;
+        real_t ry = stheta * sphi;
+        real_t thetay = ctheta * sphi;
+        real_t phiy = cphi;
+        real_t rz = ctheta;
+        real_t thetaz = -stheta;
+        real_t phiz = 0;
+        get_Ynmd(P, ctheta, Ynm, Ynmd);
+        complex_t z = wavek * r;
+        get_jn(P, z, kscale, jn, 1, jnd);
+        TRG[0] += Lj[0] * jn[0];
+        for (int n=0; n<P; n++) {
+          jnd[n] *= wavek;
+        }
+        complex_t ur = Lj[0] * jnd[0];
+        complex_t utheta = 0;
+        complex_t uphi = 0;
+        for (int n=1; n<P; n++) {
+          int nm = n * n + n;
+          int nms = n * (n + 1) / 2;
+          TRG[0] += Lj[nm] * jn[n] * Ynm[nms];
+          ur += jnd[n] * Ynm[nms] * Lj[nm];
+          complex_t jnuse = jn[n+1] * kscale + jn[n-1] / kscale;
+          jnuse = wavek * jnuse / real_t(2 * n + 1.0);
+          utheta -= Lj[nm] * jnuse * Ynmd[nms] * stheta;
+          for (int m=1; m<=n; m++) {
+            int npm = n * n + n + m;
+            int nmm = n * n + n - m;
+            nms = n * (n + 1) / 2 + m;
+            complex_t ztmp1 = jn[n] * Ynm[nms] * stheta;
+            complex_t ztmp2 = Lj[npm] * ephi[m];
+            complex_t ztmp3 = Lj[nmm] * conj(ephi[m]);
+            complex_t ztmpsum = ztmp2 + ztmp3;
+            TRG[0] += ztmp1 * ztmpsum;
+            ur += jnd[n] * Ynm[nms] * stheta * ztmpsum;
+            utheta -= ztmpsum * jnuse * Ynmd[nms];
+            ztmpsum = real_t(m) * I * (ztmp2 - ztmp3);
+            uphi += jnuse * Ynm[nms] * ztmpsum;
+          }
+        }
+        complex_t ux = ur * rx + utheta * thetax + uphi * phix;
+        complex_t uy = ur * ry + utheta * thetay + uphi * phiy;
+        complex_t uz = ur * rz + utheta * thetaz + uphi * phiz;
+        TRG[1] -= ux;
+        TRG[2] -= uy;
+        TRG[3] -= uz;
+        B.TRG += TRG;
+      }
     }
   };
 }
