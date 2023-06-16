@@ -178,6 +178,9 @@ dependencies:
         snap_graph_file=$1
         ./utils/snap_converter -i $snap_graph_file -o ${snap_graph_file}.adj
         ./utils/converter -enc binary -o ${snap_graph_file}.bin ${snap_graph_file}.adj
-        # awk '{printf("%08x%08x\n", $1, $2)}' $snap_graph_file | xxd -r -p - ${snap_graph_file}.binedgelist # for gemini (big endian)
-        awk '{printf("%02x%02x%02x%02x%02x%02x%02x%02x\n", and(0xff,$1), and(0xff,rshift($1,8)), and(0xff,rshift($1,16)), and(0xff,rshift($1,24)), and(0xff,$2), and(0xff,rshift($2,8)), and(0xff,rshift($2,16)), and(0xff,rshift($2,24)))}' $snap_graph_file | xxd -r -p - ${snap_graph_file}.binedgelist # for gemini (little endian)
+        ./utils/compressor -o ${snap_graph_file}.bytepda ${snap_graph_file}.adj
+        if [[ $KOCHI_MACHINE != wisteria-o ]]; then
+          # awk '{printf("%08x%08x\n", $1, $2)}' $snap_graph_file | xxd -r -p - ${snap_graph_file}.binedgelist # for gemini (big endian)
+          awk '{printf("%02x%02x%02x%02x%02x%02x%02x%02x\n", and(0xff,$1), and(0xff,rshift($1,8)), and(0xff,rshift($1,16)), and(0xff,rshift($1,24)), and(0xff,$2), and(0xff,rshift($2,8)), and(0xff,rshift($2,16)), and(0xff,rshift($2,24)))}' $snap_graph_file | xxd -r -p - ${snap_graph_file}.binedgelist # for gemini (little endian)
+        fi
       }

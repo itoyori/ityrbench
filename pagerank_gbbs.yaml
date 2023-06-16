@@ -14,6 +14,7 @@ default_params:
   repeats: 11
   max_iters: 100
   dataset: rmat_20_24
+  compressed: 1
   serial: 0
   debugger: 0
 
@@ -36,18 +37,25 @@ build:
     CXX=${CXX:-g++} CFLAGS="$CXXFLAGS" make -j -C gbbs/benchmarks/PageRank
 
 run:
-  depend_params: [nodes, cores, repeats, max_iters, dataset, serial, debugger]
+  depend_params: [nodes, cores, repeats, max_iters, dataset, compressed, serial, debugger]
   script: |
     source run_common.bash
 
+    if [[ $KOCHI_PARAM_COMPRESSED == 1 ]]; then
+      dataset_opts=-c
+      dataset_file=${KOCHI_INSTALL_PREFIX_GBBS}/${KOCHI_PARAM_DATASET}.bytepda
+    else
+      dataset_opts=-b
+      dataset_file=${KOCHI_INSTALL_PREFIX_GBBS}/${KOCHI_PARAM_DATASET}.bin
+    fi
+
     commands="
-      ./gbbs/benchmarks/PageRank/PageRank -b
+      ./gbbs/benchmarks/PageRank/PageRank $dataset_opts
         -rounds $KOCHI_PARAM_REPEATS
         -iters $KOCHI_PARAM_MAX_ITERS
-        ${KOCHI_INSTALL_PREFIX_GBBS}/${KOCHI_PARAM_DATASET}.bin"
+        $dataset_file"
 
     n_nodes=$(echo $KOCHI_PARAM_NODES | cut -f 1 -d ":" | sed 's/x/*/g' | bc)
-
     if [[ $n_nodes != 1 ]]; then
       echo "The number of nodes must be 1."
       exit 1
