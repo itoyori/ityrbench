@@ -153,7 +153,7 @@ graph load_dataset(const char* filename) {
         {.cutoff_count = cutoff_v, .checkout_count = cutoff_v},
         ityr::count_iterator<long>(0),
         ityr::count_iterator<long>(n),
-        ityr::make_global_iterator(v_in_data_begin, ityr::ori::mode::write),
+        ityr::make_global_iterator(v_in_data_begin, ityr::checkout_mode::write),
         [&](long i, vertex_data& vd) {
       vd.offset = in_offsets[i];
       vd.degree = in_offsets[i + 1] - in_offsets[i];
@@ -163,7 +163,7 @@ graph load_dataset(const char* filename) {
         {.cutoff_count = cutoff_v, .checkout_count = cutoff_v},
         ityr::count_iterator<long>(0),
         ityr::count_iterator<long>(n),
-        ityr::make_global_iterator(v_out_data_begin, ityr::ori::mode::write),
+        ityr::make_global_iterator(v_out_data_begin, ityr::checkout_mode::write),
         [&](long i, vertex_data& vd) {
       vd.offset = out_offsets[i];
       vd.degree = out_offsets[i + 1] - out_offsets[i];
@@ -173,7 +173,7 @@ graph load_dataset(const char* filename) {
         {.cutoff_count = cutoff_e, .checkout_count = cutoff_e},
         ityr::count_iterator<long>(0),
         ityr::count_iterator<long>(m),
-        ityr::make_global_iterator(in_edges_vec_begin, ityr::ori::mode::write),
+        ityr::make_global_iterator(in_edges_vec_begin, ityr::checkout_mode::write),
         [&](long i, uintE& e) {
       e = in_edges[i];
     });
@@ -182,7 +182,7 @@ graph load_dataset(const char* filename) {
         {.cutoff_count = cutoff_e, .checkout_count = cutoff_e},
         ityr::count_iterator<long>(0),
         ityr::count_iterator<long>(m),
-        ityr::make_global_iterator(out_edges_vec_begin, ityr::ori::mode::write),
+        ityr::make_global_iterator(out_edges_vec_begin, ityr::checkout_mode::write),
         [&](long i, uintE& e) {
       e = out_edges[i];
     });
@@ -237,7 +237,7 @@ ityr::global_vector<part> partition(const graph& g) {
     ityr::parallel_for_each(
         ityr::count_iterator<long>(0),
         ityr::count_iterator<long>(n_parts),
-        ityr::make_global_iterator(parts_ref.begin(), ityr::ori::mode::read_write),
+        ityr::make_global_iterator(parts_ref.begin(), ityr::checkout_mode::read_write),
         [=](long pid, part& p) {
       p.id      = pid;
       p.v_begin = pid * bin_width;
@@ -253,83 +253,73 @@ ityr::global_vector<part> partition(const graph& g) {
       p.dest_id_bin_sizes.resize(n_parts);
       p.update_bin_sizes.resize(n_parts);
 
-      ityr::ori::with_checkout(
-          p.dest_id_bin_sizes.data(), p.dest_id_bin_sizes.size(), ityr::ori::mode::read_write,
-          p.update_bin_sizes.data() , p.update_bin_sizes.size() , ityr::ori::mode::read_write,
-          [&](long* dest_id_bin_sizes, long* update_bin_sizes) {
+      auto dest_id_bin_sizes = ityr::make_checkout(p.dest_id_bin_sizes.data(), p.dest_id_bin_sizes.size(), ityr::checkout_mode::read_write);
+      auto update_bin_sizes  = ityr::make_checkout(p.update_bin_sizes.data() , p.update_bin_sizes.size() , ityr::checkout_mode::read_write);
+
+      ityr::serial_for_each(
+          {.checkout_count = cutoff_v},
+          ityr::make_global_iterator(&v_out_data[p.v_begin], ityr::checkout_mode::read),
+          ityr::make_global_iterator(&v_out_data[p.v_end]  , ityr::checkout_mode::read),
+          [&](vertex_data v) {
+
+        auto prev_bin = n_parts + 1;
+
+        auto e_begin = v.offset;
+        auto e_end   = v.offset + v.degree;
 
         ityr::serial_for_each(
-            {.checkout_count = cutoff_v},
-            ityr::make_global_iterator(&v_out_data[p.v_begin], ityr::ori::mode::read),
-            ityr::make_global_iterator(&v_out_data[p.v_end]  , ityr::ori::mode::read),
-            [&](vertex_data v) {
+            {.checkout_count = cutoff_e},
+            ityr::make_global_iterator(&out_edges[e_begin], ityr::checkout_mode::read),
+            ityr::make_global_iterator(&out_edges[e_end]  , ityr::checkout_mode::read),
+            [&](uintE dest_vid) {
+          uintE dest_bin = (dest_vid >> bin_offset_bits);
+          assert(dest_bin < n_parts);
 
-          auto prev_bin = n_parts + 1;
-
-          auto e_begin = v.offset;
-          auto e_end   = v.offset + v.degree;
-
-          ityr::serial_for_each(
-              {.checkout_count = cutoff_e},
-              ityr::make_global_iterator(&out_edges[e_begin], ityr::ori::mode::read),
-              ityr::make_global_iterator(&out_edges[e_end]  , ityr::ori::mode::read),
-              [&](uintE dest_vid) {
-            uintE dest_bin = (dest_vid >> bin_offset_bits);
-            assert(dest_bin < n_parts);
-
-            dest_id_bin_sizes[dest_bin]++;
-            if (dest_bin != prev_bin) {
-              update_bin_sizes[dest_bin]++;
-              prev_bin = dest_bin;
-            }
-          });
+          dest_id_bin_sizes[dest_bin]++;
+          if (dest_bin != prev_bin) {
+            update_bin_sizes[dest_bin]++;
+            prev_bin = dest_bin;
+          }
         });
       });
 
       // prefix sum
-      ityr::ori::with_checkout(
-          p.update_bin_sizes.data(), p.update_bin_sizes.size(), ityr::ori::mode::read,
-          p.bin_edge_offsets.data()  , p.bin_edge_offsets.size()  , ityr::ori::mode::write,
-          [&](const long* update_bin_sizes, long* bin_edge_offsets) {
-        bin_edge_offsets[0] = 0;
-        for (auto j = 0; j < n_parts; j++) {
-          bin_edge_offsets[j + 1] = bin_edge_offsets[j] + update_bin_sizes[j];
-        }
-        p.bin_edges.resize(bin_edge_offsets[n_parts]);
-      });
+      auto bin_edge_offsets = ityr::make_checkout(p.bin_edge_offsets.data(), p.bin_edge_offsets.size(), ityr::checkout_mode::write);
 
-      ityr::ori::with_checkout(
-          p.bin_edge_offsets.data(), p.bin_edge_offsets.size(), ityr::ori::mode::read,
-          p.bin_edges.data()       , p.bin_edges.size()       , ityr::ori::mode::write,
-          [&](const long* bin_edge_offsets, long* bin_edges) {
+      bin_edge_offsets[0] = 0;
+      for (auto j = 0; j < n_parts; j++) {
+        bin_edge_offsets[j + 1] = bin_edge_offsets[j] + update_bin_sizes[j];
+      }
+      p.bin_edges.resize(bin_edge_offsets[n_parts]);
 
-        std::vector<long> bin_offsets(n_parts);
+      auto bin_edges = ityr::make_checkout(p.bin_edges.data(), p.bin_edges.size(), ityr::checkout_mode::write);
+
+      std::vector<long> bin_offsets(n_parts);
+
+      ityr::serial_for_each(
+          {.checkout_count = cutoff_v},
+          ityr::count_iterator<uintE>(p.v_begin),
+          ityr::count_iterator<uintE>(p.v_end),
+          ityr::make_global_iterator(&v_out_data[p.v_begin], ityr::checkout_mode::read),
+          [&](uintE vid, vertex_data v) {
+
+        auto prev_bin = n_parts + 1;
+
+        auto e_begin = v.offset;
+        auto e_end   = v.offset + v.degree;
 
         ityr::serial_for_each(
-            {.checkout_count = cutoff_v},
-            ityr::count_iterator<uintE>(p.v_begin),
-            ityr::count_iterator<uintE>(p.v_end),
-            ityr::make_global_iterator(&v_out_data[p.v_begin], ityr::ori::mode::read),
-            [&](uintE vid, vertex_data v) {
+            {.checkout_count = cutoff_e},
+            ityr::make_global_iterator(&out_edges[e_begin], ityr::checkout_mode::read),
+            ityr::make_global_iterator(&out_edges[e_end]  , ityr::checkout_mode::read),
+            [&](uintE dest_vid) {
+          uintE dest_bin = (dest_vid >> bin_offset_bits);
+          assert(dest_bin < n_parts);
 
-          auto prev_bin = n_parts + 1;
-
-          auto e_begin = v.offset;
-          auto e_end   = v.offset + v.degree;
-
-          ityr::serial_for_each(
-              {.checkout_count = cutoff_e},
-              ityr::make_global_iterator(&out_edges[e_begin], ityr::ori::mode::read),
-              ityr::make_global_iterator(&out_edges[e_end]  , ityr::ori::mode::read),
-              [&](uintE dest_vid) {
-            uintE dest_bin = (dest_vid >> bin_offset_bits);
-            assert(dest_bin < n_parts);
-
-            if (dest_bin != prev_bin) {
-              bin_edges[bin_edge_offsets[dest_bin] + (bin_offsets[dest_bin]++)] = vid;
-              prev_bin = dest_bin;
-            }
-          });
+          if (dest_bin != prev_bin) {
+            bin_edges[bin_edge_offsets[dest_bin] + (bin_offsets[dest_bin]++)] = vid;
+            prev_bin = dest_bin;
+          }
         });
       });
 
@@ -342,74 +332,66 @@ ityr::global_vector<part> partition(const graph& g) {
 
     // store references to bins
     ityr::parallel_for_each(
-        ityr::make_global_iterator(parts_ref.begin(), ityr::ori::mode::read),
-        ityr::make_global_iterator(parts_ref.end()  , ityr::ori::mode::read),
+        ityr::make_global_iterator(parts_ref.begin(), ityr::checkout_mode::read),
+        ityr::make_global_iterator(parts_ref.end()  , ityr::checkout_mode::read),
         [=](const part& p) {
 
       ityr::serial_for_each(
-          ityr::make_global_iterator(parts_ref.begin()         , ityr::ori::mode::read),
-          ityr::make_global_iterator(parts_ref.end()           , ityr::ori::mode::read),
-          ityr::make_global_iterator(p.dest_id_bins_ref.begin(), ityr::ori::mode::write),
-          ityr::make_global_iterator(p.update_bins_ref.begin() , ityr::ori::mode::write),
+          ityr::make_global_iterator(parts_ref.begin()         , ityr::checkout_mode::read),
+          ityr::make_global_iterator(parts_ref.end()           , ityr::checkout_mode::read),
+          ityr::make_global_iterator(p.dest_id_bins_ref.begin(), ityr::checkout_mode::write),
+          ityr::make_global_iterator(p.update_bins_ref.begin() , ityr::checkout_mode::write),
           [&](const part& p2, ityr::global_span<uintE>& dest_id_bin_ref, ityr::global_span<double>& update_bin_ref) {
 
-        ityr::ori::with_checkout(
-            &p2.dest_id_bins[p.id]     , 1, ityr::ori::mode::read_write,
-            &p2.dest_id_bin_sizes[p.id], 1, ityr::ori::mode::read,
-            [&](ityr::global_vector<uintE>* dest_id_bin, const long* bin_size) {
-          dest_id_bin->resize(*bin_size);
-          dest_id_bin_ref = ityr::global_span<uintE>{dest_id_bin->data(), dest_id_bin->size()};
-        });
+        auto dest_id_bin      = ityr::make_checkout(&p2.dest_id_bins[p.id]     , 1, ityr::checkout_mode::read_write);
+        auto update_bin       = ityr::make_checkout(&p2.update_bins[p.id]      , 1, ityr::checkout_mode::read_write);
+        auto dest_id_bin_size = ityr::make_checkout(&p2.dest_id_bin_sizes[p.id], 1, ityr::checkout_mode::read);
+        auto update_bin_size  = ityr::make_checkout(&p2.update_bin_sizes[p.id] , 1, ityr::checkout_mode::read);
 
-        ityr::ori::with_checkout(
-            &p2.update_bins[p.id]     , 1, ityr::ori::mode::read_write,
-            &p2.update_bin_sizes[p.id], 1, ityr::ori::mode::read,
-            [&](ityr::global_vector<double>* update_bin, const long* bin_size) {
-          update_bin->resize(*bin_size);
-          update_bin_ref = ityr::global_span<double>{update_bin->data(), update_bin->size()};
-        });
+        dest_id_bin[0].resize(dest_id_bin_size[0]);
+        update_bin[0].resize(update_bin_size[0]);
+
+        dest_id_bin_ref = ityr::global_span<uintE>{dest_id_bin[0].data(), dest_id_bin[0].size()};
+        update_bin_ref = ityr::global_span<double>{update_bin[0].data(), update_bin[0].size()};
       });
     });
 
     // write dest id
     ityr::parallel_for_each(
-        ityr::make_global_iterator(parts_ref.begin(), ityr::ori::mode::read),
-        ityr::make_global_iterator(parts_ref.end()  , ityr::ori::mode::read),
+        ityr::make_global_iterator(parts_ref.begin(), ityr::checkout_mode::read),
+        ityr::make_global_iterator(parts_ref.end()  , ityr::checkout_mode::read),
         [=](const part& p) {
 
-      ityr::ori::with_checkout(
-          p.dest_id_bins.data(), p.dest_id_bins.size(), ityr::ori::mode::read,
-          [&](const ityr::global_vector<uintE>* dest_id_bins) {
+      auto dest_id_bins = ityr::make_checkout(p.dest_id_bins.data(), p.dest_id_bins.size(), ityr::checkout_mode::read);
 
-        std::vector<long> offsets(n_parts);
+      std::vector<long> offsets(n_parts);
+
+      ityr::serial_for_each(
+          {.checkout_count = cutoff_v},
+          ityr::make_global_iterator(&v_out_data[p.v_begin], ityr::checkout_mode::read),
+          ityr::make_global_iterator(&v_out_data[p.v_end]  , ityr::checkout_mode::read),
+          [&](vertex_data v) {
+
+        auto prev_bin = n_parts + 1;
+
+        auto e_begin = v.offset;
+        auto e_end   = v.offset + v.degree;
 
         ityr::serial_for_each(
-            {.checkout_count = cutoff_v},
-            ityr::make_global_iterator(&v_out_data[p.v_begin], ityr::ori::mode::read),
-            ityr::make_global_iterator(&v_out_data[p.v_end]  , ityr::ori::mode::read),
-            [&](vertex_data v) {
+            {.checkout_count = cutoff_e},
+            ityr::make_global_iterator(&out_edges[e_begin], ityr::checkout_mode::read),
+            ityr::make_global_iterator(&out_edges[e_end]  , ityr::checkout_mode::read),
+            [&](uintE dest_vid) {
+          uintE dest_bin = (dest_vid >> bin_offset_bits);
+          assert(dest_bin < n_parts);
 
-          auto prev_bin = n_parts + 1;
+          if (dest_bin != prev_bin) {
+            dest_vid |= MAX_NEG;
+            prev_bin = dest_bin;
+          }
 
-          auto e_begin = v.offset;
-          auto e_end   = v.offset + v.degree;
-
-          ityr::serial_for_each(
-              {.checkout_count = cutoff_e},
-              ityr::make_global_iterator(&out_edges[e_begin], ityr::ori::mode::read),
-              ityr::make_global_iterator(&out_edges[e_end]  , ityr::ori::mode::read),
-              [&](uintE dest_vid) {
-            uintE dest_bin = (dest_vid >> bin_offset_bits);
-            assert(dest_bin < n_parts);
-
-            if (dest_bin != prev_bin) {
-              dest_vid |= MAX_NEG;
-              prev_bin = dest_bin;
-            }
-
-            // TODO: course-grained checkout
-            dest_id_bins[dest_bin][offsets[dest_bin]++] = dest_vid;
-          });
+          // TODO: course-grained checkout
+          dest_id_bins[dest_bin][offsets[dest_bin]++] = dest_vid;
         });
       });
     });
@@ -433,9 +415,9 @@ ityr::global_vector<part> partition(const graph& g) {
       std::size_t s = 0;
       ityr::serial_for_each(
           {.checkout_count = std::size_t(n_parts)},
-          ityr::make_global_iterator(p.dest_id_bins.begin(), ityr::ori::mode::read),
-          ityr::make_global_iterator(p.dest_id_bins.end()  , ityr::ori::mode::read),
-          ityr::make_global_iterator(p.update_bins.begin() , ityr::ori::mode::read),
+          ityr::make_global_iterator(p.dest_id_bins.begin(), ityr::checkout_mode::read),
+          ityr::make_global_iterator(p.dest_id_bins.end()  , ityr::checkout_mode::read),
+          ityr::make_global_iterator(p.update_bins.begin() , ityr::checkout_mode::read),
           [&](const ityr::global_vector<uintE>& dest_id_bin, const ityr::global_vector<double>& update_bin) {
         s += dest_id_bin.size() * sizeof(uintE) + update_bin.size() * sizeof(double);
       });
@@ -487,25 +469,25 @@ void pagerank_naive(const graph&              g,
 
   ityr::parallel_for_each(
       {.cutoff_count = cutoff_v, .checkout_count = cutoff_v},
-      ityr::make_global_iterator(p_curr.begin(), ityr::ori::mode::write),
-      ityr::make_global_iterator(p_curr.end()  , ityr::ori::mode::write),
+      ityr::make_global_iterator(p_curr.begin(), ityr::checkout_mode::write),
+      ityr::make_global_iterator(p_curr.end()  , ityr::checkout_mode::write),
       [=](double& p) {
         p = one_over_n;
       });
 
   ityr::parallel_for_each(
       {.cutoff_count = cutoff_v, .checkout_count = cutoff_v},
-      ityr::make_global_iterator(p_next.begin(), ityr::ori::mode::write),
-      ityr::make_global_iterator(p_next.end()  , ityr::ori::mode::write),
+      ityr::make_global_iterator(p_next.begin(), ityr::checkout_mode::write),
+      ityr::make_global_iterator(p_next.end()  , ityr::checkout_mode::write),
       [=](double& p) {
         p = 0;
       });
 
   ityr::parallel_for_each(
       {.cutoff_count = cutoff_v, .checkout_count = cutoff_v},
-      ityr::make_global_iterator(p_div.begin()       , ityr::ori::mode::write),
-      ityr::make_global_iterator(p_div.end()         , ityr::ori::mode::write),
-      ityr::make_global_iterator(g.v_out_data.begin(), ityr::ori::mode::read),
+      ityr::make_global_iterator(p_div.begin()       , ityr::checkout_mode::write),
+      ityr::make_global_iterator(p_div.end()         , ityr::checkout_mode::write),
+      ityr::make_global_iterator(g.v_out_data.begin(), ityr::checkout_mode::read),
       [=](double& p, const vertex_data& vout) {
         p = one_over_n / static_cast<double>(vout.degree);
       });
@@ -514,9 +496,9 @@ void pagerank_naive(const graph&              g,
   while (iter++ < max_iters) {
     ityr::parallel_for_each(
         {.cutoff_count = 1, .checkout_count = 1},
-        ityr::make_global_iterator(g.v_in_data.begin(), ityr::ori::mode::no_access),
-        ityr::make_global_iterator(g.v_in_data.end()  , ityr::ori::mode::no_access),
-        ityr::make_global_iterator(p_next.begin()     , ityr::ori::mode::no_access),
+        ityr::make_global_iterator(g.v_in_data.begin(), ityr::checkout_mode::no_access),
+        ityr::make_global_iterator(g.v_in_data.end()  , ityr::checkout_mode::no_access),
+        ityr::make_global_iterator(p_next.begin()     , ityr::checkout_mode::no_access),
         [=](auto vin_, auto pn_) {
           vertex_data vin = vin_;
 
@@ -536,20 +518,20 @@ void pagerank_naive(const graph&              g,
 
     ityr::parallel_for_each(
         {.cutoff_count = cutoff_v, .checkout_count = cutoff_v},
-        ityr::make_global_iterator(p_div_next.begin()  , ityr::ori::mode::write),
-        ityr::make_global_iterator(p_div_next.end()    , ityr::ori::mode::write),
-        ityr::make_global_iterator(p_next.begin()      , ityr::ori::mode::read),
-        ityr::make_global_iterator(g.v_out_data.begin(), ityr::ori::mode::read),
+        ityr::make_global_iterator(p_div_next.begin()  , ityr::checkout_mode::write),
+        ityr::make_global_iterator(p_div_next.end()    , ityr::checkout_mode::write),
+        ityr::make_global_iterator(p_next.begin()      , ityr::checkout_mode::read),
+        ityr::make_global_iterator(g.v_out_data.begin(), ityr::checkout_mode::read),
         [=](double& pdn, const double& pn, const vertex_data& vout) {
           pdn = pn / static_cast<double>(vout.degree);
         });
 
     ityr::parallel_for_each(
         {.cutoff_count = cutoff_v, .checkout_count = cutoff_v},
-        ityr::make_global_iterator(differences.begin(), ityr::ori::mode::write),
-        ityr::make_global_iterator(differences.end()  , ityr::ori::mode::write),
-        ityr::make_global_iterator(p_curr.begin()     , ityr::ori::mode::read),
-        ityr::make_global_iterator(p_next.begin()     , ityr::ori::mode::read),
+        ityr::make_global_iterator(differences.begin(), ityr::checkout_mode::write),
+        ityr::make_global_iterator(differences.end()  , ityr::checkout_mode::write),
+        ityr::make_global_iterator(p_curr.begin()     , ityr::checkout_mode::read),
+        ityr::make_global_iterator(p_next.begin()     , ityr::checkout_mode::read),
         [=](double& d, const double& pc, const double& pn) {
           d = fabs(pc - pn);
         });
@@ -557,8 +539,8 @@ void pagerank_naive(const graph&              g,
     double L1_norm =
       ityr::parallel_reduce(
           {.cutoff_count = cutoff_v, .checkout_count = cutoff_v},
-          ityr::make_global_iterator(differences.begin(), ityr::ori::mode::read),
-          ityr::make_global_iterator(differences.end()  , ityr::ori::mode::read),
+          ityr::make_global_iterator(differences.begin(), ityr::checkout_mode::read),
+          ityr::make_global_iterator(differences.end()  , ityr::checkout_mode::read),
           double(0), std::plus<double>{});
 
     if (L1_norm < eps) break;
@@ -577,8 +559,8 @@ void pagerank_naive(const graph&              g,
   double max_pr =
     ityr::parallel_reduce(
         {.cutoff_count = cutoff_v, .checkout_count = cutoff_v},
-        ityr::make_global_iterator(p_next.begin(), ityr::ori::mode::read),
-        ityr::make_global_iterator(p_next.end()  , ityr::ori::mode::read),
+        ityr::make_global_iterator(p_next.begin(), ityr::checkout_mode::read),
+        ityr::make_global_iterator(p_next.end()  , ityr::checkout_mode::read),
         std::numeric_limits<double>::lowest(),
         [](double a, double b) { return std::max(a, b); });
 
@@ -602,25 +584,25 @@ void pagerank_gpop(graph&              g,
 
   ityr::parallel_for_each(
       {.cutoff_count = cutoff_v, .checkout_count = cutoff_v},
-      ityr::make_global_iterator(p_curr.begin(), ityr::ori::mode::write),
-      ityr::make_global_iterator(p_curr.end()  , ityr::ori::mode::write),
+      ityr::make_global_iterator(p_curr.begin(), ityr::checkout_mode::write),
+      ityr::make_global_iterator(p_curr.end()  , ityr::checkout_mode::write),
       [=](double& p) {
         p = one_over_n;
       });
 
   ityr::parallel_for_each(
       {.cutoff_count = cutoff_v, .checkout_count = cutoff_v},
-      ityr::make_global_iterator(p_next.begin(), ityr::ori::mode::write),
-      ityr::make_global_iterator(p_next.end()  , ityr::ori::mode::write),
+      ityr::make_global_iterator(p_next.begin(), ityr::checkout_mode::write),
+      ityr::make_global_iterator(p_next.end()  , ityr::checkout_mode::write),
       [=](double& p) {
         p = 0;
       });
 
   ityr::parallel_for_each(
       {.cutoff_count = cutoff_v, .checkout_count = cutoff_v},
-      ityr::make_global_iterator(p_div.begin()       , ityr::ori::mode::write),
-      ityr::make_global_iterator(p_div.end()         , ityr::ori::mode::write),
-      ityr::make_global_iterator(g.v_out_data.begin(), ityr::ori::mode::read),
+      ityr::make_global_iterator(p_div.begin()       , ityr::checkout_mode::write),
+      ityr::make_global_iterator(p_div.end()         , ityr::checkout_mode::write),
+      ityr::make_global_iterator(g.v_out_data.begin(), ityr::checkout_mode::read),
       [=](double& p, const vertex_data& vout) {
         p = one_over_n / static_cast<double>(vout.degree);
       });
@@ -631,31 +613,28 @@ void pagerank_gpop(graph&              g,
 
     // scatter
     ityr::parallel_for_each(
-        ityr::make_global_iterator(g.parts.begin(), ityr::ori::mode::read),
-        ityr::make_global_iterator(g.parts.end()  , ityr::ori::mode::read),
+        ityr::make_global_iterator(g.parts.begin(), ityr::checkout_mode::read),
+        ityr::make_global_iterator(g.parts.end()  , ityr::checkout_mode::read),
         [=](const part& p) {
 
-      ityr::ori::with_checkout(
-          &p_div[p.v_begin], p.n, ityr::ori::mode::read,
-          [&](const double* p_div_buf) {
+      auto p_div_ = ityr::make_checkout(&p_div[p.v_begin], p.n, ityr::checkout_mode::read);
+
+      ityr::serial_for_each(
+          {.checkout_count = std::size_t(n_parts)},
+          ityr::make_global_iterator(p.update_bins.begin()     , ityr::checkout_mode::read),
+          ityr::make_global_iterator(p.update_bins.end()       , ityr::checkout_mode::read),
+          ityr::make_global_iterator(p.bin_edge_offsets.begin(), ityr::checkout_mode::read),
+          [&](const ityr::global_vector<double>& update_bins, long e_begin) {
 
         ityr::serial_for_each(
-            {.checkout_count = std::size_t(n_parts)},
-            ityr::make_global_iterator(p.update_bins.begin()     , ityr::ori::mode::read),
-            ityr::make_global_iterator(p.update_bins.end()       , ityr::ori::mode::read),
-            ityr::make_global_iterator(p.bin_edge_offsets.begin(), ityr::ori::mode::read),
-            [&](const ityr::global_vector<double>& update_bins, long e_begin) {
-
-          ityr::serial_for_each(
-              {.checkout_count = cutoff_e},
-              ityr::make_global_iterator(update_bins.begin()  , ityr::ori::mode::write),
-              ityr::make_global_iterator(update_bins.end()    , ityr::ori::mode::write),
-              ityr::make_global_iterator(&p.bin_edges[e_begin], ityr::ori::mode::read),
-              [&](double& update, uintE vid) {
-            assert(vid >= p.v_begin);
-            assert(vid - p.v_begin < p.n);
-            update = p_div_buf[vid - p.v_begin];
-          });
+            {.checkout_count = cutoff_e},
+            ityr::make_global_iterator(update_bins.begin()  , ityr::checkout_mode::write),
+            ityr::make_global_iterator(update_bins.end()    , ityr::checkout_mode::write),
+            ityr::make_global_iterator(&p.bin_edges[e_begin], ityr::checkout_mode::read),
+            [&](double& update, uintE vid) {
+          assert(vid >= p.v_begin);
+          assert(vid - p.v_begin < p.n);
+          update = p_div_[vid - p.v_begin];
         });
       });
     });
@@ -664,51 +643,46 @@ void pagerank_gpop(graph&              g,
 
     // gather
     ityr::parallel_for_each(
-        ityr::make_global_iterator(g.parts.begin(), ityr::ori::mode::read),
-        ityr::make_global_iterator(g.parts.end()  , ityr::ori::mode::read),
+        ityr::make_global_iterator(g.parts.begin(), ityr::checkout_mode::read),
+        ityr::make_global_iterator(g.parts.end()  , ityr::checkout_mode::read),
         [=](const part& p) {
 
-      ityr::ori::with_checkout(
-          &p_next[p.v_begin], p.n, ityr::ori::mode::write,
-          [&](double* p_next_buf) {
-        for (long i = 0; i < p.n; i++) {
-          p_next_buf[i] = 0;
-        }
+      auto p_next_ = ityr::make_checkout(&p_next[p.v_begin], p.n, ityr::checkout_mode::write);
 
-        ityr::serial_for_each(
-            {.checkout_count = std::size_t(n_parts)},
-            ityr::make_global_iterator(p.dest_id_bins_ref.begin(), ityr::ori::mode::read),
-            ityr::make_global_iterator(p.dest_id_bins_ref.end()  , ityr::ori::mode::read),
-            ityr::make_global_iterator(p.update_bins_ref.begin() , ityr::ori::mode::read),
-            [&](const ityr::global_span<uintE>& dest_bin, const ityr::global_span<double>& update_bin) {
+      for (auto& pn : p_next_) {
+        pn = 0;
+      }
 
-          if (update_bin.size() > 0) {
-            ityr::ori::with_checkout(
-                update_bin.data(), update_bin.size(), ityr::ori::mode::read,
-                [&](const double* update_bin_buf) {
+      ityr::serial_for_each(
+          {.checkout_count = std::size_t(n_parts)},
+          ityr::make_global_iterator(p.dest_id_bins_ref.begin(), ityr::checkout_mode::read),
+          ityr::make_global_iterator(p.dest_id_bins_ref.end()  , ityr::checkout_mode::read),
+          ityr::make_global_iterator(p.update_bins_ref.begin() , ityr::checkout_mode::read),
+          [&](const ityr::global_span<uintE>& dest_bin, const ityr::global_span<double>& update_bin) {
 
-              long update_bin_offset = -1;
-              ityr::serial_for_each(
-                  {.checkout_count = dest_bin.size()},
-                  ityr::make_global_iterator(dest_bin.begin(), ityr::ori::mode::read),
-                  ityr::make_global_iterator(dest_bin.end()  , ityr::ori::mode::read),
-                  [&](uintE dest_vid) {
-                update_bin_offset += (dest_vid >> MSB_ROT);
-                dest_vid &= MAX_POS;
+        if (update_bin.size() > 0) {
+          auto update_bin_ = ityr::make_checkout(update_bin.data(), update_bin.size(), ityr::checkout_mode::read);
 
-                assert(dest_vid >= p.v_begin);
-                assert(dest_vid - p.v_begin < p.n);
-                assert(std::size_t(update_bin_offset) < update_bin.size());
-                p_next_buf[dest_vid - p.v_begin] += update_bin_buf[update_bin_offset];
-              });
-            });
-          }
-        });
+          long update_bin_offset = -1;
+          ityr::serial_for_each(
+              {.checkout_count = dest_bin.size()},
+              ityr::make_global_iterator(dest_bin.begin(), ityr::checkout_mode::read),
+              ityr::make_global_iterator(dest_bin.end()  , ityr::checkout_mode::read),
+              [&](uintE dest_vid) {
+            update_bin_offset += (dest_vid >> MSB_ROT);
+            dest_vid &= MAX_POS;
 
-        for (long i = 0; i < p.n; i++) {
-          p_next_buf[i] = damping * p_next_buf[i] + added_constant;
+            assert(dest_vid >= p.v_begin);
+            assert(dest_vid - p.v_begin < p.n);
+            assert(std::size_t(update_bin_offset) < update_bin.size());
+            p_next_[dest_vid - p.v_begin] += update_bin_[update_bin_offset];
+          });
         }
       });
+
+      for (auto& pn : p_next_) {
+        pn = damping * pn + added_constant;
+      }
     });
 
     auto t2 = ityr::gettime_ns();
@@ -718,20 +692,20 @@ void pagerank_gpop(graph&              g,
 
     ityr::parallel_for_each(
         {.cutoff_count = cutoff_v, .checkout_count = cutoff_v},
-        ityr::make_global_iterator(p_div_next.begin()  , ityr::ori::mode::write),
-        ityr::make_global_iterator(p_div_next.end()    , ityr::ori::mode::write),
-        ityr::make_global_iterator(p_next.begin()      , ityr::ori::mode::read),
-        ityr::make_global_iterator(g.v_out_data.begin(), ityr::ori::mode::read),
+        ityr::make_global_iterator(p_div_next.begin()  , ityr::checkout_mode::write),
+        ityr::make_global_iterator(p_div_next.end()    , ityr::checkout_mode::write),
+        ityr::make_global_iterator(p_next.begin()      , ityr::checkout_mode::read),
+        ityr::make_global_iterator(g.v_out_data.begin(), ityr::checkout_mode::read),
         [=](double& pdn, const double& pn, const vertex_data& vout) {
           pdn = pn / static_cast<double>(vout.degree);
         });
 
     ityr::parallel_for_each(
         {.cutoff_count = cutoff_v, .checkout_count = cutoff_v},
-        ityr::make_global_iterator(differences.begin(), ityr::ori::mode::write),
-        ityr::make_global_iterator(differences.end()  , ityr::ori::mode::write),
-        ityr::make_global_iterator(p_curr.begin()     , ityr::ori::mode::read),
-        ityr::make_global_iterator(p_next.begin()     , ityr::ori::mode::read),
+        ityr::make_global_iterator(differences.begin(), ityr::checkout_mode::write),
+        ityr::make_global_iterator(differences.end()  , ityr::checkout_mode::write),
+        ityr::make_global_iterator(p_curr.begin()     , ityr::checkout_mode::read),
+        ityr::make_global_iterator(p_next.begin()     , ityr::checkout_mode::read),
         [=](double& d, const double& pc, const double& pn) {
           d = fabs(pc - pn);
         });
@@ -739,8 +713,8 @@ void pagerank_gpop(graph&              g,
     double L1_norm =
       ityr::parallel_reduce(
           {.cutoff_count = cutoff_v, .checkout_count = cutoff_v},
-          ityr::make_global_iterator(differences.begin(), ityr::ori::mode::read),
-          ityr::make_global_iterator(differences.end()  , ityr::ori::mode::read),
+          ityr::make_global_iterator(differences.begin(), ityr::checkout_mode::read),
+          ityr::make_global_iterator(differences.end()  , ityr::checkout_mode::read),
           double(0), std::plus<double>{});
 
     if (L1_norm < eps) break;
@@ -759,8 +733,8 @@ void pagerank_gpop(graph&              g,
   double max_pr =
     ityr::parallel_reduce(
         {.cutoff_count = cutoff_v, .checkout_count = cutoff_v},
-        ityr::make_global_iterator(p_next.begin(), ityr::ori::mode::read),
-        ityr::make_global_iterator(p_next.end()  , ityr::ori::mode::read),
+        ityr::make_global_iterator(p_next.begin(), ityr::checkout_mode::read),
+        ityr::make_global_iterator(p_next.end()  , ityr::checkout_mode::read),
         std::numeric_limits<double>::lowest(),
         [](double a, double b) { return std::max(a, b); });
 
