@@ -97,19 +97,19 @@ std::tuple<char*, size_t> read_o_direct(const char* fname) {
   size_t fsize = lseek(fd, 0, SEEK_END);
   lseek(fd, 0, 0);
 
+  size_t pgsize = getpagesize();
+  gbbs_debug(std::cout << "# pgsize = " << pgsize << "\n";);
+
 /* allocate properly memaligned buffer for bytes */
 #if defined(__APPLE__)
   char* bytes = NULL;
-  posix_memalign((void**)&bytes, 4096 * 2, fsize + 4096);
+  posix_memalign((void**)&bytes, pgsize * 2, fsize + pgsize);
 #else
-  char* bytes = (char*)memalign(4096 * 2, fsize + 4096);
+  char* bytes = (char*)memalign(pgsize * 2, fsize + pgsize);
 #endif
   gbbs_debug(std::cout << "# fsize = " << fsize << "\n";);
 
   size_t sz = 0;
-
-  size_t pgsize = getpagesize();
-  gbbs_debug(std::cout << "# pgsize = " << pgsize << "\n";);
 
   size_t read_size = 1024 * 1024 * 1024;
   if (sz + read_size > fsize) {
