@@ -210,11 +210,25 @@ read_unweighted_asymmetric_graph(const char* fname, bool mmap, bool binary,
     uintT* out_offsets = (uintT*)(mmap_file + 3 * sizeof(long));
     uint64_t skip = 3 * sizeof(long) + (n + 1) * sizeof(uintT);
     uintE* out_edges = (uintE*)(mmap_file + skip);
+    if (!mmap) {
+      auto out_edges_ = gbbs::new_array_no_init<uintE>(m);
+      parallel_for(0, m, [&](size_t i) {
+        out_edges_[i] = out_edges[i];
+      });
+      out_edges = out_edges_;
+    }
     skip += m * sizeof(uintE);
 
     uintT* in_offsets = (uintT*)(mmap_file + skip + 3 * sizeof(long));
     skip += 3 * sizeof(long) + (n + 1) * sizeof(uintT);
     uintE* in_edges = (uintE*)(mmap_file + skip);
+    if (!mmap) {
+      auto in_edges_ = gbbs::new_array_no_init<uintE>(m);
+      parallel_for(0, m, [&](size_t i) {
+        in_edges_[i] = in_edges[i];
+      });
+      in_edges = in_edges_;
+    }
 
     auto v_out_data = gbbs::new_array_no_init<vertex_data>(n);
     parallel_for(0, n, [&](size_t i) {
@@ -233,6 +247,10 @@ read_unweighted_asymmetric_graph(const char* fname, bool mmap, bool binary,
         [=]() {
           gbbs::free_array(v_out_data, n);
           gbbs::free_array(v_in_data, n);
+          if (!mmap) {
+            gbbs::free_array(out_edges, n);
+            gbbs::free_array(in_edges, n);
+          }
         },
         (std::tuple<uintE, gbbs::empty>*)out_edges,
         (std::tuple<uintE, gbbs::empty>*)in_edges);
