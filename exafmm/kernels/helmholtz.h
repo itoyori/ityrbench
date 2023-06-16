@@ -397,8 +397,10 @@ namespace EXAFMM_NAMESPACE {
       int ni = Ci->NBODY;
       int nj = Cj->NBODY;
 
-      auto Bi = ityr::make_checkout(GBi, ni, ityr::checkout_mode::read_write);
-      auto Bj = ityr::make_checkout(GBj, nj, ityr::checkout_mode::read);
+      auto Bi_ = ityr::make_checkout(GBi, ni, ityr::checkout_mode::read_write);
+      auto Bj_ = ityr::make_checkout(GBj, nj, ityr::checkout_mode::read);
+      auto Bi = Bi_.data();
+      auto Bj = Bj_.data();
 
       {
         ITYR_PROFILER_RECORD(prof_event_user_P2P_kernel);
@@ -528,7 +530,8 @@ namespace EXAFMM_NAMESPACE {
       int ni = Ci->NBODY;
       int nj = Cj->NBODY;
 
-      auto Bi = ityr::make_checkout(GBi, ni, ityr::checkout_mode::read_write);
+      auto Bi_ = ityr::make_checkout(GBi, ni, ityr::checkout_mode::read_write);
+      auto Bi = Bi_.data();
 
       real_t wave_r = std::real(wavek);
       real_t wave_i = std::imag(wavek);
@@ -660,8 +663,9 @@ namespace EXAFMM_NAMESPACE {
     }
 
     void P2M(const Cell* C) {
-      auto CM = ityr::make_checkout(C->M.data(), C->M.size(), ityr::checkout_mode::read_write);
-      auto Bp = ityr::make_checkout(C->BODY    , C->NBODY   , ityr::checkout_mode::read);
+      auto CM_ = ityr::make_checkout(C->M.data(), C->M.size(), ityr::checkout_mode::read_write);
+      auto Bp  = ityr::make_checkout(C->BODY    , C->NBODY   , ityr::checkout_mode::read);
+      auto CM = CM_.data();
 
       real_t Ynm[P*(P+1)/2];
       complex_t ephi[P], jn[P+1], jnd[P+1];
@@ -721,8 +725,10 @@ namespace EXAFMM_NAMESPACE {
 	  ephi[P-n] = conj(ephi[P+n]);
 	}
 
-        auto CiM = ityr::make_checkout(Ci->M.data(), Ci->M.size(), ityr::checkout_mode::read_write);
-        auto CjM = ityr::make_checkout(Cj->M.data(), Cj->M.size(), ityr::checkout_mode::read);
+        auto CiM_ = ityr::make_checkout(Ci->M.data(), Ci->M.size(), ityr::checkout_mode::read_write);
+        auto CjM_ = ityr::make_checkout(Cj->M.data(), Cj->M.size(), ityr::checkout_mode::read);
+        auto CiM = CiM_.data();
+        auto CjM = CjM_.data();
 
         for (int n=0; n<P; n++) {
           for (int m=-n; m<=n; m++) {
@@ -786,8 +792,10 @@ namespace EXAFMM_NAMESPACE {
     }
 
     void M2L(const Cell* Ci, const Cell* Cj) {
-      auto CiL = ityr::make_checkout(Ci->L.data(), Ci->L.size(), ityr::checkout_mode::read_write);
-      auto CjM = ityr::make_checkout(Cj->M.data(), Cj->M.size(), ityr::checkout_mode::read);
+      auto CiL_ = ityr::make_checkout(Ci->L.data(), Ci->L.size(), ityr::checkout_mode::read_write);
+      auto CjM_ = ityr::make_checkout(Cj->M.data(), Cj->M.size(), ityr::checkout_mode::read);
+      auto CiL = CiL_.data();
+      auto CjM = CjM_.data();
 
       {
         ITYR_PROFILER_RECORD(prof_event_user_M2L_kernel);
@@ -916,8 +924,10 @@ namespace EXAFMM_NAMESPACE {
     }
 
     void L2L(const Cell* Ci, const Cell* Cj) {
-      auto CiL = ityr::make_checkout(Ci->L.data(), Ci->L.size(), ityr::checkout_mode::read_write);
-      auto CjL = ityr::make_checkout(Cj->L.data(), Cj->L.size(), ityr::checkout_mode::read);
+      auto CiL_ = ityr::make_checkout(Ci->L.data(), Ci->L.size(), ityr::checkout_mode::read_write);
+      auto CjL_ = ityr::make_checkout(Cj->L.data(), Cj->L.size(), ityr::checkout_mode::read);
+      auto CiL = CiL_.data();
+      auto CjL = CjL_.data();
 
       real_t Ynm[P*(P+1)/2], Ynmd[P*(P+1)/2];
       complex_t phitemp[2*P], phitempn[2*P];
@@ -1037,8 +1047,9 @@ namespace EXAFMM_NAMESPACE {
     }
 
     void L2P(const Cell* C) {
-      auto Bp = ityr::make_checkout(C->BODY    , C->NBODY   , ityr::checkout_mode::read_write);
-      auto CL = ityr::make_checkout(C->L.data(), C->L.size(), ityr::checkout_mode::read);
+      auto Bp  = ityr::make_checkout(C->BODY    , C->NBODY   , ityr::checkout_mode::read_write);
+      auto CL_ = ityr::make_checkout(C->L.data(), C->L.size(), ityr::checkout_mode::read);
+      auto CL = CL_.data();
 
       real_t Ynm[P*(P+1)/2], Ynmd[P*(P+1)/2];
       complex_t ephi[P], jn[P+1], jnd[P+1];
