@@ -11,7 +11,7 @@ namespace EXAFMM_NAMESPACE {
 
     typedef vec<8,int> ivec8;                                   //!< Vector of 8 integer types
 
-  private:
+  public:
     //! Binary tree is used for counting number of bodies with a recursive approach
     struct BinaryTreeNode {
       ivec8                      NBODY;                                   //!< Number of descendant bodies
@@ -21,6 +21,7 @@ namespace EXAFMM_NAMESPACE {
       global_ptr<BinaryTreeNode> END;                                     //!< Pointer to end of memory space
     };
 
+  private:
     //! Octree is used for building the FMM tree structure as "nodes", then transformed to "cells" data structure
     struct OctreeNode {
       int          IBODY;                                       //!< Index offset for first body in node
@@ -438,7 +439,7 @@ namespace EXAFMM_NAMESPACE {
     }
 
     //! Grow tree structure top down
-    void growTree(GBodies bodies, GBodies buffer, Box box) {
+    void growTree(GBodies bodies, GBodies buffer, Box box, global_vec<BinaryTreeNode>& bin_nodes_vec) {
       assert(box.R > 0);                                        // Check for bounds validity
       if (ityr::is_master()) {
         logger::startTimer("Grow tree");                          // Start timer
@@ -446,8 +447,7 @@ namespace EXAFMM_NAMESPACE {
       B0 = bodies.begin();                                      // Bodies iterator
       int maxBinNode = (4 * bodies.size()) / nspawn;            // Get maximum size of binary tree
 
-      /* global_vec<BinaryTreeNode> bin_nodes_vec(maxBinNode); */
-      global_vec<BinaryTreeNode> bin_nodes_vec(global_vec_coll_opts, maxBinNode);
+      bin_nodes_vec.resize(maxBinNode);
 
       BinaryTreeNode root_node;
       root_node.BEGIN = bin_nodes_vec.begin();
@@ -511,7 +511,8 @@ namespace EXAFMM_NAMESPACE {
     BuildTree(int _ncrit, int _nspawn) : ncrit(_ncrit), nspawn(_nspawn), numLevels(0) {}
 
     //! Build tree structure top down
-    void buildTree(GBodies bodies, GBodies buffer, Bounds bounds, global_vec<Cell>& cells_vec) {
+    void buildTree(GBodies bodies, GBodies buffer, Bounds bounds,
+                   global_vec<Cell>& cells_vec, global_vec<BinaryTreeNode>& bin_node_vec) {
       Box box = bounds2box(bounds);                             // Get box from bounds
       if (bodies.empty()) {                                     // If bodies vector is empty
 	N0 = nullptr;                                              //  Reinitialize N0 with NULL
@@ -521,7 +522,7 @@ namespace EXAFMM_NAMESPACE {
 #else
         assert(bodies.size() <= buffer.size());
 #endif
-	growTree(bodies, buffer, box);                          //  Grow tree from root
+	growTree(bodies, buffer, box, bin_node_vec);                          //  Grow tree from root
       }                                                         // End if for empty root
       linkTree(box, cells_vec);                                     // Form parent-child links in tree
     }

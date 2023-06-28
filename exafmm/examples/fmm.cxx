@@ -24,6 +24,8 @@ void run_fmm(const Args& args) {
   global_vec<Body> buffer_vec(global_vec_coll_opts);
   global_vec<Cell> cells_vec(global_vec_coll_opts);
 
+  global_vec<BuildTree::BinaryTreeNode> binary_node_vec(global_vec_coll_opts);
+
   GBodies bodies, jbodies, buffer;
   BoundBox boundBox;
   Bounds bounds;
@@ -97,7 +99,7 @@ void run_fmm(const Args& args) {
 #endif
       }
 
-      buildTree.buildTree(bodies, buffer, bounds, cells_vec);
+      buildTree.buildTree(bodies, buffer, bounds, cells_vec, binary_node_vec);
       cells = GCells{cells_vec.begin(), cells_vec.end()};
 
       ityr::ori::collect_deallocated();
