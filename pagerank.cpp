@@ -337,6 +337,7 @@ ityr::global_vector<part> partition(const graph& g) {
         [=](const part& p) {
 
       ityr::serial_for_each(
+          {.checkout_count = std::size_t(n_parts)},
           ityr::make_global_iterator(parts_ref.begin()         , ityr::checkout_mode::read),
           ityr::make_global_iterator(parts_ref.end()           , ityr::checkout_mode::read),
           ityr::make_global_iterator(p.dest_id_bins_ref.begin(), ityr::checkout_mode::write),
