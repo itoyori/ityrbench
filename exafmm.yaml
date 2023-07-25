@@ -123,6 +123,51 @@ batches:
         src: mpirun_out.txt
         dest: exafmm/${batch_name}/n_${n_input}_s_${sub_block_size}_${duplicate}.out
 
+  getput:
+    name: exafmm_${batch_name}
+    params:
+      nodes:
+        - value: [2x3x2:torus]
+          machines: [wisteria-o]
+        - value: [8]
+          machines: [squid-c]
+      n_input: 10_000_000
+      sched: [randws, adws]
+      cache_policy: [writeback_lazy, getput]
+      accuracy_test: 0
+      dag_prof: workspan
+    artifacts:
+      - type: stdout
+        dest: exafmm/${batch_name}/nodes_${nodes}_s_${sched}_c_${cache_policy}_${duplicate}.log
+      - type: stats
+        dest: exafmm/${batch_name}/nodes_${nodes}_s_${sched}_c_${cache_policy}_${duplicate}.stats
+      - type: file
+        src: mpirun_out.txt
+        dest: exafmm/${batch_name}/nodes_${nodes}_s_${sched}_c_${cache_policy}_${duplicate}.out
+
+  getput_prof:
+    name: exafmm_${batch_name}
+    params:
+      nodes:
+        - value: [2x3x2:torus]
+          machines: [wisteria-o]
+        - value: [8]
+          machines: [squid-c]
+      n_input: 10_000_000
+      sched: [randws, adws]
+      cache_policy: [writeback_lazy, getput]
+      accuracy_test: 0
+      dag_prof: workspan
+      prof: stats
+    artifacts:
+      - type: stdout
+        dest: exafmm/${batch_name}/nodes_${nodes}_s_${sched}_c_${cache_policy}_${duplicate}.log
+      - type: stats
+        dest: exafmm/${batch_name}/nodes_${nodes}_s_${sched}_c_${cache_policy}_${duplicate}.stats
+      - type: file
+        src: mpirun_out.txt
+        dest: exafmm/${batch_name}/nodes_${nodes}_s_${sched}_c_${cache_policy}_${duplicate}.out
+
 build:
   depend_params: [dist_policy, block_size, prof, dag_prof, cache_prof]
   script: |
