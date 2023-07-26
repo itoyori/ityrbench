@@ -283,39 +283,39 @@ namespace EXAFMM_NAMESPACE {
         simdvec zj = Xperiodic[2];
         zi -= zj;
 
-        ityr::serial_for_each(
-            {.checkout_count = cutoff_body},
+        ityr::for_each(
+            body_seq_policy,
             ityr::make_global_iterator(GBj     , ityr::checkout_mode::read),
             ityr::make_global_iterator(GBj + nj, ityr::checkout_mode::read),
             [&](const Body& Bj) {
-          simdvec dx = Bj.X[0];
-          dx -= xi;
-          simdvec dy = Bj.X[1];
-          dy -= yi;
-          simdvec dz = Bj.X[2];
-          dz -= zi;
-          simdvec mj = Bj.SRC;
+              simdvec dx = Bj.X[0];
+              dx -= xi;
+              simdvec dy = Bj.X[1];
+              dy -= yi;
+              simdvec dz = Bj.X[2];
+              dz -= zi;
+              simdvec mj = Bj.SRC;
 
-          simdvec R2 = eps2;
-          xj = dx;
-          R2 += dx * dx;
-          yj = dy;
-          R2 += dy * dy;
-          zj = dz;
-          R2 += dz * dz;
-          simdvec invR = rsqrt(R2);
-          invR &= R2 > zero;
+              simdvec R2 = eps2;
+              xj = dx;
+              R2 += dx * dx;
+              yj = dy;
+              R2 += dy * dy;
+              zj = dz;
+              R2 += dz * dz;
+              simdvec invR = rsqrt(R2);
+              invR &= R2 > zero;
 
-          mj *= invR;
-          pot += mj;
-          invR = invR * invR * mj;
-          xj *= invR;
-          ax += xj;
-          yj *= invR;
-          ay += yj;
-          zj *= invR;
-          az += zj;
-        });
+              mj *= invR;
+              pot += mj;
+              invR = invR * invR * mj;
+              xj *= invR;
+              ax += xj;
+              yj *= invR;
+              ay += yj;
+              zj *= invR;
+              az += zj;
+            });
 
         for (int k=0; k<NSIMD; k++) {
           Bi[i+k].TRG[0] += transpose(pot, k);
@@ -331,23 +331,23 @@ namespace EXAFMM_NAMESPACE {
         kreal_t ay = 0;
         kreal_t az = 0;
 
-        ityr::serial_for_each(
-            {.checkout_count = cutoff_body},
+        ityr::for_each(
+            body_seq_policy,
             ityr::make_global_iterator(GBj     , ityr::checkout_mode::read),
             ityr::make_global_iterator(GBj + nj, ityr::checkout_mode::read),
             [&](const Body& Bj) {
-          vec3 dX = Bi[i].X - Bj.X - Xperiodic;
-          real_t R2 = norm(dX) + eps2;
-          if (R2 != 0) {
-            real_t invR2 = 1.0 / R2;
-            real_t invR = Bj.SRC * sqrt(invR2);
-            dX *= invR2 * invR;
-            pot += invR;
-            ax += dX[0];
-            ay += dX[1];
-            az += dX[2];
-          }
-        });
+              vec3 dX = Bi[i].X - Bj.X - Xperiodic;
+              real_t R2 = norm(dX) + eps2;
+              if (R2 != 0) {
+                real_t invR2 = 1.0 / R2;
+                real_t invR = Bj.SRC * sqrt(invR2);
+                dX *= invR2 * invR;
+                pot += invR;
+                ax += dX[0];
+                ay += dX[1];
+                az += dX[2];
+              }
+            });
 
         Bi[i].TRG[0] += pot;
         Bi[i].TRG[1] -= ax;

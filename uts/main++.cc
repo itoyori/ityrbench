@@ -163,14 +163,15 @@ global_ptr<dynamic_node> build_tree(Node parent) {
   global_ptr<global_ptr<dynamic_node>> children = get_children(this_node);
 
   if (numChildren > 0) {
-    ityr::parallel_for_each(
+    ityr::transform(
+        ityr::execution::par,
         ityr::count_iterator<counter_t>(0),
         ityr::count_iterator<counter_t>(numChildren),
         ityr::make_global_iterator(children, ityr::checkout_mode::no_access),
-        [=](counter_t i, auto&& x) {
+        [=](counter_t i) {
           Node child = makeChild(&parent, childType,
                                  computeGranularity, i);
-          x = build_tree(child);
+          return build_tree(child);
         });
   }
 
@@ -184,7 +185,8 @@ Result traverse_tree(counter_t depth, global_ptr<dynamic_node> this_node) {
   if (numChildren == 0) {
     return { depth, 1, 1 };
   } else {
-    Result result = ityr::parallel_reduce(
+    Result result = ityr::transform_reduce(
+        ityr::execution::par,
         ityr::make_global_iterator(children              , ityr::checkout_mode::no_access),
         ityr::make_global_iterator(children + numChildren, ityr::checkout_mode::no_access),
         Result{0, 0, 0},
@@ -202,7 +204,8 @@ void destroy_tree(global_ptr<dynamic_node> this_node) {
   global_ptr<global_ptr<dynamic_node>> children = get_children(this_node);
 
   if (numChildren > 0) {
-    ityr::parallel_for_each(
+    ityr::for_each(
+        ityr::execution::par,
         ityr::make_global_iterator(children              , ityr::checkout_mode::no_access),
         ityr::make_global_iterator(children + numChildren, ityr::checkout_mode::no_access),
         [=](auto&& child_node) {

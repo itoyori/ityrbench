@@ -562,49 +562,49 @@ namespace EXAFMM_NAMESPACE {
         simdvec dz = Xperiodic[2];
         zi -= dz;
 
-        ityr::serial_for_each(
-            {.checkout_count = cutoff_body},
+        ityr::for_each(
+            body_seq_policy,
             ityr::make_global_iterator(GBj     , ityr::ori::mode::read),
             ityr::make_global_iterator(GBj + nj, ityr::ori::mode::read),
             [&](const Body& Bj) {
-          dx = Bj.X[0];
-          dx -= xi;
-          dy = Bj.X[1];
-          dy -= yi;
-          dz = Bj.X[2];
-          dz -= zi;
+              dx = Bj.X[0];
+              dx -= xi;
+              dy = Bj.X[1];
+              dy -= yi;
+              dz = Bj.X[2];
+              dz -= zi;
 
-          simdvec R2 = eps2;
-          R2 += dx * dx;
-          simdvec mj_r = std::real(Bj.SRC);
-          R2 += dy * dy;
-          simdvec mj_i = std::imag(Bj.SRC);
-          R2 += dz * dz;
-          simdvec invR = rsqrt(R2);
-          simdvec R = one / invR;
-          invR &= R2 > zero;
-          R &= R2 > zero;
+              simdvec R2 = eps2;
+              R2 += dx * dx;
+              simdvec mj_r = std::real(Bj.SRC);
+              R2 += dy * dy;
+              simdvec mj_i = std::imag(Bj.SRC);
+              R2 += dz * dz;
+              simdvec invR = rsqrt(R2);
+              simdvec R = one / invR;
+              invR &= R2 > zero;
+              R &= R2 > zero;
 
-          simdvec tmp = invR / exp(wave_ivec * R);
-          simdvec coef_r = cos(wave_rvec * R) * tmp;
-          simdvec coef_i = sin(wave_rvec * R) * tmp;
-          tmp = mj_r * coef_r - mj_i * coef_i;
-          coef_i = mj_r * coef_i + mj_i * coef_r;
-          coef_r = tmp;
-          mj_r = (one + wave_ivec * R) * invR * invR;
-          mj_i = - wave_rvec * invR;
-          pot_r += coef_r;
-          pot_i += coef_i;
-          tmp = mj_r * coef_r - mj_i * coef_i;
-          coef_i = mj_r * coef_i + mj_i * coef_r;
-          coef_r = tmp;
-          ax_r += coef_r * dx;
-          ax_i += coef_i * dx;
-          ay_r += coef_r * dy;
-          ay_i += coef_i * dy;
-          az_r += coef_r * dz;
-          az_i += coef_i * dz;
-        });
+              simdvec tmp = invR / exp(wave_ivec * R);
+              simdvec coef_r = cos(wave_rvec * R) * tmp;
+              simdvec coef_i = sin(wave_rvec * R) * tmp;
+              tmp = mj_r * coef_r - mj_i * coef_i;
+              coef_i = mj_r * coef_i + mj_i * coef_r;
+              coef_r = tmp;
+              mj_r = (one + wave_ivec * R) * invR * invR;
+              mj_i = - wave_rvec * invR;
+              pot_r += coef_r;
+              pot_i += coef_i;
+              tmp = mj_r * coef_r - mj_i * coef_i;
+              coef_i = mj_r * coef_i + mj_i * coef_r;
+              coef_r = tmp;
+              ax_r += coef_r * dx;
+              ax_i += coef_i * dx;
+              ay_r += coef_r * dy;
+              ay_i += coef_i * dy;
+              az_r += coef_r * dz;
+              az_i += coef_i * dz;
+            });
 
         for (int k=0; k<NSIMD; k++) {
           Bi[i+k].TRG[0] += transpose(pot_r, pot_i, k);
@@ -624,36 +624,36 @@ namespace EXAFMM_NAMESPACE {
         real_t az_r = 0.0;
         real_t az_i = 0.0;
 
-        ityr::serial_for_each(
-            {.checkout_count = cutoff_body},
+        ityr::for_each(
+            body_seq_policy,
             ityr::make_global_iterator(GBj     , ityr::ori::mode::read),
             ityr::make_global_iterator(GBj + nj, ityr::ori::mode::read),
             [&](const Body& Bj) {
-          real_t mj_r = std::real(Bj.SRC);
-          real_t mj_i = std::imag(Bj.SRC);
-          vec3 dX = Bi[i].X - Bj.X - Xperiodic;
-          real_t R2 = norm(dX) + eps2;
-          if (R2 != 0) {
-            real_t R = sqrt(R2);
-            real_t expikr = std::exp(wave_i * R) * R;
-            real_t expikr_r = std::cos(wave_r * R) / expikr;
-            real_t expikr_i = std::sin(wave_r * R) / expikr;
-            real_t coef1_r = mj_r * expikr_r - mj_i * expikr_i;
-            real_t coef1_i = mj_r * expikr_i + mj_i * expikr_r;
-            real_t kr_r = (1 + wave_i * R) / R2;
-            real_t kr_i = - wave_r / R;
-            real_t coef2_r = kr_r * coef1_r - kr_i * coef1_i;
-            real_t coef2_i = kr_r * coef1_i + kr_i * coef1_r;
-            pot_r += coef1_r;
-            pot_i += coef1_i;
-            ax_r += coef2_r * dX[0];
-            ax_i += coef2_i * dX[0];
-            ay_r += coef2_r * dX[1];
-            ay_i += coef2_i * dX[1];
-            az_r += coef2_r * dX[2];
-            az_i += coef2_i * dX[2];
-          }
-        });
+              real_t mj_r = std::real(Bj.SRC);
+              real_t mj_i = std::imag(Bj.SRC);
+              vec3 dX = Bi[i].X - Bj.X - Xperiodic;
+              real_t R2 = norm(dX) + eps2;
+              if (R2 != 0) {
+                real_t R = sqrt(R2);
+                real_t expikr = std::exp(wave_i * R) * R;
+                real_t expikr_r = std::cos(wave_r * R) / expikr;
+                real_t expikr_i = std::sin(wave_r * R) / expikr;
+                real_t coef1_r = mj_r * expikr_r - mj_i * expikr_i;
+                real_t coef1_i = mj_r * expikr_i + mj_i * expikr_r;
+                real_t kr_r = (1 + wave_i * R) / R2;
+                real_t kr_i = - wave_r / R;
+                real_t coef2_r = kr_r * coef1_r - kr_i * coef1_i;
+                real_t coef2_i = kr_r * coef1_i + kr_i * coef1_r;
+                pot_r += coef1_r;
+                pot_i += coef1_i;
+                ax_r += coef2_r * dX[0];
+                ax_i += coef2_i * dX[0];
+                ay_r += coef2_r * dX[1];
+                ay_i += coef2_i * dX[1];
+                az_r += coef2_r * dX[2];
+                az_i += coef2_i * dX[2];
+              }
+            });
 
         Bi[i].TRG[0] += complex_t(pot_r, pot_i);
         Bi[i].TRG[1] += complex_t(ax_r, ax_i);

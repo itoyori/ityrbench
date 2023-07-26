@@ -212,23 +212,23 @@ namespace EXAFMM_NAMESPACE {
         kreal_t ay = 0;
         kreal_t az = 0;
 
-        ityr::serial_for_each(
-            {.checkout_count = cutoff_body},
+        ityr::for_each(
+            body_seq_policy,
             ityr::make_global_iterator(GBj     , ityr::ori::mode::read),
             ityr::make_global_iterator(GBj + nj, ityr::ori::mode::read),
             [&](const Body& Bj) {
-          vec3 dX = Bi[i].X - Bj.X - Xperiodic;
-          real_t R2 = norm(dX) + eps2;
-          if (R2 != 0) {
-            real_t invR2 = 1.0 / R2;
-            real_t S2 = 2 * Bj.SRC[3] * Bj.SRC[3];
-            real_t RS = R2 / S2;
-            real_t cutoff = invR2 * std::sqrt(invR2) * (erf( std::sqrt(RS) ) - std::sqrt(4 / M_PI * RS) * std::exp(-RS));
-            ax += (dX[1] * Bj.SRC[2] - dX[2] * Bj.SRC[1]) * cutoff;
-            ay += (dX[2] * Bj.SRC[0] - dX[0] * Bj.SRC[2]) * cutoff;
-            az += (dX[0] * Bj.SRC[1] - dX[1] * Bj.SRC[0]) * cutoff;
-          }
-        });
+              vec3 dX = Bi[i].X - Bj.X - Xperiodic;
+              real_t R2 = norm(dX) + eps2;
+              if (R2 != 0) {
+                real_t invR2 = 1.0 / R2;
+                real_t S2 = 2 * Bj.SRC[3] * Bj.SRC[3];
+                real_t RS = R2 / S2;
+                real_t cutoff = invR2 * std::sqrt(invR2) * (erf( std::sqrt(RS) ) - std::sqrt(4 / M_PI * RS) * std::exp(-RS));
+                ax += (dX[1] * Bj.SRC[2] - dX[2] * Bj.SRC[1]) * cutoff;
+                ay += (dX[2] * Bj.SRC[0] - dX[0] * Bj.SRC[2]) * cutoff;
+                az += (dX[0] * Bj.SRC[1] - dX[1] * Bj.SRC[0]) * cutoff;
+              }
+            });
 
         Bi[i].TRG[0] = 1;
         Bi[i].TRG[1] += ax;

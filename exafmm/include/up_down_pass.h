@@ -17,12 +17,13 @@ namespace EXAFMM_NAMESPACE {
       int nchild = cs[0].NCHILD;
       cs.checkin();
 
-      ityr::parallel_for_each(
+      ityr::for_each(
+          ityr::execution::par,
           ityr::count_iterator<int>(0),
           ityr::count_iterator<int>(nchild),
           [=, *this](int i) {
-        postOrderTraversal(C0 + ichild + i, C0);
-      });
+            postOrderTraversal(C0 + ichild + i, C0);
+          });
 
       auto cs2 = ityr::make_checkout(C, 1, ityr::checkout_mode::read);
 
@@ -64,12 +65,13 @@ namespace EXAFMM_NAMESPACE {
       cs.checkin();
       csj.checkin();
 
-      ityr::parallel_for_each(
+      ityr::for_each(
+          ityr::execution::par,
           ityr::count_iterator<int>(0),
           ityr::count_iterator<int>(nchild),
           [=, *this](int i) {
-        preOrderTraversal(C0 + ichild + i, C0);
-      });
+            preOrderTraversal(C0 + ichild + i, C0);
+          });
     };
 
   public:
@@ -84,14 +86,14 @@ namespace EXAFMM_NAMESPACE {
       ityr::root_exec([=, *this] {
         if (!cells.empty()) {                                     // If cell vector is not empty
           GC_iter C0 = cells.begin();                              //  Set iterator of target root cell
-          ityr::parallel_for_each(
-              {.cutoff_count = cutoff_cell, .checkout_count = cutoff_cell},
+          ityr::for_each(
+              cell_par_policy,
               ityr::make_global_iterator(cells.begin(), ityr::checkout_mode::read_write),
               ityr::make_global_iterator(cells.end()  , ityr::checkout_mode::read_write),
               [=, *this](Cell& c) {
-            c.M.resize(kernel->NTERM, 0.0);                       //   Allocate & initialize M coefs
-            c.L.resize(kernel->NTERM, 0.0);                       //   Allocate & initialize L coefs
-          });
+                c.M.resize(kernel->NTERM, 0.0);                       //   Allocate & initialize M coefs
+                c.L.resize(kernel->NTERM, 0.0);                       //   Allocate & initialize L coefs
+              });
           postOrderTraversal(C0, C0);                             //  Start post-order traversal from root
         }                                                         // End if for empty cell vector
       });
@@ -115,12 +117,13 @@ namespace EXAFMM_NAMESPACE {
             kernel->L2P(&cs[0]);                                       //   L2P kernel
           }                                                       //  End if root is the only cell
           cs.checkin();
-          ityr::parallel_for_each(
+          ityr::for_each(
+              ityr::execution::par,
               ityr::count_iterator<int>(0),
               ityr::count_iterator<int>(nchild),
               [=, *this](int i) {
-            preOrderTraversal(C0 + ichild + i, C0);                            //   Start pre-order traversal from root
-          });
+                preOrderTraversal(C0 + ichild + i, C0);                            //   Start pre-order traversal from root
+              });
         }                                                         // End if for empty cell vector
       });
       if (ityr::is_master()) {

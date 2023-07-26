@@ -240,38 +240,29 @@ void fill_array(ityr::global_span<T> s) {
   static int counter = 0;
   auto seed = counter++;
 
-  ityr::parallel_for_each({.cutoff_count = cutoff_sort, .checkout_count = cutoff_sort},
-                          ityr::count_iterator<std::size_t>(0),
-                          ityr::count_iterator<std::size_t>(s.size()),
-                          ityr::make_global_iterator(s.begin(), ityr::checkout_mode::write),
-                          [=](std::size_t i, T& x) {
-    pcg32 rng(seed, i);
-    x = gen_random_elem<T>(rng);
-  });
+  ityr::transform(
+      ityr::execution::parallel_policy{.cutoff_count   = cutoff_sort,
+                                       .checkout_count = cutoff_sort},
+      ityr::count_iterator<std::size_t>(0),
+      ityr::count_iterator<std::size_t>(s.size()),
+      s.begin(),
+      [=](std::size_t i) {
+        pcg32 rng(seed, i);
+        return gen_random_elem<T>(rng);
+      });
 }
 
 template <typename T>
 bool check_sorted(ityr::global_span<T> s) {
-  struct acc_type {
-    bool is_init;
-    bool success;
-    T first;
-    T last;
-  };
-  auto ret = ityr::parallel_reduce(
-    {.cutoff_count = cutoff_sort, .checkout_count = cutoff_sort},
-    s.begin(),
-    s.end(),
-    acc_type{true, true, T{}, T{}},
-    [](const auto& l, const auto& r) {
-      if (l.is_init) return r;
-      if (r.is_init) return l;
-      if (!l.success || !r.success) return acc_type{false, false, l.first, r.last};
-      else if (l.last > r.first) return acc_type{false, false, l.first, r.last};
-      else return acc_type{false, true, l.first, r.last};
-    },
-    [](const T& e) { return acc_type{false, true, e, e}; });
-  return ret.success;
+  if (s.size() <= 1) {
+    return true;
+  }
+  // check s[i] <= s[i+1] for all i
+  return ityr::transform_reduce(
+      ityr::execution::parallel_policy{.cutoff_count   = cutoff_sort,
+                                       .checkout_count = cutoff_sort},
+      s.begin(), s.end() - 1, s.begin() + 1,
+      true, std::logical_and<>{}, std::less_equal<>{});
 }
 
 void show_help_and_exit(int argc [[maybe_unused]], char** argv) {

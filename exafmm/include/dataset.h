@@ -65,15 +65,15 @@ namespace EXAFMM_NAMESPACE {
 	splitRange(begin, end, i, numSplit);                    //  Split range of bodies
 	srand48(seed);                                          //  Set seed for random number generator
 
-        ityr::serial_for_each(
-            {.checkout_count = cutoff_body},
-            ityr::make_global_iterator(bodies.begin() + begin, ityr::ori::mode::write),
-            ityr::make_global_iterator(bodies.begin() + end  , ityr::ori::mode::write),
+        ityr::for_each(
+            body_seq_policy,
+            ityr::make_global_iterator(bodies.begin() + begin, ityr::checkout_mode::write),
+            ityr::make_global_iterator(bodies.begin() + end  , ityr::checkout_mode::write),
             [&](auto&& B) {
-	  for (int d=0; d<3; d++) {                             //   Loop over dimension
-	    B.X[d] = drand48() * 2 * M_PI - M_PI;              //    Initialize coordinates
-	  }                                                     //   End loop over dimension
-        });
+              for (int d=0; d<3; d++) {                             //   Loop over dimension
+                B.X[d] = drand48() * 2 * M_PI - M_PI;              //    Initialize coordinates
+              }                                                     //   End loop over dimension
+            });
       }                                                         // End loop over partitions
     }
 
@@ -163,47 +163,47 @@ namespace EXAFMM_NAMESPACE {
 #if EXAFMM_LAPLACE
 
 	real_t average = 0;                                     //  Initialize average charge
-        ityr::serial_for_each(
-            {.checkout_count = cutoff_body},
-            ityr::make_global_iterator(bodies.begin() + begin, ityr::ori::mode::read_write),
-            ityr::make_global_iterator(bodies.begin() + end  , ityr::ori::mode::read_write),
+        ityr::for_each(
+            body_seq_policy,
+            ityr::make_global_iterator(bodies.begin() + begin, ityr::checkout_mode::read_write),
+            ityr::make_global_iterator(bodies.begin() + end  , ityr::checkout_mode::read_write),
             [&](auto&& B) {
-          B.SRC = drand48() - .5;                              //   Initialize charge
-          average += B.SRC;                                    //   Accumulate average
-        });
+              B.SRC = drand48() - .5;                              //   Initialize charge
+              average += B.SRC;                                    //   Accumulate average
+            });
 
         average /= (end - begin);
 
-        ityr::parallel_for_each(
-            {.cutoff_count = cutoff_body, .checkout_count = cutoff_body},
-            ityr::make_global_iterator(bodies.begin() + begin, ityr::ori::mode::read_write),
-            ityr::make_global_iterator(bodies.begin() + end  , ityr::ori::mode::read_write),
+        ityr::for_each(
+            body_par_policy,
+            ityr::make_global_iterator(bodies.begin() + begin, ityr::checkout_mode::read_write),
+            ityr::make_global_iterator(bodies.begin() + end  , ityr::checkout_mode::read_write),
             [=](auto&& B) {
-          B.SRC -= average;
-        });
+              B.SRC -= average;
+            });
 
 #elif EXAFMM_HELMHOLTZ
 
-        ityr::parallel_for_each(
-            {.cutoff_count = cutoff_body, .checkout_count = cutoff_body},
-            ityr::make_global_iterator(bodies.begin() + begin, ityr::ori::mode::read_write),
-            ityr::make_global_iterator(bodies.begin() + end  , ityr::ori::mode::read_write),
+        ityr::for_each(
+            body_par_policy,
+            ityr::make_global_iterator(bodies.begin() + begin, ityr::checkout_mode::read_write),
+            ityr::make_global_iterator(bodies.begin() + end  , ityr::checkout_mode::read_write),
             [=](auto&& B) {
-	  B.SRC = B.X[0] + I * B.X[1];
-        });
+              B.SRC = B.X[0] + I * B.X[1];
+            });
 
 #elif EXAFMM_BIOTSAVART
 
-        ityr::serial_for_each(
-            {.checkout_count = cutoff_body},
-            ityr::make_global_iterator(bodies.begin() + begin, ityr::ori::mode::read_write),
-            ityr::make_global_iterator(bodies.begin() + end  , ityr::ori::mode::read_write),
+        ityr::for_each(
+            body_seq_policy,
+            ityr::make_global_iterator(bodies.begin() + begin, ityr::checkout_mode::read_write),
+            ityr::make_global_iterator(bodies.begin() + end  , ityr::checkout_mode::read_write),
             [&](auto&& B) {
-	  for (int d=0; d<3; d++) {                             //   Loop over dimensions
-	    B.SRC[d] = drand48() / bodies.size();              //    Initialize source
-	  }                                                     //   End loop over dimensions
-	  B.SRC[3] = powf(bodies.size() * numSplit, -1./3) * 2 * M_PI * 0.01; // Initialize core radius
-        });
+	      for (int d=0; d<3; d++) {                             //   Loop over dimensions
+	        B.SRC[d] = drand48() / bodies.size();              //    Initialize source
+	      }                                                     //   End loop over dimensions
+	      B.SRC[3] = powf(bodies.size() * numSplit, -1./3) * 2 * M_PI * 0.01; // Initialize core radius
+            });
 
 #endif
       }                                                         // End loop over partitions
@@ -257,17 +257,17 @@ namespace EXAFMM_NAMESPACE {
 
     //! Initialize target values
     void initTarget(GBodies bodies) const {
-      ityr::parallel_for_each(
-          {.cutoff_count = cutoff_body, .checkout_count = cutoff_body},
-          ityr::make_global_iterator(bodies.begin(), ityr::ori::mode::read_write),
-          ityr::make_global_iterator(bodies.end()  , ityr::ori::mode::read_write),
+      ityr::for_each(
+          body_par_policy,
+          ityr::make_global_iterator(bodies.begin(), ityr::checkout_mode::read_write),
+          ityr::make_global_iterator(bodies.end()  , ityr::checkout_mode::read_write),
           ityr::count_iterator<int>(0),
           [=](auto&& B, int i) {
-        B.TRG = 0;                                             //  Clear target values
-        B.IBODY = i;                            //  Initial body numbering
-        B.ICELL = 0;                                           //  Initial cell index
-        B.WEIGHT = 1;                                          //  Initial weight
-      });
+            B.TRG = 0;                                             //  Clear target values
+            B.IBODY = i;                            //  Initial body numbering
+            B.ICELL = 0;                                           //  Initial cell index
+            B.WEIGHT = 1;                                          //  Initial weight
+          });
     }
 
     //! Initialize dsitribution, source & target value of bodies

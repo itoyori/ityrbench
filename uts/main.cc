@@ -157,7 +157,8 @@ Result parTreeSearch_fj(counter_t depth, Node parent) {
     Result r = { depth, 1, 1 };
     result = r;
   } else {
-    result = ityr::parallel_reduce(
+    result = ityr::transform_reduce(
+        ityr::execution::par,
         ityr::count_iterator<counter_t>(0),
         ityr::count_iterator<counter_t>(numChildren),
         Result{0, 0, 0},

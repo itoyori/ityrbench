@@ -24,17 +24,17 @@ namespace EXAFMM_NAMESPACE {
   private:
     //! Octree is used for building the FMM tree structure as "nodes", then transformed to "cells" data structure
     struct OctreeNode {
-      int          IBODY;                                       //!< Index offset for first body in node
-      int          NBODY;                                       //!< Number of descendant bodies
-      int          NNODE;                                       //!< Number of descendant nodes
+      int                    IBODY;                                       //!< Index offset for first body in node
+      int                    NBODY;                                       //!< Number of descendant bodies
+      int                    NNODE;                                       //!< Number of descendant nodes
       global_ptr<OctreeNode> CHILD[8];                                    //!< Pointer to child node
-      vec3         X;                                           //!< Coordinate at center
+      vec3                   X;                                           //!< Coordinate at center
     };
 
-    const int    ncrit;                                         //!< Number of bodies per leaf cell
-    const int    nspawn;                                        //!< Threshold of NBODY for spawning new threads
-    int          numLevels;                                     //!< Number of levels in tree
-    GB_iter       B0;                                            //!< Iterator of first body
+    const int              ncrit;                                         //!< Number of bodies per leaf cell
+    const int              nspawn;                                        //!< Threshold of NBODY for spawning new threads
+    int                    numLevels;                                     //!< Number of levels in tree
+    GB_iter                B0;                                            //!< Iterator of first body
     global_ptr<OctreeNode> N0;                                            //!< Pointer to octree root node
 
   private:
@@ -72,22 +72,20 @@ namespace EXAFMM_NAMESPACE {
           for (int i=0; i<8; i++) binNode_->NBODY[i] = 0;        //   Initialize number of bodies in octant
           binNode_->LEFT = binNode_->RIGHT = nullptr;                //   Initialize pointers to left and right child node
 
-          ityr::serial_for_each(
-              {.checkout_count = cutoff_body},
+          ityr::for_each(
+              body_seq_policy,
               ityr::count_iterator<int>(begin),
               ityr::count_iterator<int>(end),
               ityr::make_global_iterator(bodies.begin() + begin, ityr::checkout_mode::read),
               [&](int i, const auto& B) {
-
-            vec3 x = B.X;                                   //  Coordinates of body
-            if (B.ICELL < 0) {                                //  If using residual index
-              auto mp_X = static_cast<vec3 Body::*>(&Source::X);
-              x = (&bodies[i+B.ICELL])->*(mp_X);                      //   Use coordinates of first body in residual group
-            }
-            int octant = (x[0] > X[0]) + ((x[1] > X[1]) << 1) + ((x[2] > X[2]) << 2);// Which octant body belongs to
-            binNode_->NBODY[octant]++;                           //    Increment body count in octant
-
-          });
+                vec3 x = B.X;                                   //  Coordinates of body
+                if (B.ICELL < 0) {                                //  If using residual index
+                  auto mp_X = static_cast<vec3 Body::*>(&Source::X);
+                  x = (&bodies[i+B.ICELL])->*(mp_X);                      //   Use coordinates of first body in residual group
+                }
+                int octant = (x[0] > X[0]) + ((x[1] > X[1]) << 1) + ((x[2] > X[2]) << 2);// Which octant body belongs to
+                binNode_->NBODY[octant]++;                           //    Increment body count in octant
+              });
 
 	} else {                                                //  Else if number of bodies is larger than threshold
 	  int mid = (begin + end) / 2;                          //   Split range of bodies in half
@@ -158,25 +156,23 @@ namespace EXAFMM_NAMESPACE {
             }
           }
 
-          ityr::serial_for_each(
-              {.checkout_count = cutoff_body},
+          ityr::for_each(
+              body_seq_policy,
               ityr::count_iterator<int>(begin),
               ityr::count_iterator<int>(end),
               ityr::make_global_iterator(bodies.begin() + begin, ityr::checkout_mode::read),
               [&](int i, const auto& B) {
-
-            vec3 x = B.X;                                   //  Coordinates of body
-            if (B.ICELL < 0) {                                //  If using residual index
-              auto mp_X = static_cast<vec3 Body::*>(&Source::X);
-              x = (&bodies[i+B.ICELL])->*(mp_X);                      //   Use coordinates of first body in residual group
-            }
-            int octant = (x[0] > X[0]) + ((x[1] > X[1]) << 1) + ((x[2] > X[2]) << 2);// Which octant body belongs to`
-            /* buffer[octantOffset[octant]] = B;               //   Permute bodies out-of-place according to octant */
-            /* octantOffset[octant]++;                                 //  Increment body count in octant */
-            buffers[octant][offsets[octant]] = B;
-            offsets[octant]++;
-
-          });
+                vec3 x = B.X;                                   //  Coordinates of body
+                if (B.ICELL < 0) {                                //  If using residual index
+                  auto mp_X = static_cast<vec3 Body::*>(&Source::X);
+                  x = (&bodies[i+B.ICELL])->*(mp_X);                      //   Use coordinates of first body in residual group
+                }
+                int octant = (x[0] > X[0]) + ((x[1] > X[1]) << 1) + ((x[2] > X[2]) << 2);// Which octant body belongs to`
+                /* buffer[octantOffset[octant]] = B;               //   Permute bodies out-of-place according to octant */
+                /* octantOffset[octant]++;                                 //  Increment body count in octant */
+                buffers[octant][offsets[octant]] = B;
+                offsets[octant]++;
+              });
 
           for (int i = 0; i < 8; i++) {
             if (counts[i] > 0) {
@@ -295,27 +291,28 @@ namespace EXAFMM_NAMESPACE {
         auto children = global_ptr<global_ptr<OctreeNode>>(&(octNode->*(&OctreeNode::CHILD)));
         global_vec<BinaryTreeNode> binNodeChild_vec(8);              //  Allocate new root for this branch
         global_ptr<BinaryTreeNode> binNodeChild = binNodeChild_vec.begin();
-        ityr::parallel_for_each(
+        ityr::for_each(
+            ityr::execution::par,
             ityr::count_iterator<int>(0),
             ityr::count_iterator<int>(8),
             [=, *this](int i) {
-	  /* toc = logger::get_time(); */
-	  int maxBinNode = getMaxBinNode(counts[i]);    //   Get maximum number of binary tree nodes
-	  /* assert(binNodeOffset + maxBinNode <= binNode->END);   //    Bounds checking for node count */
-	  vec3 Xchild = X;                                      //    Initialize center coordinates of child node
-	  real_t r = R0 / (1 << (level + 1));                   //    Radius of cells for child's level
-	  for (int d=0; d<3; d++) {                             //    Loop over dimensions
-	    Xchild[d] += r * (((i & 1 << d) >> d) * 2 - 1);     //     Shift center coordinates to that of child node
-	  }                                                     //    End loop over dimensions
-	  (&binNodeChild[i])->*(&BinaryTreeNode::BEGIN) = binNodeOffsets[i];                //    Assign first memory address from offset
-	  (&binNodeChild[i])->*(&BinaryTreeNode::END) = binNodeOffsets[i] + maxBinNode;     //    Keep track of last memory address
-	  /* tic = logger::get_time(); */
-	  /* timer["Get node range"] += tic - toc; */
-	  BuildNodes buildNodes(buffer, bodies,//    Instantiate recursive functor
-				octantOffset[i], octantOffset[i] + counts[i],
-				&binNodeChild[i], Xchild, R0, ncrit, nspawn, level+1, !direction);
-          children[i] = buildNodes();
-        });
+              /* toc = logger::get_time(); */
+              int maxBinNode = getMaxBinNode(counts[i]);    //   Get maximum number of binary tree nodes
+              /* assert(binNodeOffset + maxBinNode <= binNode->END);   //    Bounds checking for node count */
+              vec3 Xchild = X;                                      //    Initialize center coordinates of child node
+              real_t r = R0 / (1 << (level + 1));                   //    Radius of cells for child's level
+              for (int d=0; d<3; d++) {                             //    Loop over dimensions
+                Xchild[d] += r * (((i & 1 << d) >> d) * 2 - 1);     //     Shift center coordinates to that of child node
+              }                                                     //    End loop over dimensions
+              (&binNodeChild[i])->*(&BinaryTreeNode::BEGIN) = binNodeOffsets[i];                //    Assign first memory address from offset
+              (&binNodeChild[i])->*(&BinaryTreeNode::END) = binNodeOffsets[i] + maxBinNode;     //    Keep track of last memory address
+              /* tic = logger::get_time(); */
+              /* timer["Get node range"] += tic - toc; */
+              BuildNodes buildNodes(buffer, bodies,//    Instantiate recursive functor
+            		            octantOffset[i], octantOffset[i] + counts[i],
+            		            &binNodeChild[i], Xchild, R0, ncrit, nspawn, level+1, !direction);
+              children[i] = buildNodes();
+            });
 
 	for (int i=0; i<8; i++) {                               //  Loop over children
           if (global_ptr<OctreeNode>(children[i]))
@@ -402,16 +399,17 @@ namespace EXAFMM_NAMESPACE {
           cso.checkin();
           csc.checkin();
 
-          int numLevels_ = ityr::parallel_reduce(
+          int numLevels_ = ityr::transform_reduce(
+              ityr::execution::par,
               ityr::count_iterator<int>(0),
               ityr::count_iterator<int>(nchild),
               int(0),
-              [](const int& v1, const int& v2) { return std::max(v1, v2); },
+              [](int v1, int v2) { return std::max(v1, v2); },
               [=, *this](int i) {
-            Nodes2cells nodes2cells(children[i],     //    Instantiate recursive functor
-                                    B0, Ci+i, C0, CNs[i], X0, R0, nspawn, level+1, C-C0);
-            return nodes2cells();
-          });                                                     //   End loop over children
+                Nodes2cells nodes2cells(children[i],     //    Instantiate recursive functor
+                                        B0, Ci+i, C0, CNs[i], X0, R0, nspawn, level+1, C-C0);
+                return nodes2cells();
+              });                                                     //   End loop over children
 
           for (int i=0; i<nchild; i++) {                        //   Loop over children
             free_octree_node(children[i]);
