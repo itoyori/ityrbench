@@ -345,10 +345,11 @@ ityr::global_vector<part> partition(const graph& g) {
               ityr::make_global_iterator(p.dest_id_bins_ref.begin(), ityr::checkout_mode::write),
               ityr::make_global_iterator(p.update_bins_ref.begin() , ityr::checkout_mode::write),
               [&](const part& p2, ityr::global_span<uintE>& dest_id_bin_ref, ityr::global_span<double>& update_bin_ref) {
-                auto dest_id_bin      = ityr::make_checkout(&p2.dest_id_bins[p.id]     , 1, ityr::checkout_mode::read_write);
-                auto update_bin       = ityr::make_checkout(&p2.update_bins[p.id]      , 1, ityr::checkout_mode::read_write);
-                auto dest_id_bin_size = ityr::make_checkout(&p2.dest_id_bin_sizes[p.id], 1, ityr::checkout_mode::read);
-                auto update_bin_size  = ityr::make_checkout(&p2.update_bin_sizes[p.id] , 1, ityr::checkout_mode::read);
+                auto [dest_id_bin, update_bin, dest_id_bin_size, update_bin_size] =
+                  ityr::make_checkouts(&p2.dest_id_bins[p.id]     , 1, ityr::checkout_mode::read_write,
+                                       &p2.update_bins[p.id]      , 1, ityr::checkout_mode::read_write,
+                                       &p2.dest_id_bin_sizes[p.id], 1, ityr::checkout_mode::read,
+                                       &p2.update_bin_sizes[p.id] , 1, ityr::checkout_mode::read);
 
                 dest_id_bin[0].resize(dest_id_bin_size[0]);
                 update_bin[0].resize(update_bin_size[0]);
