@@ -101,8 +101,8 @@ namespace EXAFMM_NAMESPACE {
           binNode_->LEFT = binNode_left;
           binNode_->RIGHT = binNode_right;
 
-          auto csl = ityr::make_checkout(binNode_left , 1, ityr::checkout_mode::write);
-          auto csr = ityr::make_checkout(binNode_right, 1, ityr::checkout_mode::write);
+          auto [csl, csr] = ityr::make_checkouts(binNode_left , 1, ityr::checkout_mode::write,
+                                                 binNode_right, 1, ityr::checkout_mode::write);
           auto binNode_left_  = &csl[0];
           auto binNode_right_ = &csr[0];
 
@@ -256,8 +256,9 @@ namespace EXAFMM_NAMESPACE {
 	}                                                       //  End if for no bodies
 	if (end - begin <= ncrit) {                             //  If number of bodies is less than threshold
           if (direction) {                                          //  If direction of data is from bodies to buffer
-            auto b_src  = ityr::make_checkout(bodies.begin() + begin, end - begin, ityr::checkout_mode::read);
-            auto b_dest = ityr::make_checkout(buffer.begin() + begin, end - begin, ityr::checkout_mode::write);
+            auto [b_src, b_dest] =
+              ityr::make_checkouts(bodies.begin() + begin, end - begin, ityr::checkout_mode::read,
+                                   buffer.begin() + begin, end - begin, ityr::checkout_mode::write);
             for (int i = 0; i < end - begin; i++) {
               b_dest[i] = b_src[i];
             }
@@ -357,8 +358,9 @@ namespace EXAFMM_NAMESPACE {
         GC_iter CNs[8];
         GC_iter Ci = CN;                                       //   CN points to the next free memory address
 
-        auto cso = ityr::make_checkout(octNode, 1, ityr::checkout_mode::read);
-        auto csc = ityr::make_checkout(C      , 1, ityr::checkout_mode::write);
+        auto [cso, csc] =
+          ityr::make_checkouts(octNode, 1, ityr::checkout_mode::read,
+                               C      , 1, ityr::checkout_mode::write);
         auto o = &cso[0];
 
         Cell* c = new (&csc[0]) Cell();
