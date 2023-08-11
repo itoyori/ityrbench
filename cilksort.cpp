@@ -113,12 +113,12 @@ struct prof_event_user_copy : public ityr::common::profiler::event {
 #endif
 using elem_t = ITYRBENCH_ELEM_TYPE;
 
-std::size_t n_input        = std::size_t(1) * 1024 * 1024;
-int         n_repeats      = 10;
-exec_t      exec_type      = exec_t::Default;
-std::size_t cutoff_sort    = std::size_t(4) * 1024;
-std::size_t cutoff_merge   = std::size_t(4) * 1024;
-bool        verify_result  = true;
+std::size_t n_input       = std::size_t(1) * 1024 * 1024;
+int         n_repeats     = 10;
+exec_t      exec_type     = exec_t::Default;
+std::size_t cutoff_sort   = std::size_t(4) * 1024;
+std::size_t cutoff_merge  = std::size_t(4) * 1024;
+bool        verify_result = true;
 
 template <typename T>
 auto divide(const ityr::global_span<T>& s, typename ityr::global_span<T>::size_type at) {
@@ -150,17 +150,19 @@ void cilkmerge(ityr::global_span<T> s1,
 
   if (s2.size() == 0) {
     ITYR_PROFILER_RECORD(prof_event_user_copy);
-    auto s1_   = ityr::make_checkout(s1.data()  , s1.size()  , ityr::checkout_mode::read);
-    auto dest_ = ityr::make_checkout(dest.data(), dest.size(), ityr::checkout_mode::write);
+    auto [s1_, dest_] =
+      ityr::make_checkouts(s1  , ityr::checkout_mode::read,
+                           dest, ityr::checkout_mode::write);
     std::copy(s1_.begin(), s1_.end(), dest_.begin());
     return;
   }
 
   if (dest.size() < cutoff_merge) {
     ITYR_PROFILER_RECORD(prof_event_user_merge);
-    auto s1_   = ityr::make_checkout(s1.data()  , s1.size()  , ityr::checkout_mode::read);
-    auto s2_   = ityr::make_checkout(s2.data()  , s2.size()  , ityr::checkout_mode::read);
-    auto dest_ = ityr::make_checkout(dest.data(), dest.size(), ityr::checkout_mode::write);
+    auto [s1_, s2_, dest_] =
+      ityr::make_checkouts(s1  , ityr::checkout_mode::read,
+                           s2  , ityr::checkout_mode::read,
+                           dest, ityr::checkout_mode::write);
     {
       ITYR_PROFILER_RECORD(prof_event_user_merge_kernel);
       std::merge(s1_.begin(), s1_.end(), s2_.begin(), s2_.end(), dest_.begin());
@@ -179,9 +181,8 @@ void cilkmerge(ityr::global_span<T> s1,
   auto [dest1, dest2] = divide(dest, split1 + split2);
 
   ityr::parallel_invoke(
-    cilkmerge<T>, std::make_tuple(s11, s21, dest1),
-    cilkmerge<T>, std::make_tuple(s12, s22, dest2)
-  );
+      cilkmerge<T>, std::make_tuple(s11, s21, dest1),
+      cilkmerge<T>, std::make_tuple(s12, s22, dest2));
 }
 
 template <typename T>
@@ -190,7 +191,7 @@ void cilksort(ityr::global_span<T> a, ityr::global_span<T> b) {
 
   if (a.size() < cutoff_sort) {
     ITYR_PROFILER_RECORD(prof_event_user_sort);
-    auto a_ = ityr::make_checkout(a.data(), a.size(), ityr::checkout_mode::read_write);
+    auto a_ = ityr::make_checkout(a, ityr::checkout_mode::read_write);
     {
       ITYR_PROFILER_RECORD(prof_event_user_sort_kernel);
       std::sort(a_.begin(), a_.end());
@@ -207,16 +208,14 @@ void cilksort(ityr::global_span<T> a, ityr::global_span<T> b) {
   auto [b3, b4] = divide_two(b34);
 
   ityr::parallel_invoke(
-    cilksort<T>, std::make_tuple(a1, b1),
-    cilksort<T>, std::make_tuple(a2, b2),
-    cilksort<T>, std::make_tuple(a3, b3),
-    cilksort<T>, std::make_tuple(a4, b4)
-  );
+      cilksort<T>, std::make_tuple(a1, b1),
+      cilksort<T>, std::make_tuple(a2, b2),
+      cilksort<T>, std::make_tuple(a3, b3),
+      cilksort<T>, std::make_tuple(a4, b4));
 
   ityr::parallel_invoke(
-    cilkmerge<T>, std::make_tuple(a1, a2, b12),
-    cilkmerge<T>, std::make_tuple(a3, a4, b34)
-  );
+      cilkmerge<T>, std::make_tuple(a1, a2, b12),
+      cilkmerge<T>, std::make_tuple(a3, a4, b34));
 
   cilkmerge(b12, b34, a);
 }
