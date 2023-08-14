@@ -13,6 +13,7 @@ default_params:
       machines: [squid-c]
     - value: 6
       machines: [local]
+  real_type: double
   repeats: 11
   max_iters: 100
   dataset: rmat_20_24
@@ -41,10 +42,11 @@ default_queue: node_${nodes}
 default_duplicates: 1
 
 build:
-  depend_params: [dist_policy, block_size, prof, dag_prof, cache_prof]
+  depend_params: [real_type, dist_policy, block_size, prof, dag_prof, cache_prof]
   script: |
     source build_common.bash
 
+    CXXFLAGS="${CXXFLAGS:+$CXXFLAGS} -DITYRBENCH_REAL_TYPE=$KOCHI_PARAM_REAL_TYPE"
     CXXFLAGS="${CXXFLAGS:+$CXXFLAGS} -DITYR_ALLOCATOR_USE_DYNAMIC_WIN=false"
 
     CC=$MPICC CXX=$MPICXX cmake -DCMAKE_CXX_FLAGS="$CXXFLAGS" $CMAKE_OPTIONS .

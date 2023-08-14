@@ -30,6 +30,11 @@ std::string to_str(T x) {
 using uintT = unsigned long;
 using uintE = unsigned int;
 
+#ifndef ITYRBENCH_REAL_TYPE
+#define ITYRBENCH_REAL_TYPE double
+#endif
+using real_t = ITYRBENCH_REAL_TYPE;
+
 struct vertex_data {
   std::size_t offset;
   uintE       degree;
@@ -53,8 +58,8 @@ struct part {
   ityr::global_vector<ityr::global_vector<uintE>> dest_id_bins;
   ityr::global_vector<ityr::global_span<uintE>>   dest_id_bins_ref; // references to bins in other parts
 
-  ityr::global_vector<ityr::global_vector<double>> update_bins;
-  ityr::global_vector<ityr::global_span<double>>   update_bins_ref; // references to bins in other parts
+  ityr::global_vector<ityr::global_vector<real_t>> update_bins;
+  ityr::global_vector<ityr::global_span<real_t>>   update_bins_ref; // references to bins in other parts
 };
 
 struct graph {
@@ -148,7 +153,7 @@ graph load_dataset(const char* filename) {
   auto in_edges_vec_begin  = in_edges_vec.begin();
   auto out_edges_vec_begin = out_edges_vec.begin();
 
-  ityr::root_exec([=]() {
+  ityr::root_exec([=] {
     ityr::execution::parallel_policy par_v {.cutoff_count = cutoff_v, .checkout_count = cutoff_v};
     ityr::execution::parallel_policy par_e {.cutoff_count = cutoff_e, .checkout_count = cutoff_e};
 
@@ -236,7 +241,7 @@ ityr::global_vector<part> partition(const graph& g) {
   ityr::global_span<vertex_data> v_out_data {g.v_out_data.data(), g.v_out_data.size()};
   ityr::global_span<uintE> out_edges {g.out_edges.data(), g.out_edges.size()};
 
-  ityr::root_exec([=]() {
+  ityr::root_exec([=] {
     ityr::for_each(
         ityr::execution::par,
         ityr::count_iterator<long>(0),
@@ -344,7 +349,7 @@ ityr::global_vector<part> partition(const graph& g) {
               ityr::make_global_iterator(parts_ref.end()           , ityr::checkout_mode::read),
               ityr::make_global_iterator(p.dest_id_bins_ref.begin(), ityr::checkout_mode::write),
               ityr::make_global_iterator(p.update_bins_ref.begin() , ityr::checkout_mode::write),
-              [&](const part& p2, ityr::global_span<uintE>& dest_id_bin_ref, ityr::global_span<double>& update_bin_ref) {
+              [&](const part& p2, ityr::global_span<uintE>& dest_id_bin_ref, ityr::global_span<real_t>& update_bin_ref) {
                 auto [dest_id_bin, update_bin, dest_id_bin_size, update_bin_size] =
                   ityr::make_checkouts(&p2.dest_id_bins[p.id]     , 1, ityr::checkout_mode::read_write,
                                        &p2.update_bins[p.id]      , 1, ityr::checkout_mode::read_write,
@@ -355,7 +360,7 @@ ityr::global_vector<part> partition(const graph& g) {
                 update_bin[0].resize(update_bin_size[0]);
 
                 dest_id_bin_ref = ityr::global_span<uintE>{dest_id_bin[0].data(), dest_id_bin[0].size()};
-                update_bin_ref = ityr::global_span<double>{update_bin[0].data(), update_bin[0].size()};
+                update_bin_ref = ityr::global_span<real_t>{update_bin[0].data(), update_bin[0].size()};
               });
         });
 
@@ -419,8 +424,8 @@ ityr::global_vector<part> partition(const graph& g) {
               p.dest_id_bins.begin(), p.dest_id_bins.end(),
               p.update_bins.begin(),
               std::size_t(0), std::plus<>{},
-              [&](const ityr::global_vector<uintE>& dest_id_bin, const ityr::global_vector<double>& update_bin) {
-                return dest_id_bin.size() * sizeof(uintE) + update_bin.size() * sizeof(double);
+              [&](const ityr::global_vector<uintE>& dest_id_bin, const ityr::global_vector<real_t>& update_bin) {
+                return dest_id_bin.size() * sizeof(uintE) + update_bin.size() * sizeof(real_t);
               });
         });
   });
@@ -443,8 +448,8 @@ void init_gpop(graph& g) {
   }
 
   // clear to save memory
-  /* g.in_edges = {}; */
-  /* g.v_in_data = {}; */
+  g.in_edges = {};
+  g.v_in_data = {};
 
   g.n_parts = (g.n + bin_width - 1) / bin_width;
   g.parts = partition(g);
@@ -453,16 +458,16 @@ void init_gpop(graph& g) {
 using neighbors = ityr::global_span<uintE>;
 
 void pagerank_naive(const graph&              g,
-                    ityr::global_span<double> p_curr,
-                    ityr::global_span<double> p_next,
-                    ityr::global_span<double> p_div,
-                    ityr::global_span<double> p_div_next,
-                    double                    eps = 0.000001) {
-  const double damping = 0.85;
+                    ityr::global_span<real_t> p_curr,
+                    ityr::global_span<real_t> p_next,
+                    ityr::global_span<real_t> p_div,
+                    ityr::global_span<real_t> p_div_next,
+                    real_t                    eps = 0.000001) {
+  const real_t damping = 0.85;
   auto n = g.n;
-  const double addedConstant = (1 - damping) * (1 / static_cast<double>(n));
+  const real_t addedConstant = (1 - damping) * (1 / static_cast<real_t>(n));
 
-  double one_over_n = 1 / static_cast<double>(n);
+  real_t one_over_n = 1 / static_cast<real_t>(n);
 
   auto in_edges_begin = g.in_edges.begin();
 
@@ -477,7 +482,7 @@ void pagerank_naive(const graph&              g,
       g.v_out_data.begin(), g.v_out_data.end(),
       p_div.begin(),
       [=](const vertex_data& vout) {
-        return one_over_n / static_cast<double>(vout.degree);
+        return one_over_n / static_cast<real_t>(vout.degree);
       });
 
   int iter = 0;
@@ -492,11 +497,11 @@ void pagerank_naive(const graph&              g,
 
           neighbors nghs = neighbors{in_edges_begin + vin.offset, vin.degree};
 
-          double contribution =
+          real_t contribution =
             ityr::transform_reduce(
                 par_e,
                 nghs.begin(), nghs.end(),
-                double(0), std::plus<double>{},
+                real_t(0), std::plus<real_t>{},
                 [=](const uintE& idx) {
                   return p_div[idx].get();
                 });
@@ -509,17 +514,17 @@ void pagerank_naive(const graph&              g,
         p_next.begin(), p_next.end(),
         g.v_out_data.begin(),
         p_div_next.begin(),
-        [=](const double& pn, const vertex_data& vout) {
-          return pn / static_cast<double>(vout.degree);
+        [=](const real_t& pn, const vertex_data& vout) {
+          return pn / static_cast<real_t>(vout.degree);
         });
 
-    double L1_norm =
+    real_t L1_norm =
       ityr::transform_reduce(
           par_v,
           p_curr.begin(), p_curr.end(),
           p_next.begin(),
-          double(0), std::plus<double>{},
-          [=](const double& pc, const double& pn) {
+          real_t(0), std::plus<real_t>{},
+          [=](const real_t& pc, const real_t& pn) {
             return fabs(pc - pn);
           });
 
@@ -536,29 +541,29 @@ void pagerank_naive(const graph&              g,
     iter--;
   }
 
-  double max_pr =
+  real_t max_pr =
     ityr::reduce(
         par_v,
         p_next.begin(), p_next.end(),
-        std::numeric_limits<double>::lowest(),
-        [](double a, double b) { return std::max(a, b); });
+        std::numeric_limits<real_t>::lowest(),
+        [](real_t a, real_t b) { return std::max(a, b); });
 
   std::cout << "max_pr = " << max_pr << " iter = " << iter << std::endl;
 }
 
 void pagerank_gpop(graph&                    g,
-                   ityr::global_span<double> p_curr,
-                   ityr::global_span<double> p_next,
-                   ityr::global_span<double> p_div,
-                   ityr::global_span<double> p_div_next,
-                   double                    eps = 0.000001) {
-  const double damping = 0.85;
+                   ityr::global_span<real_t> p_curr,
+                   ityr::global_span<real_t> p_next,
+                   ityr::global_span<real_t> p_div,
+                   ityr::global_span<real_t> p_div_next,
+                   real_t                    eps = 0.000001) {
+  const real_t damping = 0.85;
   auto n = g.n;
-  const double added_constant = (1 - damping) * (1 / static_cast<double>(n));
+  const real_t added_constant = (1 - damping) * (1 / static_cast<real_t>(n));
 
   auto n_parts = g.n_parts;
 
-  double one_over_n = 1 / static_cast<double>(n);
+  real_t one_over_n = 1 / static_cast<real_t>(n);
 
   ityr::execution::parallel_policy par_v {.cutoff_count = cutoff_v, .checkout_count = cutoff_v};
 
@@ -570,7 +575,7 @@ void pagerank_gpop(graph&                    g,
       g.v_out_data.begin(), g.v_out_data.end(),
       p_div.begin(),
       [=](const vertex_data& vout) {
-        return one_over_n / static_cast<double>(vout.degree);
+        return one_over_n / static_cast<real_t>(vout.degree);
       });
 
   int iter = 0;
@@ -590,14 +595,14 @@ void pagerank_gpop(graph&                    g,
               ityr::make_global_iterator(p.update_bins.begin()     , ityr::checkout_mode::read),
               ityr::make_global_iterator(p.update_bins.end()       , ityr::checkout_mode::read),
               ityr::make_global_iterator(p.bin_edge_offsets.begin(), ityr::checkout_mode::read),
-              [&](const ityr::global_vector<double>& update_bins, long e_begin) {
+              [&](const ityr::global_vector<real_t>& update_bins, long e_begin) {
 
                 ityr::for_each(
                     ityr::execution::sequenced_policy{.checkout_count = cutoff_e},
                     ityr::make_global_iterator(update_bins.begin()  , ityr::checkout_mode::write),
                     ityr::make_global_iterator(update_bins.end()    , ityr::checkout_mode::write),
                     ityr::make_global_iterator(&p.bin_edges[e_begin], ityr::checkout_mode::read),
-                    [&](double& update, uintE vid) {
+                    [&](real_t& update, uintE vid) {
                       assert(vid >= p.v_begin);
                       assert(vid - p.v_begin < p.n);
                       update = p_div_[vid - p.v_begin];
@@ -624,7 +629,7 @@ void pagerank_gpop(graph&                    g,
               ityr::make_global_iterator(p.dest_id_bins_ref.begin(), ityr::checkout_mode::read),
               ityr::make_global_iterator(p.dest_id_bins_ref.end()  , ityr::checkout_mode::read),
               ityr::make_global_iterator(p.update_bins_ref.begin() , ityr::checkout_mode::read),
-              [&](const ityr::global_span<uintE>& dest_bin, const ityr::global_span<double>& update_bin) {
+              [&](const ityr::global_span<uintE>& dest_bin, const ityr::global_span<real_t>& update_bin) {
 
                 if (update_bin.size() > 0) {
                   auto update_bin_ = ityr::make_checkout(update_bin.data(), update_bin.size(), ityr::checkout_mode::read);
@@ -654,24 +659,23 @@ void pagerank_gpop(graph&                    g,
     auto t2 = ityr::gettime_ns();
     printf("scatter: %ld ns\n", t1 - t0);
     printf("gather:  %ld ns\n", t2 - t1);
-    fflush(stdout);
 
     ityr::transform(
         par_v,
         p_next.begin(), p_next.end(),
         g.v_out_data.begin(),
         p_div_next.begin(),
-        [=](const double& pn, const vertex_data& vout) {
-          return pn / static_cast<double>(vout.degree);
+        [=](const real_t& pn, const vertex_data& vout) {
+          return pn / static_cast<real_t>(vout.degree);
         });
 
-    double L1_norm =
+    real_t L1_norm =
       ityr::transform_reduce(
           par_v,
           p_curr.begin(), p_curr.end(),
           p_next.begin(),
-          double(0), std::plus<double>{},
-          [=](const double& pc, const double& pn) {
+          real_t(0), std::plus<real_t>{},
+          [=](const real_t& pc, const real_t& pn) {
             return fabs(pc - pn);
           });
 
@@ -688,12 +692,12 @@ void pagerank_gpop(graph&                    g,
     iter--;
   }
 
-  double max_pr =
+  real_t max_pr =
     ityr::reduce(
         par_v,
         p_next.begin(), p_next.end(),
-        std::numeric_limits<double>::lowest(),
-        [](double a, double b) { return std::max(a, b); });
+        std::numeric_limits<real_t>::lowest(),
+        [](real_t a, real_t b) { return std::max(a, b); });
 
   std::cout << "max_pr = " << max_pr << " iter = " << iter << std::endl;
 }
@@ -704,27 +708,26 @@ void run() {
     init_gpop(*g);
   }
 
-  ityr::global_vector<double> p_curr    (global_vec_coll_opts(cutoff_v), g->n);
-  ityr::global_vector<double> p_next    (global_vec_coll_opts(cutoff_v), g->n);
-  ityr::global_vector<double> p_div     (global_vec_coll_opts(cutoff_v), g->n);
-  ityr::global_vector<double> p_div_next(global_vec_coll_opts(cutoff_v), g->n);
+  ityr::global_vector<real_t> p_curr_vec    (global_vec_coll_opts(cutoff_v), g->n);
+  ityr::global_vector<real_t> p_next_vec    (global_vec_coll_opts(cutoff_v), g->n);
+  ityr::global_vector<real_t> p_div_vec     (global_vec_coll_opts(cutoff_v), g->n);
+  ityr::global_vector<real_t> p_div_next_vec(global_vec_coll_opts(cutoff_v), g->n);
+
+  ityr::global_span<real_t> p_curr    (p_curr_vec.begin()    , p_curr_vec.end()    );
+  ityr::global_span<real_t> p_next    (p_next_vec.begin()    , p_next_vec.end()    );
+  ityr::global_span<real_t> p_div     (p_div_vec.begin()     , p_div_vec.end()     );
+  ityr::global_span<real_t> p_div_next(p_div_next_vec.begin(), p_div_next_vec.end());
 
   for (int r = 0; r < n_repeats; r++) {
     ityr::profiler_begin();
 
     auto t0 = ityr::gettime_ns();
 
-    ityr::root_exec([&]{
+    ityr::root_exec([&] {
       if (exec_type == exec_t::Naive) {
-        pagerank_naive(*g, ityr::global_span<double>{p_curr.data()    , p_curr.size()    },
-                           ityr::global_span<double>{p_next.data()    , p_next.size()    },
-                           ityr::global_span<double>{p_div.data()     , p_div.size()     },
-                           ityr::global_span<double>{p_div_next.data(), p_div_next.size()});
+        pagerank_naive(*g, p_curr, p_next, p_div, p_div_next);
       } else if (exec_type == exec_t::Gpop) {
-        pagerank_gpop(*g, ityr::global_span<double>{p_curr.data()    , p_curr.size()    },
-                          ityr::global_span<double>{p_next.data()    , p_next.size()    },
-                          ityr::global_span<double>{p_div.data()     , p_div.size()     },
-                          ityr::global_span<double>{p_div_next.data(), p_div_next.size()});
+        pagerank_gpop(*g, p_curr, p_next, p_div, p_div_next);
       }
     });
 
@@ -805,6 +808,7 @@ int main(int argc, char** argv) {
     printf("=============================================================\n"
            "[PageRank]\n"
            "# of processes:               %d\n"
+           "Real number type:             %s (%ld bytes)\n"
            "Max iterations:               %d\n"
            "Dataset:                      %s\n"
            "Cutoff for vertices:          %ld\n"
@@ -812,8 +816,8 @@ int main(int argc, char** argv) {
            "Execution type:               %s\n"
            "Bin width (for gpop):         %ld\n"
            "-------------------------------------------------------------\n",
-           ityr::n_ranks(), max_iters, dataset_filename, cutoff_v, cutoff_e,
-           to_str(exec_type).c_str(), bin_width);
+           ityr::n_ranks(), typename_str<real_t>(), sizeof(real_t), max_iters, dataset_filename,
+           cutoff_v, cutoff_e, to_str(exec_type).c_str(), bin_width);
 
     printf("[Compile Options]\n");
     ityr::print_compile_options();
