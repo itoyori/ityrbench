@@ -50,7 +50,7 @@ struct part {
   long m;
 
   ityr::global_vector<long> bin_edge_offsets;
-  ityr::global_vector<long> bin_edges;
+  ityr::global_vector<uintE> bin_edges;
 
   ityr::global_vector<long> dest_id_bin_sizes;
   ityr::global_vector<long> update_bin_sizes;
