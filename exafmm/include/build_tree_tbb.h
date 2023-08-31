@@ -248,7 +248,7 @@ namespace EXAFMM_NAMESPACE {
 	return (4 * n) / nspawn;                                // Conservative estimate of number of binary tree nodes
       }
 
-      global_ptr<OctreeNode> operator() () const {                                // Overload operator()
+      global_ptr<OctreeNode> operator() () {                                // Overload operator()
 	/* double tic = logger::get_time(); */
 	/* assert(getMaxBinNode(end - begin) <= binNode->END - binNode->BEGIN);// Bounds checking for node range */
 	if (begin == end) {                                     //  If no bodies are left
@@ -405,8 +405,7 @@ namespace EXAFMM_NAMESPACE {
               ityr::execution::par,
               ityr::count_iterator<int>(0),
               ityr::count_iterator<int>(nchild),
-              int(0),
-              [](int v1, int v2) { return std::max(v1, v2); },
+              ityr::reducer::max<int>{},
               [=, *this](int i) {
                 Nodes2cells nodes2cells(children[i],     //    Instantiate recursive functor
                                         B0, Ci+i, C0, CNs[i], X0, R0, nspawn, level+1, C-C0);

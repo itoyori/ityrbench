@@ -257,11 +257,10 @@ bool check_sorted(ityr::global_span<T> s) {
     return true;
   }
   // check s[i] <= s[i+1] for all i
-  return ityr::transform_reduce(
+  return ityr::is_sorted(
       ityr::execution::parallel_policy{.cutoff_count   = cutoff_sort,
                                        .checkout_count = cutoff_sort},
-      s.begin(), s.end() - 1, s.begin() + 1,
-      true, std::logical_and<>{}, std::less_equal<>{});
+      s.begin(), s.end());
 }
 
 void show_help_and_exit(int argc [[maybe_unused]], char** argv) {
@@ -353,7 +352,7 @@ int main(int argc, char** argv) {
   /* ityr::ito::adws_enable_steal_option::set(false); */
 
   for (int r = 0; r < n_repeats; r++) {
-    ityr::root_exec([=]{
+    ityr::root_exec([=] {
       fill_array(a);
     });
 
@@ -362,11 +361,11 @@ int main(int argc, char** argv) {
     auto t0 = ityr::gettime_ns();
 
     if (exec_type == exec_t::StdSort) {
-      ityr::root_exec([=]{
+      ityr::root_exec([=] {
         std::sort(a.begin(), a.end());
       });
     } else {
-      ityr::root_exec([=]{
+      ityr::root_exec([=] {
         cilksort(a, b);
       });
     }
@@ -380,7 +379,7 @@ int main(int argc, char** argv) {
     }
 
     if (verify_result) {
-      bool success = ityr::root_exec([=]{
+      bool success = ityr::root_exec([=] {
         return check_sorted(a);
       });
       if (ityr::is_master()) {

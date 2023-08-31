@@ -391,7 +391,7 @@ namespace EXAFMM_NAMESPACE {
       getAnm();
     }
 
-    void P2P(const Cell* Ci, const Cell* Cj) {
+    void P2P(Cell* Ci, const Cell* Cj) {
       GB_iter GBi = Ci->BODY;
       GB_iter GBj = Cj->BODY;
       int ni = Ci->NBODY;
@@ -525,7 +525,7 @@ namespace EXAFMM_NAMESPACE {
       }
     }
 
-    void P2P_direct(const Cell* Ci, const Cell* Cj) {
+    void P2P_direct(Cell* Ci, const Cell* Cj) {
       GB_iter GBi = Ci->BODY;
       GB_iter GBj = Cj->BODY;
       int ni = Ci->NBODY;
@@ -663,7 +663,7 @@ namespace EXAFMM_NAMESPACE {
       }
     }
 
-    void P2M(const Cell* C) {
+    void P2M(Cell* C) {
       auto [CM_, Bp] =
         ityr::make_checkouts(C->M.data(), C->M.size(), ityr::checkout_mode::read_write,
                              C->BODY    , C->NBODY   , ityr::checkout_mode::read);
@@ -707,7 +707,7 @@ namespace EXAFMM_NAMESPACE {
       for (int n=0; n<P; n++) CM[n] += Mnm[n] * I * wavek;
     }
 
-    void M2M(const Cell* Ci, const Cell* Cj0) {
+    void M2M(Cell* Ci, const Cell* Cj0) {
       real_t Ynm[P*(P+1)/2];
       complex_t phitemp[2*P], hn[P], ephi[2*P];
       complex_t Mnm[P*P], Mrot[P*P];
@@ -794,7 +794,7 @@ namespace EXAFMM_NAMESPACE {
       }
     }
 
-    void M2L(const Cell* Ci, const Cell* Cj) {
+    void M2L(Cell* Ci, const Cell* Cj) {
       auto [CiL_, CjM_] =
         ityr::make_checkouts(Ci->L.data(), Ci->L.size(), ityr::checkout_mode::read_write,
                              Cj->M.data(), Cj->M.size(), ityr::checkout_mode::read);
@@ -927,7 +927,7 @@ namespace EXAFMM_NAMESPACE {
       }
     }
 
-    void L2L(const Cell* Ci, const Cell* Cj) {
+    void L2L(Cell* Ci, const Cell* Cj) {
       auto [CiL_, CjL_] =
         ityr::make_checkouts(Ci->L.data(), Ci->L.size(), ityr::checkout_mode::read_write,
                              Cj->L.data(), Cj->L.size(), ityr::checkout_mode::read);
@@ -1051,7 +1051,7 @@ namespace EXAFMM_NAMESPACE {
       for (int n=0; n<P*P; n++) CiL[n] += Lnm[n];
     }
 
-    void L2P(const Cell* C) {
+    void L2P(Cell* C) {
       auto [Bp, CL_] =
         ityr::make_checkouts(C->BODY    , C->NBODY   , ityr::checkout_mode::read_write,
                              C->L.data(), C->L.size(), ityr::checkout_mode::read);

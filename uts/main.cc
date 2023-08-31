@@ -65,7 +65,7 @@ typedef struct {
   counter_t maxdepth, size, leaves;
 } Result;
 
-Result mergeResult(Result r0, Result r1) {
+inline Result operator+(Result r0, Result r1) {
   Result r = {
     (r0.maxdepth > r1.maxdepth) ? r0.maxdepth : r1.maxdepth,
     r0.size + r1.size,
@@ -104,7 +104,7 @@ Result doParTreeSearch_fj_seq(counter_t depth, Node parent, int childType,
 
     Result r1 = doParTreeSearch_fj_seq(depth, parent, childType,
                                        numChildren, center, end);
-    return mergeResult(r0, r1);
+    return r0 + r1;
   }
 }
 #endif
@@ -132,7 +132,7 @@ Result parTreeSearch_fj_seq(counter_t depth, Node parent) {
     for (counter_t i = 0; i < numChildren; i++) {
       Node child = makeChild(&parent, childType, computeGranularity, i);
       Result r = parTreeSearch_fj_seq(depth + 1, child);
-      result = mergeResult(result, r);
+      result = result + r;
     }
 #endif
 
@@ -161,8 +161,7 @@ Result parTreeSearch_fj(counter_t depth, Node parent) {
         ityr::execution::par,
         ityr::count_iterator<counter_t>(0),
         ityr::count_iterator<counter_t>(numChildren),
-        Result{0, 0, 0},
-        mergeResult,
+        ityr::reducer::plus<Result>{},
         [=](counter_t i) {
           Node child = makeChild(&parent, childType,
                                  computeGranularity, i);

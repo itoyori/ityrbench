@@ -77,7 +77,7 @@ typedef struct {
   counter_t maxdepth, size, leaves;
 } Result;
 
-Result mergeResult(Result r0, Result r1) {
+inline Result operator+(Result r0, Result r1) {
   Result r = {
     (r0.maxdepth > r1.maxdepth) ? r0.maxdepth : r1.maxdepth,
     r0.size + r1.size,
@@ -189,8 +189,7 @@ Result traverse_tree(counter_t depth, global_ptr<dynamic_node> this_node) {
         ityr::execution::par,
         ityr::make_global_iterator(children              , ityr::checkout_mode::no_access),
         ityr::make_global_iterator(children + numChildren, ityr::checkout_mode::no_access),
-        Result{0, 0, 0},
-        mergeResult,
+        ityr::reducer::plus<Result>{},
         [=](auto&& child_node) {
           return traverse_tree(depth + 1, child_node);
         });

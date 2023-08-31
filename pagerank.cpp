@@ -229,17 +229,17 @@ graph load_dataset(const char* filename) {
   };
 }
 
-ityr::global_vector<part> partition(const graph& g) {
+ityr::global_vector<part> partition(graph& g) {
   auto t0 = ityr::gettime_ns();
 
   auto n_parts = g.n_parts;
 
   ityr::global_vector<part> parts(global_vec_coll_opts(1), n_parts);
-  ityr::global_span<part> parts_ref(parts.data(), parts.size());
+  ityr::global_span<part> parts_ref(parts);
 
   auto n = g.n;
-  ityr::global_span<vertex_data> v_out_data {g.v_out_data.data(), g.v_out_data.size()};
-  ityr::global_span<uintE> out_edges {g.out_edges.data(), g.out_edges.size()};
+  ityr::global_span<vertex_data> v_out_data(g.v_out_data);
+  ityr::global_span<uintE> out_edges(g.out_edges);
 
   ityr::root_exec([=] {
     ityr::for_each(
@@ -342,14 +342,14 @@ ityr::global_vector<part> partition(const graph& g) {
         ityr::execution::par,
         ityr::make_global_iterator(parts_ref.begin(), ityr::checkout_mode::read),
         ityr::make_global_iterator(parts_ref.end()  , ityr::checkout_mode::read),
-        [=](const part& p) {
+        [=](part& p) {
           ityr::for_each(
               ityr::execution::sequenced_policy{.checkout_count = std::size_t(n_parts)},
               ityr::make_global_iterator(parts_ref.begin()         , ityr::checkout_mode::read),
               ityr::make_global_iterator(parts_ref.end()           , ityr::checkout_mode::read),
               ityr::make_global_iterator(p.dest_id_bins_ref.begin(), ityr::checkout_mode::write),
               ityr::make_global_iterator(p.update_bins_ref.begin() , ityr::checkout_mode::write),
-              [&](const part& p2, ityr::global_span<uintE>& dest_id_bin_ref, ityr::global_span<real_t>& update_bin_ref) {
+              [&](part& p2, ityr::global_span<uintE>& dest_id_bin_ref, ityr::global_span<real_t>& update_bin_ref) {
                 auto [dest_id_bin, update_bin, dest_id_bin_size, update_bin_size] =
                   ityr::make_checkouts(&p2.dest_id_bins[p.id]     , 1, ityr::checkout_mode::read_write,
                                        &p2.update_bins[p.id]      , 1, ityr::checkout_mode::read_write,
@@ -359,8 +359,8 @@ ityr::global_vector<part> partition(const graph& g) {
                 dest_id_bin[0].resize(dest_id_bin_size[0]);
                 update_bin[0].resize(update_bin_size[0]);
 
-                dest_id_bin_ref = ityr::global_span<uintE>{dest_id_bin[0].data(), dest_id_bin[0].size()};
-                update_bin_ref = ityr::global_span<real_t>{update_bin[0].data(), update_bin[0].size()};
+                dest_id_bin_ref = ityr::global_span<uintE>(dest_id_bin[0]);
+                update_bin_ref = ityr::global_span<real_t>(update_bin[0]);
               });
         });
 
@@ -369,7 +369,7 @@ ityr::global_vector<part> partition(const graph& g) {
         ityr::execution::par,
         ityr::make_global_iterator(parts_ref.begin(), ityr::checkout_mode::read),
         ityr::make_global_iterator(parts_ref.end()  , ityr::checkout_mode::read),
-        [=](const part& p) {
+        [=](part& p) {
           auto dest_id_bins = ityr::make_checkout(p.dest_id_bins.data(), p.dest_id_bins.size(), ityr::checkout_mode::read);
 
           std::vector<long> offsets(n_parts);
@@ -417,13 +417,13 @@ ityr::global_vector<part> partition(const graph& g) {
     return ityr::transform_reduce(
         ityr::execution::par,
         parts_ref.begin(), parts_ref.end(),
-        std::size_t(0), std::plus<>{},
+        ityr::reducer::plus<std::size_t>{},
         [=](const part& p) {
           return ityr::transform_reduce(
               ityr::execution::sequenced_policy{.checkout_count = std::size_t(n_parts)},
               p.dest_id_bins.begin(), p.dest_id_bins.end(),
               p.update_bins.begin(),
-              std::size_t(0), std::plus<>{},
+              ityr::reducer::plus<std::size_t>{},
               [&](const ityr::global_vector<uintE>& dest_id_bin, const ityr::global_vector<real_t>& update_bin) {
                 return dest_id_bin.size() * sizeof(uintE) + update_bin.size() * sizeof(real_t);
               });
@@ -457,7 +457,7 @@ void init_gpop(graph& g) {
 
 using neighbors = ityr::global_span<uintE>;
 
-void pagerank_naive(const graph&              g,
+void pagerank_naive(graph&                    g,
                     ityr::global_span<real_t> p_curr,
                     ityr::global_span<real_t> p_next,
                     ityr::global_span<real_t> p_div,
@@ -497,14 +497,13 @@ void pagerank_naive(const graph&              g,
 
           neighbors nghs = neighbors{in_edges_begin + vin.offset, vin.degree};
 
-          real_t contribution =
-            ityr::transform_reduce(
-                par_e,
-                nghs.begin(), nghs.end(),
-                real_t(0), std::plus<real_t>{},
-                [=](const uintE& idx) {
-                  return p_div[idx].get();
-                });
+          real_t contribution = ityr::transform_reduce(
+              par_e,
+              nghs.begin(), nghs.end(),
+              ityr::reducer::plus<real_t>{},
+              [=](const uintE& idx) {
+                return p_div[idx].get();
+              });
 
           return damping * contribution + addedConstant;
         });
@@ -518,15 +517,14 @@ void pagerank_naive(const graph&              g,
           return pn / static_cast<real_t>(vout.degree);
         });
 
-    real_t L1_norm =
-      ityr::transform_reduce(
-          par_v,
-          p_curr.begin(), p_curr.end(),
-          p_next.begin(),
-          real_t(0), std::plus<real_t>{},
-          [=](const real_t& pc, const real_t& pn) {
-            return fabs(pc - pn);
-          });
+    real_t L1_norm = ityr::transform_reduce(
+        par_v,
+        p_curr.begin(), p_curr.end(),
+        p_next.begin(),
+        ityr::reducer::plus<real_t>{},
+        [=](const real_t& pc, const real_t& pn) {
+          return fabs(pc - pn);
+        });
 
     if (L1_norm < eps) break;
 
@@ -541,12 +539,10 @@ void pagerank_naive(const graph&              g,
     iter--;
   }
 
-  real_t max_pr =
-    ityr::reduce(
-        par_v,
-        p_next.begin(), p_next.end(),
-        std::numeric_limits<real_t>::lowest(),
-        [](real_t a, real_t b) { return std::max(a, b); });
+  real_t max_pr = ityr::reduce(
+      par_v,
+      p_next.begin(), p_next.end(),
+      ityr::reducer::max<real_t>{});
 
   std::cout << "max_pr = " << max_pr << " iter = " << iter << std::endl;
 }
@@ -587,7 +583,7 @@ void pagerank_gpop(graph&                    g,
         ityr::execution::par,
         ityr::make_global_iterator(g.parts.begin(), ityr::checkout_mode::read),
         ityr::make_global_iterator(g.parts.end()  , ityr::checkout_mode::read),
-        [=](const part& p) {
+        [=](part& p) {
           auto p_div_ = ityr::make_checkout(&p_div[p.v_begin], p.n, ityr::checkout_mode::read);
 
           ityr::for_each(
@@ -595,7 +591,7 @@ void pagerank_gpop(graph&                    g,
               ityr::make_global_iterator(p.update_bins.begin()     , ityr::checkout_mode::read),
               ityr::make_global_iterator(p.update_bins.end()       , ityr::checkout_mode::read),
               ityr::make_global_iterator(p.bin_edge_offsets.begin(), ityr::checkout_mode::read),
-              [&](const ityr::global_vector<real_t>& update_bins, long e_begin) {
+              [&](ityr::global_vector<real_t>& update_bins, long e_begin) {
 
                 ityr::for_each(
                     ityr::execution::sequenced_policy{.checkout_count = cutoff_e},
@@ -617,7 +613,7 @@ void pagerank_gpop(graph&                    g,
         ityr::execution::par,
         ityr::make_global_iterator(g.parts.begin(), ityr::checkout_mode::read),
         ityr::make_global_iterator(g.parts.end()  , ityr::checkout_mode::read),
-        [=](const part& p) {
+        [=](part& p) {
           auto p_next_ = ityr::make_checkout(&p_next[p.v_begin], p.n, ityr::checkout_mode::write);
 
           for (auto& pn : p_next_) {
@@ -669,15 +665,14 @@ void pagerank_gpop(graph&                    g,
           return pn / static_cast<real_t>(vout.degree);
         });
 
-    real_t L1_norm =
-      ityr::transform_reduce(
-          par_v,
-          p_curr.begin(), p_curr.end(),
-          p_next.begin(),
-          real_t(0), std::plus<real_t>{},
-          [=](const real_t& pc, const real_t& pn) {
-            return fabs(pc - pn);
-          });
+    real_t L1_norm = ityr::transform_reduce(
+        par_v,
+        p_curr.begin(), p_curr.end(),
+        p_next.begin(),
+        ityr::reducer::plus<real_t>{},
+        [=](const real_t& pc, const real_t& pn) {
+          return fabs(pc - pn);
+        });
 
     if (L1_norm < eps) break;
 
@@ -692,12 +687,10 @@ void pagerank_gpop(graph&                    g,
     iter--;
   }
 
-  real_t max_pr =
-    ityr::reduce(
-        par_v,
-        p_next.begin(), p_next.end(),
-        std::numeric_limits<real_t>::lowest(),
-        [](real_t a, real_t b) { return std::max(a, b); });
+  real_t max_pr = ityr::reduce(
+      par_v,
+      p_next.begin(), p_next.end(),
+      ityr::reducer::max<real_t>{});
 
   std::cout << "max_pr = " << max_pr << " iter = " << iter << std::endl;
 }
@@ -713,10 +706,10 @@ void run() {
   ityr::global_vector<real_t> p_div_vec     (global_vec_coll_opts(cutoff_v), g->n);
   ityr::global_vector<real_t> p_div_next_vec(global_vec_coll_opts(cutoff_v), g->n);
 
-  ityr::global_span<real_t> p_curr    (p_curr_vec.begin()    , p_curr_vec.end()    );
-  ityr::global_span<real_t> p_next    (p_next_vec.begin()    , p_next_vec.end()    );
-  ityr::global_span<real_t> p_div     (p_div_vec.begin()     , p_div_vec.end()     );
-  ityr::global_span<real_t> p_div_next(p_div_next_vec.begin(), p_div_next_vec.end());
+  ityr::global_span<real_t> p_curr    (p_curr_vec);
+  ityr::global_span<real_t> p_next    (p_next_vec);
+  ityr::global_span<real_t> p_div     (p_div_vec);
+  ityr::global_span<real_t> p_div_next(p_div_next_vec);
 
   for (int r = 0; r < n_repeats; r++) {
     ityr::profiler_begin();
