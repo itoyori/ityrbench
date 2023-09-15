@@ -240,8 +240,7 @@ void fill_array(ityr::global_span<T> s) {
   auto seed = counter++;
 
   ityr::transform(
-      ityr::execution::parallel_policy{.cutoff_count   = cutoff_sort,
-                                       .checkout_count = cutoff_sort},
+      ityr::execution::parallel_policy(cutoff_sort),
       ityr::count_iterator<std::size_t>(0),
       ityr::count_iterator<std::size_t>(s.size()),
       s.begin(),
@@ -258,8 +257,7 @@ bool check_sorted(ityr::global_span<T> s) {
   }
   // check s[i] <= s[i+1] for all i
   return ityr::is_sorted(
-      ityr::execution::parallel_policy{.cutoff_count   = cutoff_sort,
-                                       .checkout_count = cutoff_sort},
+      ityr::execution::parallel_policy(cutoff_sort),
       s.begin(), s.end());
 }
 

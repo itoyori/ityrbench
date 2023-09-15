@@ -31,10 +31,10 @@ namespace EXAFMM_NAMESPACE {
     .cutoff_count       = cutoff_body,
   };
 
-  inline constexpr ityr::execution::sequenced_policy body_seq_policy {.checkout_count = cutoff_body};
-  inline constexpr ityr::execution::sequenced_policy cell_seq_policy {.checkout_count = cutoff_cell};
-  inline constexpr ityr::execution::parallel_policy body_par_policy {.cutoff_count = cutoff_body, .checkout_count = cutoff_body};
-  inline constexpr ityr::execution::parallel_policy cell_par_policy {.cutoff_count = cutoff_cell, .checkout_count = cutoff_cell};
+  inline constexpr ityr::execution::sequenced_policy body_seq_policy(cutoff_body);
+  inline constexpr ityr::execution::sequenced_policy cell_seq_policy(cutoff_cell);
+  inline constexpr ityr::execution::parallel_policy body_par_policy(cutoff_body);
+  inline constexpr ityr::execution::parallel_policy cell_par_policy(cutoff_cell);
 
   // Basic type definitions
 #if EXAFMM_SINGLE
