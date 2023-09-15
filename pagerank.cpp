@@ -699,27 +699,34 @@ void pagerank_gpop(graph&                    g,
     // scatter
     ityr::for_each(
         ityr::execution::parallel_policy(workhint),
-        ityr::make_global_iterator(g.parts.begin(), ityr::checkout_mode::read),
-        ityr::make_global_iterator(g.parts.end()  , ityr::checkout_mode::read),
-        [=](part& p) {
-          auto p_div_ = ityr::make_checkout(&p_div[p.v_begin], p.n, ityr::checkout_mode::read);
+        g.parts.begin(), g.parts.end(),
+        [=](auto&& p_ref) {
+          auto p_cs = ityr::make_checkout(&p_ref, 1, ityr::checkout_mode::read);
+          auto n                 = p_cs[0].n;
+          auto v_begin           = p_cs[0].v_begin;
+          auto bin_edge_offsets  = ityr::global_span<long>(p_cs[0].bin_edge_offsets);
+          auto bin_edges         = p_cs[0].bin_edges;
+          auto update_bins_write = ityr::global_span<ityr::global_span<real_t>>(p_cs[0].update_bins_write);
+          p_cs.checkin();
 
           ityr::for_each(
-              ityr::execution::sequenced_policy(n_parts),
-              ityr::make_global_iterator(p.update_bins_write.begin(), ityr::checkout_mode::read),
-              ityr::make_global_iterator(p.update_bins_write.end()  , ityr::checkout_mode::read),
-              ityr::make_global_iterator(p.bin_edge_offsets.begin() , ityr::checkout_mode::read),
-              [&](ityr::global_span<real_t>& update_bins, long e_begin) {
+              ityr::execution::par,
+              ityr::make_global_iterator(update_bins_write.begin(), ityr::checkout_mode::read),
+              ityr::make_global_iterator(update_bins_write.end()  , ityr::checkout_mode::read),
+              ityr::make_global_iterator(bin_edge_offsets.begin() , ityr::checkout_mode::read),
+              [=](ityr::global_span<real_t>& update_bins, long e_begin) {
+
+                auto p_div_ = ityr::make_checkout(&p_div[v_begin], n, ityr::checkout_mode::read);
 
                 ityr::for_each(
                     ityr::execution::sequenced_policy(cutoff_e),
-                    ityr::make_global_iterator(update_bins.begin()  , ityr::checkout_mode::write),
-                    ityr::make_global_iterator(update_bins.end()    , ityr::checkout_mode::write),
-                    ityr::make_global_iterator(&p.bin_edges[e_begin], ityr::checkout_mode::read),
+                    ityr::make_global_iterator(update_bins.begin(), ityr::checkout_mode::write),
+                    ityr::make_global_iterator(update_bins.end()  , ityr::checkout_mode::write),
+                    ityr::make_global_iterator(&bin_edges[e_begin], ityr::checkout_mode::read),
                     [&](real_t& update, uintE vid) {
-                      assert(vid >= p.v_begin);
-                      assert(vid - p.v_begin < p.n);
-                      update = p_div_[vid - p.v_begin];
+                      assert(vid >= v_begin);
+                      assert(vid - v_begin < n);
+                      update = p_div_[vid - v_begin];
                     });
               });
         });
