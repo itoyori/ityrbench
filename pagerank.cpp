@@ -690,7 +690,14 @@ void pagerank_gpop(graph&                    g,
   auto workhint = ityr::create_workhint_range(
       ityr::execution::par,
       g.parts.begin(), g.parts.end(),
-      [](const part& p) { return p.m; });
+      [=](const part& p) {
+        // optimize for reading (gather)
+        return ityr::transform_reduce(
+            ityr::execution::sequenced_policy(n_parts),
+            p.dest_id_bins_read.begin(), p.dest_id_bins_read.end(),
+            ityr::reducer::plus<std::size_t>{},
+            [](const ityr::global_span<uintE>& s) { return s.size(); });
+      });
 
   int iter = 0;
   while (iter++ < max_iters) {
