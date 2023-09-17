@@ -683,10 +683,11 @@ void pagerank_gpop(graph&                    g,
                    real_t                    eps = 0.000001) {
   const real_t damping = 0.85;
   auto n = g.n;
-  auto m = g.m;
   const real_t added_constant = (1 - damping) * (1 / static_cast<real_t>(n));
 
   auto n_parts = g.n_parts;
+
+  std::size_t parallel_threshold = g.m / n_parts;
 
   real_t one_over_n = 1 / static_cast<real_t>(n);
 
@@ -732,28 +733,53 @@ void pagerank_gpop(graph&                    g,
           auto bin_edge_offsets  = ityr::global_span<long>(p_cs[0].bin_edge_offsets);
           auto bin_edges         = p_cs[0].bin_edges;
           auto update_bins_write = ityr::global_span<ityr::global_span<real_t>>(p_cs[0].update_bins_write);
+          bool do_parallel       = p_cs[0].bin_edges.size() > parallel_threshold;
           p_cs.checkin();
 
-          ityr::for_each(
-              ityr::execution::par,
-              ityr::make_global_iterator(update_bins_write.begin(), ityr::checkout_mode::read),
-              ityr::make_global_iterator(update_bins_write.end()  , ityr::checkout_mode::read),
-              ityr::make_global_iterator(bin_edge_offsets.begin() , ityr::checkout_mode::read),
-              [=](ityr::global_span<real_t>& update_bin, long e_begin) {
+          if (do_parallel) {
+            ityr::for_each(
+                ityr::execution::par,
+                ityr::make_global_iterator(update_bins_write.begin(), ityr::checkout_mode::read),
+                ityr::make_global_iterator(update_bins_write.end()  , ityr::checkout_mode::read),
+                ityr::make_global_iterator(bin_edge_offsets.begin() , ityr::checkout_mode::read),
+                [=](ityr::global_span<real_t>& update_bin, long e_begin) {
 
-                auto p_div_ = ityr::make_checkout(&p_div[v_begin], pn, ityr::checkout_mode::read);
+                  auto p_div_ = ityr::make_checkout(&p_div[v_begin], pn, ityr::checkout_mode::read);
 
-                ityr::for_each(
-                    ityr::execution::sequenced_policy(cutoff_e),
-                    ityr::make_global_iterator(update_bin.begin(), ityr::checkout_mode::write),
-                    ityr::make_global_iterator(update_bin.end()  , ityr::checkout_mode::write),
-                    ityr::make_global_iterator(&bin_edges[e_begin], ityr::checkout_mode::read),
-                    [&](real_t& update, uintE vid) {
-                      assert(vid >= v_begin);
-                      assert(vid - v_begin < pn);
-                      update = p_div_[vid - v_begin];
-                    });
-              });
+                  ityr::for_each(
+                      ityr::execution::sequenced_policy(cutoff_e),
+                      ityr::make_global_iterator(update_bin.begin(), ityr::checkout_mode::write),
+                      ityr::make_global_iterator(update_bin.end()  , ityr::checkout_mode::write),
+                      ityr::make_global_iterator(&bin_edges[e_begin], ityr::checkout_mode::read),
+                      [&](real_t& update, uintE vid) {
+                        assert(vid >= v_begin);
+                        assert(vid - v_begin < pn);
+                        update = p_div_[vid - v_begin];
+                      });
+                });
+
+            } else {
+              auto p_div_ = ityr::make_checkout(&p_div[v_begin], pn, ityr::checkout_mode::read);
+
+              ityr::for_each(
+                  ityr::execution::sequenced_policy(n_parts),
+                  ityr::make_global_iterator(update_bins_write.begin(), ityr::checkout_mode::read),
+                  ityr::make_global_iterator(update_bins_write.end()  , ityr::checkout_mode::read),
+                  ityr::make_global_iterator(bin_edge_offsets.begin() , ityr::checkout_mode::read),
+                  [&](ityr::global_span<real_t>& update_bin, long e_begin) {
+
+                    ityr::for_each(
+                        ityr::execution::sequenced_policy(cutoff_e),
+                        ityr::make_global_iterator(update_bin.begin(), ityr::checkout_mode::write),
+                        ityr::make_global_iterator(update_bin.end()  , ityr::checkout_mode::write),
+                        ityr::make_global_iterator(&bin_edges[e_begin], ityr::checkout_mode::read),
+                        [&](real_t& update, uintE vid) {
+                          assert(vid >= v_begin);
+                          assert(vid - v_begin < pn);
+                          update = p_div_[vid - v_begin];
+                        });
+                  });
+            }
         });
 
     auto t1 = ityr::gettime_ns();
@@ -768,7 +794,7 @@ void pagerank_gpop(graph&                    g,
           auto v_begin           = p_cs[0].v_begin;
           auto dest_id_bins_read = ityr::global_span<ityr::global_span<uintE>>(p_cs[0].dest_id_bins_read);
           auto update_bins_read  = ityr::global_span<ityr::global_span<real_t>>(p_cs[0].update_bins_read);
-          bool do_parallel       = p_cs[0].dest_id_bins_read_size > std::size_t(m / n_parts);
+          bool do_parallel       = p_cs[0].dest_id_bins_read_size > parallel_threshold;
           p_cs.checkin();
 
           if (do_parallel) {
