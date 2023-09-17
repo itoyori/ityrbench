@@ -86,7 +86,8 @@ int         n_repeats        = 10;
 int         max_iters        = 100;
 const char* dataset_filename = nullptr;
 std::size_t cutoff_v         = 4096;
-std::size_t cutoff_e         = 4096;
+std::size_t cutoff_e         = std::size_t(16) * 1024;
+std::size_t cutoff_p         = std::size_t(128) * 1024;
 exec_t      exec_type        = exec_t::Naive;
 long        bin_width        = 16 * 1024;
 long        bin_offset_bits  = log2_pow2(bin_width);
@@ -687,8 +688,6 @@ void pagerank_gpop(graph&                    g,
 
   auto n_parts = g.n_parts;
 
-  std::size_t parallel_threshold = g.m / n_parts;
-
   real_t one_over_n = 1 / static_cast<real_t>(n);
 
   ityr::execution::parallel_policy par_v(cutoff_v);
@@ -733,7 +732,7 @@ void pagerank_gpop(graph&                    g,
           auto bin_edge_offsets  = ityr::global_span<long>(p_cs[0].bin_edge_offsets);
           auto bin_edges         = p_cs[0].bin_edges;
           auto update_bins_write = ityr::global_span<ityr::global_span<real_t>>(p_cs[0].update_bins_write);
-          bool do_parallel       = p_cs[0].bin_edges.size() > parallel_threshold;
+          bool do_parallel       = p_cs[0].bin_edges.size() > cutoff_p;
           p_cs.checkin();
 
           if (do_parallel) {
@@ -794,7 +793,7 @@ void pagerank_gpop(graph&                    g,
           auto v_begin           = p_cs[0].v_begin;
           auto dest_id_bins_read = ityr::global_span<ityr::global_span<uintE>>(p_cs[0].dest_id_bins_read);
           auto update_bins_read  = ityr::global_span<ityr::global_span<real_t>>(p_cs[0].update_bins_read);
-          bool do_parallel       = p_cs[0].dest_id_bins_read_size > parallel_threshold;
+          bool do_parallel       = p_cs[0].dest_id_bins_read_size > cutoff_p;
           p_cs.checkin();
 
           if (do_parallel) {
@@ -984,6 +983,7 @@ void show_help_and_exit(int argc [[maybe_unused]], char** argv) {
            "    -f : path to the dataset binary file (string)\n"
            "    -v : cutoff count for vertices (size_t)\n"
            "    -e : cutoff count for edges (size_t)\n"
+           "    -p : cutoff count for nested parallelism in scatter/gather (size_t)\n"
            "    -t : execution type (0: naive, 1: gpop)\n"
            "    -b : bin width (power of 2) for gpop (long)\n", argv[0]);
   }
@@ -996,7 +996,7 @@ int main(int argc, char** argv) {
   set_signal_handlers();
 
   int opt;
-  while ((opt = getopt(argc, argv, "r:i:f:v:e:t:b:h")) != EOF) {
+  while ((opt = getopt(argc, argv, "r:i:f:v:e:p:t:b:h")) != EOF) {
     switch (opt) {
       case 'r':
         n_repeats = atoi(optarg);
@@ -1012,6 +1012,9 @@ int main(int argc, char** argv) {
         break;
       case 'e':
         cutoff_e = atol(optarg);
+        break;
+      case 'p':
+        cutoff_p = atol(optarg);
         break;
       case 't':
         exec_type = exec_t(atoi(optarg));
@@ -1036,17 +1039,18 @@ int main(int argc, char** argv) {
     setlocale(LC_NUMERIC, "en_US.UTF-8");
     printf("=============================================================\n"
            "[PageRank]\n"
-           "# of processes:               %d\n"
-           "Real number type:             %s (%ld bytes)\n"
-           "Max iterations:               %d\n"
-           "Dataset:                      %s\n"
-           "Cutoff for vertices:          %ld\n"
-           "Cutoff for edges:             %ld\n"
-           "Execution type:               %s\n"
-           "Bin width (for gpop):         %ld\n"
+           "# of processes:                %d\n"
+           "Real number type:              %s (%ld bytes)\n"
+           "Max iterations:                %d\n"
+           "Dataset:                       %s\n"
+           "Cutoff for vertices:           %ld\n"
+           "Cutoff for edges:              %ld\n"
+           "Cutoff for nested parallelism: %ld\n"
+           "Execution type:                %s\n"
+           "Bin width (for gpop):          %ld\n"
            "-------------------------------------------------------------\n",
            ityr::n_ranks(), typename_str<real_t>(), sizeof(real_t), max_iters, dataset_filename,
-           cutoff_v, cutoff_e, to_str(exec_type).c_str(), bin_width);
+           cutoff_v, cutoff_e, cutoff_p, to_str(exec_type).c_str(), bin_width);
 
     printf("[Compile Options]\n");
     ityr::print_compile_options();
