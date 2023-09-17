@@ -60,6 +60,8 @@ struct part {
 
   ityr::global_vector<ityr::global_span<real_t>> update_bins_read;
   ityr::global_vector<ityr::global_span<real_t>> update_bins_write;
+
+  std::size_t dest_id_bins_read_size;
 };
 
 struct graph {
@@ -535,6 +537,19 @@ void partition(long n_parts, graph& g) {
                     });
               });
         });
+
+    // calculate the total dest_id bin size (for reading) for each part
+    ityr::for_each(
+        ityr::execution::par,
+        ityr::make_global_iterator(parts_ref.begin(), ityr::checkout_mode::read_write),
+        ityr::make_global_iterator(parts_ref.end()  , ityr::checkout_mode::read_write),
+        [=](part& p) {
+          p.dest_id_bins_read_size = ityr::transform_reduce(
+              ityr::execution::sequenced_policy(n_parts),
+              p.dest_id_bins_read.begin(), p.dest_id_bins_read.end(),
+              ityr::reducer::plus<std::size_t>{},
+              [](const ityr::global_span<uintE>& s) { return s.size(); });
+        });
   });
 
   auto t1 = ityr::gettime_ns();
@@ -668,6 +683,7 @@ void pagerank_gpop(graph&                    g,
                    real_t                    eps = 0.000001) {
   const real_t damping = 0.85;
   auto n = g.n;
+  auto m = g.m;
   const real_t added_constant = (1 - damping) * (1 / static_cast<real_t>(n));
 
   auto n_parts = g.n_parts;
@@ -687,16 +703,18 @@ void pagerank_gpop(graph&                    g,
         return one_over_n / static_cast<real_t>(vout.degree);
       });
 
-  auto workhint = ityr::create_workhint_range(
+  auto workhint_scatter = ityr::create_workhint_range(
       ityr::execution::par,
       g.parts.begin(), g.parts.end(),
       [=](const part& p) {
-        // optimize for reading (gather)
-        return ityr::transform_reduce(
-            ityr::execution::sequenced_policy(n_parts),
-            p.dest_id_bins_read.begin(), p.dest_id_bins_read.end(),
-            ityr::reducer::plus<std::size_t>{},
-            [](const ityr::global_span<uintE>& s) { return s.size(); });
+        return p.bin_edges.size();
+      });
+
+  auto workhint_gather = ityr::create_workhint_range(
+      ityr::execution::par,
+      g.parts.begin(), g.parts.end(),
+      [=](const part& p) {
+        return p.dest_id_bins_read_size;
       });
 
   int iter = 0;
@@ -705,11 +723,11 @@ void pagerank_gpop(graph&                    g,
 
     // scatter
     ityr::for_each(
-        ityr::execution::parallel_policy(workhint),
+        ityr::execution::parallel_policy(workhint_scatter),
         g.parts.begin(), g.parts.end(),
         [=](auto&& p_ref) {
           auto p_cs = ityr::make_checkout(&p_ref, 1, ityr::checkout_mode::read);
-          auto n                 = p_cs[0].n;
+          auto pn                = p_cs[0].n;
           auto v_begin           = p_cs[0].v_begin;
           auto bin_edge_offsets  = ityr::global_span<long>(p_cs[0].bin_edge_offsets);
           auto bin_edges         = p_cs[0].bin_edges;
@@ -721,18 +739,18 @@ void pagerank_gpop(graph&                    g,
               ityr::make_global_iterator(update_bins_write.begin(), ityr::checkout_mode::read),
               ityr::make_global_iterator(update_bins_write.end()  , ityr::checkout_mode::read),
               ityr::make_global_iterator(bin_edge_offsets.begin() , ityr::checkout_mode::read),
-              [=](ityr::global_span<real_t>& update_bins, long e_begin) {
+              [=](ityr::global_span<real_t>& update_bin, long e_begin) {
 
-                auto p_div_ = ityr::make_checkout(&p_div[v_begin], n, ityr::checkout_mode::read);
+                auto p_div_ = ityr::make_checkout(&p_div[v_begin], pn, ityr::checkout_mode::read);
 
                 ityr::for_each(
                     ityr::execution::sequenced_policy(cutoff_e),
-                    ityr::make_global_iterator(update_bins.begin(), ityr::checkout_mode::write),
-                    ityr::make_global_iterator(update_bins.end()  , ityr::checkout_mode::write),
+                    ityr::make_global_iterator(update_bin.begin(), ityr::checkout_mode::write),
+                    ityr::make_global_iterator(update_bin.end()  , ityr::checkout_mode::write),
                     ityr::make_global_iterator(&bin_edges[e_begin], ityr::checkout_mode::read),
                     [&](real_t& update, uintE vid) {
                       assert(vid >= v_begin);
-                      assert(vid - v_begin < n);
+                      assert(vid - v_begin < pn);
                       update = p_div_[vid - v_begin];
                     });
               });
@@ -742,45 +760,91 @@ void pagerank_gpop(graph&                    g,
 
     // gather
     ityr::for_each(
-        ityr::execution::parallel_policy(workhint),
-        ityr::make_global_iterator(g.parts.begin(), ityr::checkout_mode::read),
-        ityr::make_global_iterator(g.parts.end()  , ityr::checkout_mode::read),
-        [=](part& p) {
-          auto p_next_ = ityr::make_checkout(&p_next[p.v_begin], p.n, ityr::checkout_mode::write);
+        ityr::execution::parallel_policy(workhint_gather),
+        g.parts.begin(), g.parts.end(),
+        [=](auto&& p_ref) {
+          auto p_cs = ityr::make_checkout(&p_ref, 1, ityr::checkout_mode::read);
+          auto pn                = p_cs[0].n;
+          auto v_begin           = p_cs[0].v_begin;
+          auto dest_id_bins_read = ityr::global_span<ityr::global_span<uintE>>(p_cs[0].dest_id_bins_read);
+          auto update_bins_read  = ityr::global_span<ityr::global_span<real_t>>(p_cs[0].update_bins_read);
+          bool do_parallel       = p_cs[0].dest_id_bins_read_size > std::size_t(m / n_parts);
+          p_cs.checkin();
 
-          for (auto& pn : p_next_) {
-            pn = 0;
-          }
+          if (do_parallel) {
+            auto p_sum = ityr::transform_reduce(
+                ityr::execution::par,
+                dest_id_bins_read.begin(), dest_id_bins_read.end(),
+                update_bins_read.begin(),
+                ityr::reducer::vec_plus<real_t>{},
+                [=](const ityr::global_span<uintE>& dest_bin, const ityr::global_span<real_t>& update_bin) {
+                  ityr::global_vector<real_t> p_sum_tmp(pn, 0);
+                  auto p_sum_tmp_ = ityr::make_checkout(p_sum_tmp.data(), p_sum_tmp.size(), ityr::checkout_mode::read_write);
 
-          ityr::for_each(
-              ityr::execution::sequenced_policy(n_parts),
-              ityr::make_global_iterator(p.dest_id_bins_read.begin(), ityr::checkout_mode::read),
-              ityr::make_global_iterator(p.dest_id_bins_read.end()  , ityr::checkout_mode::read),
-              ityr::make_global_iterator(p.update_bins_read.begin() , ityr::checkout_mode::read),
-              [&](const ityr::global_span<uintE>& dest_bin, const ityr::global_span<real_t>& update_bin) {
+                  if (update_bin.size() > 0) {
+                    auto update_bin_ = ityr::make_checkout(update_bin.data(), update_bin.size(), ityr::checkout_mode::read);
 
-                if (update_bin.size() > 0) {
-                  auto update_bin_ = ityr::make_checkout(update_bin.data(), update_bin.size(), ityr::checkout_mode::read);
+                    long update_bin_offset = -1;
+                    ityr::for_each(
+                        ityr::execution::sequenced_policy(dest_bin.size()),
+                        ityr::make_global_iterator(dest_bin.begin(), ityr::checkout_mode::read),
+                        ityr::make_global_iterator(dest_bin.end()  , ityr::checkout_mode::read),
+                        [&](uintE dest_vid) {
+                          update_bin_offset += (dest_vid >> MSB_ROT);
+                          dest_vid &= MAX_POS;
 
-                  long update_bin_offset = -1;
-                  ityr::for_each(
-                      ityr::execution::sequenced_policy(dest_bin.size()),
-                      ityr::make_global_iterator(dest_bin.begin(), ityr::checkout_mode::read),
-                      ityr::make_global_iterator(dest_bin.end()  , ityr::checkout_mode::read),
-                      [&](uintE dest_vid) {
-                        update_bin_offset += (dest_vid >> MSB_ROT);
-                        dest_vid &= MAX_POS;
+                          assert(dest_vid >= v_begin);
+                          assert(dest_vid - v_begin < pn);
+                          assert(std::size_t(update_bin_offset) < update_bin.size());
+                          p_sum_tmp_[dest_vid - v_begin] += update_bin_[update_bin_offset];
+                        });
+                  }
 
-                        assert(dest_vid >= p.v_begin);
-                        assert(dest_vid - p.v_begin < p.n);
-                        assert(std::size_t(update_bin_offset) < update_bin.size());
-                        p_next_[dest_vid - p.v_begin] += update_bin_[update_bin_offset];
-                      });
-                }
-              });
+                  return p_sum_tmp;
+                });
 
-          for (auto& pn : p_next_) {
-            pn = damping * pn + added_constant;
+            ityr::transform(
+                ityr::execution::sequenced_policy(pn),
+                p_sum.begin(), p_sum.end(), p_next.begin() + v_begin,
+                [=](real_t x) { return damping * x + added_constant; });
+
+          } else {
+            auto p_next_ = ityr::make_checkout(&p_next[v_begin], pn, ityr::checkout_mode::write);
+
+            for (auto& x : p_next_) {
+              x = 0;
+            }
+
+            ityr::for_each(
+                ityr::execution::sequenced_policy(n_parts),
+                ityr::make_global_iterator(dest_id_bins_read.begin(), ityr::checkout_mode::read),
+                ityr::make_global_iterator(dest_id_bins_read.end()  , ityr::checkout_mode::read),
+                ityr::make_global_iterator(update_bins_read.begin() , ityr::checkout_mode::read),
+                [&](const ityr::global_span<uintE>& dest_bin, const ityr::global_span<real_t>& update_bin) {
+
+                  if (update_bin.size() > 0) {
+                    auto update_bin_ = ityr::make_checkout(update_bin.data(), update_bin.size(), ityr::checkout_mode::read);
+
+                    long update_bin_offset = -1;
+                    ityr::for_each(
+                        ityr::execution::sequenced_policy(dest_bin.size()),
+                        ityr::make_global_iterator(dest_bin.begin(), ityr::checkout_mode::read),
+                        ityr::make_global_iterator(dest_bin.end()  , ityr::checkout_mode::read),
+                        [&](uintE dest_vid) {
+                          update_bin_offset += (dest_vid >> MSB_ROT);
+                          dest_vid &= MAX_POS;
+
+                          assert(dest_vid >= v_begin);
+                          assert(dest_vid - v_begin < pn);
+                          assert(std::size_t(update_bin_offset) < update_bin.size());
+                          p_next_[dest_vid - v_begin] += update_bin_[update_bin_offset];
+                        });
+                  }
+                });
+
+            for (auto& x : p_next_) {
+              x = damping * x + added_constant;
+            }
           }
         });
 
