@@ -1,5 +1,25 @@
 #include "common.hpp"
 
+struct prof_event_user_scatter_l1 : public ityr::common::profiler::event {
+  using event::event;
+  std::string str() const override { return "user_scatter_l1"; }
+};
+
+struct prof_event_user_scatter_l2 : public ityr::common::profiler::event {
+  using event::event;
+  std::string str() const override { return "user_scatter_l2"; }
+};
+
+struct prof_event_user_gather_l1 : public ityr::common::profiler::event {
+  using event::event;
+  std::string str() const override { return "user_gather_l1"; }
+};
+
+struct prof_event_user_gather_l2 : public ityr::common::profiler::event {
+  using event::event;
+  std::string str() const override { return "user_gather_l2"; }
+};
+
 enum class exec_t {
   Naive = 0,
   Gpop = 1,
@@ -742,6 +762,7 @@ void pagerank_gpop(graph&                    g,
                 ityr::make_global_iterator(update_bins_write.end()  , ityr::checkout_mode::read),
                 ityr::make_global_iterator(bin_edge_offsets.begin() , ityr::checkout_mode::read),
                 [=](ityr::global_span<real_t>& update_bin, long e_begin) {
+                  ITYR_PROFILER_RECORD(prof_event_user_scatter_l2);
 
                   auto p_div_ = ityr::make_checkout(&p_div[v_begin], pn, ityr::checkout_mode::read);
 
@@ -758,6 +779,8 @@ void pagerank_gpop(graph&                    g,
                 });
 
             } else {
+              ITYR_PROFILER_RECORD(prof_event_user_scatter_l1);
+
               auto p_div_ = ityr::make_checkout(&p_div[v_begin], pn, ityr::checkout_mode::read);
 
               ityr::for_each(
@@ -802,6 +825,8 @@ void pagerank_gpop(graph&                    g,
                   return ityr::global_vector<real_t>(pn, 0);
                 },
                 [=](ityr::global_vector<real_t>& acc, std::pair<ityr::global_span<uintE>, ityr::global_span<real_t>> sp) {
+                  ITYR_PROFILER_RECORD(prof_event_user_gather_l2);
+
                   auto dest_id_bin = sp.first;
                   auto update_bin  = sp.second;
 
@@ -848,6 +873,8 @@ void pagerank_gpop(graph&                    g,
                 [=](real_t x) { return damping * x + added_constant; });
 
           } else {
+            ITYR_PROFILER_RECORD(prof_event_user_gather_l1);
+
             auto p_next_ = ityr::make_checkout(&p_next[v_begin], pn, ityr::checkout_mode::write);
 
             for (auto& x : p_next_) {
@@ -992,6 +1019,11 @@ void show_help_and_exit(int argc [[maybe_unused]], char** argv) {
 
 int main(int argc, char** argv) {
   ityr::init();
+
+  ityr::common::profiler::event_initializer<prof_event_user_scatter_l1> ITYR_ANON_VAR;
+  ityr::common::profiler::event_initializer<prof_event_user_scatter_l2> ITYR_ANON_VAR;
+  ityr::common::profiler::event_initializer<prof_event_user_gather_l1>  ITYR_ANON_VAR;
+  ityr::common::profiler::event_initializer<prof_event_user_gather_l2>  ITYR_ANON_VAR;
 
   set_signal_handlers();
 
