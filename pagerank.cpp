@@ -52,6 +52,8 @@ struct vertex_data {
   uintE       degree;
 };
 
+using bin_edge_elem_t = uint16_t;
+
 /* using dest_bin_elem_t = uint64_t; */
 /* #define MAX_NEG 0x8000000000000000 */
 /* #define MAX_POS 0x7fffffffffffffff */
@@ -76,7 +78,7 @@ struct part {
   long m;
 
   ityr::global_vector<long> bin_edge_offsets;
-  ityr::global_span<uintE> bin_edges;
+  ityr::global_span<bin_edge_elem_t> bin_edges;
 
   ityr::global_vector<long> dest_bin_sizes;
   ityr::global_vector<long> update_bin_sizes;
@@ -103,7 +105,7 @@ struct graph {
   long n_parts;
   ityr::global_vector<part> parts;
 
-  ityr::global_vector<uintE>           bin_edges;
+  ityr::global_vector<bin_edge_elem_t> bin_edges;
   ityr::global_vector<dest_bin_elem_t> dest_bins;
   ityr::global_vector<real_t>          update_bins;
 };
@@ -354,12 +356,12 @@ void partition(long n_parts, graph& g) {
   std::size_t bin_edges_size_total = bin_edges_offsets.back().get();
 
   if (ityr::is_master()) {
-    printf("bin edges size  = %ld bytes\n", bin_edges_size_total * sizeof(uintE));
+    printf("bin edges size  = %ld bytes\n", bin_edges_size_total * sizeof(bin_edge_elem_t));
     fflush(stdout);
   }
 
-  ityr::global_vector<uintE> bin_edges(global_vec_coll_opts(cutoff_e), bin_edges_size_total);
-  ityr::global_span<uintE> bin_edges_ref(bin_edges);
+  ityr::global_vector<bin_edge_elem_t> bin_edges(global_vec_coll_opts(cutoff_e), bin_edges_size_total);
+  ityr::global_span<bin_edge_elem_t> bin_edges_ref(bin_edges);
 
   ityr::root_exec([=] {
     ityr::for_each(
@@ -373,7 +375,7 @@ void partition(long n_parts, graph& g) {
           std::size_t bin_edges_size = bin_edge_offsets[n_parts];
           p.bin_edges = bin_edges_ref.subspan(bin_edges_offset, bin_edges_size);
 
-          auto bin_edges = ityr::make_checkout(p.bin_edges.data(), p.bin_edges.size(), ityr::checkout_mode::write);
+          auto bin_edges_ = ityr::make_checkout(p.bin_edges.data(), p.bin_edges.size(), ityr::checkout_mode::write);
 
           std::vector<long> bin_offsets(n_parts);
 
@@ -397,7 +399,7 @@ void partition(long n_parts, graph& g) {
                       assert(dest_bin_id < n_parts);
 
                       if (dest_bin_id != prev_bin_id) {
-                        bin_edges[bin_edge_offsets[dest_bin_id] + (bin_offsets[dest_bin_id]++)] = vid;
+                        bin_edges_[bin_edge_offsets[dest_bin_id] + (bin_offsets[dest_bin_id]++)] = vid - p.v_begin;
                         prev_bin_id = dest_bin_id;
                       }
                     });
@@ -436,7 +438,7 @@ void partition(long n_parts, graph& g) {
   std::size_t dest_bin_size_total = dest_bin_offsets.back().get();
 
   if (ityr::is_master()) {
-    printf("dest bin size   = %ld bytes\n", dest_bin_size_total * sizeof(uintE));
+    printf("dest bin size   = %ld bytes\n", dest_bin_size_total * sizeof(dest_bin_elem_t));
     fflush(stdout);
   }
 
@@ -779,10 +781,9 @@ void pagerank_gpop(graph&                    g,
                       ityr::make_global_iterator(u_bin.begin()      , ityr::checkout_mode::write),
                       ityr::make_global_iterator(u_bin.end()        , ityr::checkout_mode::write),
                       ityr::make_global_iterator(&bin_edges[e_begin], ityr::checkout_mode::read),
-                      [&](real_t& update, uintE vid) {
-                        assert(vid >= v_begin);
-                        assert(vid - v_begin < pn);
-                        update = p_div_[vid - v_begin];
+                      [&](real_t& update, bin_edge_elem_t vid_offset) {
+                        assert(vid_offset < pn);
+                        update = p_div_[vid_offset];
                       });
                 });
 
@@ -803,10 +804,9 @@ void pagerank_gpop(graph&                    g,
                         ityr::make_global_iterator(u_bin.begin()      , ityr::checkout_mode::write),
                         ityr::make_global_iterator(u_bin.end()        , ityr::checkout_mode::write),
                         ityr::make_global_iterator(&bin_edges[e_begin], ityr::checkout_mode::read),
-                        [&](real_t& update, uintE vid) {
-                          assert(vid >= v_begin);
-                          assert(vid - v_begin < pn);
-                          update = p_div_[vid - v_begin];
+                        [&](real_t& update, bin_edge_elem_t vid_offset) {
+                          assert(vid_offset < pn);
+                          update = p_div_[vid_offset];
                         });
                   });
             }
