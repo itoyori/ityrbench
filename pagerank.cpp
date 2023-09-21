@@ -548,13 +548,15 @@ void partition(long n_parts, graph& g) {
                       uintE dest_id_bin = (dest_vid >> bin_offset_bits);
                       assert(dest_id_bin < n_parts);
 
+                      uintE dest_offset = dest_vid % bin_width;
+
                       if (dest_id_bin != prev_bin) {
-                        dest_vid |= MAX_NEG;
+                        dest_offset |= MAX_NEG;
                         prev_bin = dest_id_bin;
                       }
 
                       // TODO: course-grained checkout
-                      dest_id_bins[dest_id_bin][offsets[dest_id_bin]++].put(dest_vid);
+                      dest_id_bins[dest_id_bin][offsets[dest_id_bin]++].put(dest_offset);
                     });
               });
         });
@@ -830,26 +832,25 @@ void pagerank_gpop(graph&                    g,
                   auto dest_id_bin = sp.first;
                   auto update_bin  = sp.second;
 
+                  if (update_bin.size() == 0) return;
+
                   auto acc_ = ityr::make_checkout(acc.data(), acc.size(), ityr::checkout_mode::read_write);
 
-                  if (update_bin.size() > 0) {
-                    auto update_bin_ = ityr::make_checkout(update_bin.data(), update_bin.size(), ityr::checkout_mode::read);
+                  auto update_bin_ = ityr::make_checkout(update_bin.data(), update_bin.size(), ityr::checkout_mode::read);
 
-                    long update_bin_offset = -1;
-                    ityr::for_each(
-                        ityr::execution::sequenced_policy(dest_id_bin.size()),
-                        ityr::make_global_iterator(dest_id_bin.begin(), ityr::checkout_mode::read),
-                        ityr::make_global_iterator(dest_id_bin.end()  , ityr::checkout_mode::read),
-                        [&](uintE dest_vid) {
-                          update_bin_offset += (dest_vid >> MSB_ROT);
-                          dest_vid &= MAX_POS;
+                  long update_bin_offset = -1;
+                  ityr::for_each(
+                      ityr::execution::sequenced_policy(dest_id_bin.size()),
+                      ityr::make_global_iterator(dest_id_bin.begin(), ityr::checkout_mode::read),
+                      ityr::make_global_iterator(dest_id_bin.end()  , ityr::checkout_mode::read),
+                      [&](uintE dest_offset) {
+                        update_bin_offset += (dest_offset >> MSB_ROT);
+                        dest_offset &= MAX_POS;
 
-                          assert(dest_vid >= v_begin);
-                          assert(dest_vid - v_begin < pn);
-                          assert(std::size_t(update_bin_offset) < update_bin.size());
-                          acc_[dest_vid - v_begin] += update_bin_[update_bin_offset];
-                        });
-                  }
+                        assert(dest_offset < pn);
+                        assert(std::size_t(update_bin_offset) < update_bin.size());
+                        acc_[dest_offset] += update_bin_[update_bin_offset];
+                      });
                 },
                 [=](ityr::global_vector<real_t>& acc1, const ityr::global_vector<real_t>& acc2) {
                   ityr::transform(
@@ -896,14 +897,13 @@ void pagerank_gpop(graph&                    g,
                         ityr::execution::sequenced_policy(dest_id_bin.size()),
                         ityr::make_global_iterator(dest_id_bin.begin(), ityr::checkout_mode::read),
                         ityr::make_global_iterator(dest_id_bin.end()  , ityr::checkout_mode::read),
-                        [&](uintE dest_vid) {
-                          update_bin_offset += (dest_vid >> MSB_ROT);
-                          dest_vid &= MAX_POS;
+                        [&](uintE dest_offset) {
+                          update_bin_offset += (dest_offset >> MSB_ROT);
+                          dest_offset &= MAX_POS;
 
-                          assert(dest_vid >= v_begin);
-                          assert(dest_vid - v_begin < pn);
+                          assert(dest_offset < pn);
                           assert(std::size_t(update_bin_offset) < update_bin.size());
-                          p_next_[dest_vid - v_begin] += update_bin_[update_bin_offset];
+                          p_next_[dest_offset] += update_bin_[update_bin_offset];
                         });
                   }
                 });
