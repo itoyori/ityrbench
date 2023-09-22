@@ -19,7 +19,8 @@ default_params:
   dataset: rmat_20_24
   cutoff_v: 4096
   cutoff_e: 16384
-  cutoff_p: 131072
+  cutoff_s: 131072
+  cutoff_g: 1048576
   exec_type: gpop # naive/gpop
   bin_width: 16384
   # common params
@@ -55,7 +56,7 @@ build:
     make -j pagerank
 
 run:
-  depend_params: [nodes, cores, repeats, max_iters, dataset, cutoff_v, cutoff_e, cutoff_p, exec_type, bin_width, serial, sched, cache_policy, cache_size, sub_block_size, max_dirty, noncoll_alloc_size, shared_mem, prof, debugger]
+  depend_params: [nodes, cores, repeats, max_iters, dataset, cutoff_v, cutoff_e, cutoff_s, cutoff_g, exec_type, bin_width, serial, sched, cache_policy, cache_size, sub_block_size, max_dirty, noncoll_alloc_size, shared_mem, prof, debugger]
   script: |
     source run_common.bash
 
@@ -78,7 +79,8 @@ run:
         -f ${KOCHI_INSTALL_PREFIX_GBBS}/${KOCHI_PARAM_DATASET}.bin
         -v $KOCHI_PARAM_CUTOFF_V
         -e $KOCHI_PARAM_CUTOFF_E
-        -p $KOCHI_PARAM_CUTOFF_P
+        -s $KOCHI_PARAM_CUTOFF_S
+        -g $KOCHI_PARAM_CUTOFF_G
         -t $exec_type_num
         -b $KOCHI_PARAM_BIN_WIDTH"
 

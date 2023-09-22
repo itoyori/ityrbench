@@ -125,7 +125,8 @@ int         max_iters        = 100;
 const char* dataset_filename = nullptr;
 std::size_t cutoff_v         = 4096;
 std::size_t cutoff_e         = std::size_t(16) * 1024;
-std::size_t cutoff_p         = std::size_t(128) * 1024;
+std::size_t cutoff_s         = std::size_t(128) * 1024;
+std::size_t cutoff_g         = std::size_t(1024) * 1024;
 exec_t      exec_type        = exec_t::Naive;
 long        bin_width        = 16 * 1024;
 long        bin_offset_bits  = log2_pow2(bin_width);
@@ -281,7 +282,7 @@ void partition_sub_bins(dest_bin_elem_t*                       first,
                         dest_bin_elem_t*                       begin_ptr,  // not needed for genuine checkout/checkin
                         ityr::ori::global_ptr<dest_bin_elem_t> begin_gptr, // not needed for genuine checkout/checkin
                         dest_bin_subs&                         d_sub_bins) {
-  if (std::size_t(last - first) < cutoff_p) {
+  if (std::size_t(last - first) < cutoff_g) {
     // dest_bin_normal(ityr::ori::global_ptr<dest_bin_elem_t>(first), last - first) is enough for
     // genuine checkout/checkin (i.e., without the need for nocache get/put backend for checkout/checkin)
     d_sub_bins.push_back({dest_bin_normal(begin_gptr + (first - begin_ptr), last - first),
@@ -628,7 +629,7 @@ void partition(long n_parts, graph& g) {
                 auto&& d_bin_orig = std::get<dest_bin_normal>(d_bin);
                 std::size_t d_bin_size = d_bin_orig.size();
 
-                if (d_bin_size > cutoff_p) {
+                if (d_bin_size > cutoff_g) {
                   // partition sub bins
                   auto d_bin_begin_gptr = d_bin_orig.data();
                   auto d_bin_orig_ = ityr::make_checkout(d_bin_orig, ityr::checkout_mode::read_write);
@@ -831,7 +832,7 @@ void pagerank_gpop(graph&                    g,
           auto bin_edge_offsets  = ityr::global_span<long>(p_cs[0].bin_edge_offsets);
           auto bin_edges         = p_cs[0].bin_edges;
           auto update_bins_write = ityr::global_span<update_bin>(p_cs[0].update_bins_write);
-          bool do_parallel       = p_cs[0].bin_edges.size() > cutoff_p;
+          bool do_parallel       = p_cs[0].bin_edges.size() > cutoff_s;
           p_cs.checkin();
 
           if (do_parallel) {
@@ -846,7 +847,7 @@ void pagerank_gpop(graph&                    g,
                   auto p_div_ = ityr::make_checkout(&p_div[v_begin], pn, ityr::checkout_mode::read);
 
                   ityr::for_each(
-                      ityr::execution::sequenced_policy(cutoff_e),
+                      ityr::execution::sequenced_policy(u_bin.size()),
                       ityr::make_global_iterator(u_bin.begin()      , ityr::checkout_mode::write),
                       ityr::make_global_iterator(u_bin.end()        , ityr::checkout_mode::write),
                       ityr::make_global_iterator(&bin_edges[e_begin], ityr::checkout_mode::read),
@@ -869,7 +870,7 @@ void pagerank_gpop(graph&                    g,
                   [&](update_bin& u_bin, long e_begin) {
 
                     ityr::for_each(
-                        ityr::execution::sequenced_policy(cutoff_e),
+                        ityr::execution::sequenced_policy(u_bin.size()),
                         ityr::make_global_iterator(u_bin.begin()      , ityr::checkout_mode::write),
                         ityr::make_global_iterator(u_bin.end()        , ityr::checkout_mode::write),
                         ityr::make_global_iterator(&bin_edges[e_begin], ityr::checkout_mode::read),
@@ -893,7 +894,7 @@ void pagerank_gpop(graph&                    g,
           auto v_begin          = p_cs[0].v_begin;
           auto dest_bins_read   = ityr::global_span<dest_bin>(p_cs[0].dest_bins_read);
           auto update_bins_read = ityr::global_span<update_bin>(p_cs[0].update_bins_read);
-          bool do_parallel      = p_cs[0].dest_bins_read_size > cutoff_p;
+          bool do_parallel      = p_cs[0].dest_bins_read_size > cutoff_g;
           p_cs.checkin();
 
           if (do_parallel) {
@@ -1132,7 +1133,8 @@ void show_help_and_exit(int argc [[maybe_unused]], char** argv) {
            "    -f : path to the dataset binary file (string)\n"
            "    -v : cutoff count for vertices (size_t)\n"
            "    -e : cutoff count for edges (size_t)\n"
-           "    -p : cutoff count for nested parallelism in scatter/gather (size_t)\n"
+           "    -s : cutoff count for leaf tasks in the scatter phase (size_t)\n"
+           "    -g : cutoff count for leaf tasks in the gather phase (size_t)\n"
            "    -t : execution type (0: naive, 1: gpop)\n"
            "    -b : bin width (power of 2) for gpop (long)\n", argv[0]);
   }
@@ -1151,7 +1153,7 @@ int main(int argc, char** argv) {
   set_signal_handlers();
 
   int opt;
-  while ((opt = getopt(argc, argv, "r:i:f:v:e:p:t:b:h")) != EOF) {
+  while ((opt = getopt(argc, argv, "r:i:f:v:e:s:g:t:b:h")) != EOF) {
     switch (opt) {
       case 'r':
         n_repeats = atoi(optarg);
@@ -1168,8 +1170,11 @@ int main(int argc, char** argv) {
       case 'e':
         cutoff_e = atol(optarg);
         break;
-      case 'p':
-        cutoff_p = atol(optarg);
+      case 's':
+        cutoff_s = atol(optarg);
+        break;
+      case 'g':
+        cutoff_g = atol(optarg);
         break;
       case 't':
         exec_type = exec_t(atoi(optarg));
@@ -1200,12 +1205,13 @@ int main(int argc, char** argv) {
            "Dataset:                       %s\n"
            "Cutoff for vertices:           %ld\n"
            "Cutoff for edges:              %ld\n"
-           "Cutoff for nested parallelism: %ld\n"
+           "Cutoff for scatter leaf tasks: %ld\n"
+           "Cutoff for gather leaf tasks:  %ld\n"
            "Execution type:                %s\n"
            "Bin width (for gpop):          %ld\n"
            "-------------------------------------------------------------\n",
            ityr::n_ranks(), typename_str<real_t>(), sizeof(real_t), max_iters, dataset_filename,
-           cutoff_v, cutoff_e, cutoff_p, to_str(exec_type).c_str(), bin_width);
+           cutoff_v, cutoff_e, cutoff_s, cutoff_g, to_str(exec_type).c_str(), bin_width);
 
     printf("[Compile Options]\n");
     ityr::print_compile_options();
