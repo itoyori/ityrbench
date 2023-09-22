@@ -94,7 +94,7 @@ struct part {
 
   ityr::global_vector<ityr::global_vector<dest_bin_normal>> sub_dest_bins;
 
-  std::size_t dest_bins_read_size = 0;
+  std::size_t dest_bins_read_size;
 };
 
 struct graph {
@@ -269,34 +269,28 @@ graph load_dataset(const char* filename) {
   };
 }
 
-void partition_sub_bins(dest_bin_elem_t*                       first,
-                        dest_bin_elem_t*                       last,
+void partition_sub_bins(ityr::ori::global_ptr<dest_bin_elem_t> first,
+                        ityr::ori::global_ptr<dest_bin_elem_t> last,
                         uint16_t                               offset_b,
                         uint16_t                               offset_e,
-                        dest_bin_elem_t*                       begin_ptr,  // not needed for genuine checkout/checkin
-                        ityr::ori::global_ptr<dest_bin_elem_t> begin_gptr, // not needed for genuine checkout/checkin
                         dest_bin_subs&                         d_sub_bins) {
   if (std::size_t(last - first) < cutoff_g) {
-    // dest_bin_normal(ityr::ori::global_ptr<dest_bin_elem_t>(first), last - first) is enough for
-    // genuine checkout/checkin (i.e., without the need for nocache get/put backend for checkout/checkin)
-    d_sub_bins.push_back({dest_bin_normal(begin_gptr + (first - begin_ptr), last - first),
+    d_sub_bins.push_back({dest_bin_normal(first, last),
                           std::make_pair(offset_b, offset_e)});
     return;
   }
 
   uint16_t offset_m = offset_b + (offset_e - offset_b) / 2;
-  dest_bin_elem_t* mid = std::stable_partition(
+  auto mid = ityr::stable_partition(
+      ityr::execution::parallel_policy(cutoff_e),
       first, last,
-      [&](dest_bin_elem_t dest) {
+      [=](dest_bin_elem_t dest) {
         auto dest_offset = dest & 0xffff;
         return dest_offset < offset_m;
       });
 
-  partition_sub_bins(first, mid, offset_b, offset_m,
-                     begin_ptr, begin_gptr, d_sub_bins);
-
-  partition_sub_bins(mid, last, offset_m, offset_e,
-                     begin_ptr, begin_gptr, d_sub_bins);
+  partition_sub_bins(first, mid , offset_b, offset_m, d_sub_bins);
+  partition_sub_bins(mid  , last, offset_m, offset_e, d_sub_bins);
 }
 
 void partition(long n_parts, graph& g) {
@@ -609,33 +603,48 @@ void partition(long n_parts, graph& g) {
               });
         });
 
-    // further partition large bins into sub-bins if needed
+    // store the total dest bin size (for reading) for each part
     ityr::for_each(
         ityr::execution::par,
         ityr::make_global_iterator(parts_ref.begin(), ityr::checkout_mode::read_write),
         ityr::make_global_iterator(parts_ref.end()  , ityr::checkout_mode::read_write),
         [=](part& p) {
-          ityr::for_each(
+          p.dest_bins_read_size = ityr::transform_reduce(
               ityr::execution::sequenced_policy(n_parts),
-              ityr::make_global_iterator(p.dest_bins_read.begin(), ityr::checkout_mode::read_write),
-              ityr::make_global_iterator(p.dest_bins_read.end()  , ityr::checkout_mode::read_write),
-              [&](dest_bin& d_bin) {
-                auto&& d_bin_orig = std::get<dest_bin_normal>(d_bin);
-                std::size_t d_bin_size = d_bin_orig.size();
+              p.dest_bins_read.begin(), p.dest_bins_read.end(),
+              ityr::reducer::plus<std::size_t>{},
+              [=](const dest_bin& d_bin) {
+                return std::get<dest_bin_normal>(d_bin).size();
+              });
+        });
 
-                if (d_bin_size > cutoff_g) {
+    // further partition large bins into sub-bins if needed
+    ityr::for_each(
+        ityr::execution::par,
+        parts_ref.begin(), parts_ref.end(),
+        [=](auto&& p_ref) {
+          auto p_cs = ityr::make_checkout(&p_ref, 1, ityr::checkout_mode::read);
+          auto pn             = p_cs[0].n;
+          auto dest_bins_read = ityr::global_span<dest_bin>(p_cs[0].dest_bins_read);
+          p_cs.checkin();
+
+          ityr::for_each(
+              ityr::execution::par,
+              dest_bins_read.begin(), dest_bins_read.end(),
+              [=](auto&& d_bin_ref) {
+                auto d_bin_cs = ityr::make_checkout(&d_bin_ref, 1, ityr::checkout_mode::read);
+                dest_bin_normal d_bin_orig = std::get<dest_bin_normal>(d_bin_cs[0]);
+                d_bin_cs.checkin();
+
+                if (d_bin_orig.size() > cutoff_g) {
                   // partition sub bins
-                  auto d_bin_begin_gptr = d_bin_orig.data();
-                  auto d_bin_orig_ = ityr::make_checkout(d_bin_orig, ityr::checkout_mode::read_write);
+                  dest_bin_subs sub_bins;
+                  partition_sub_bins(d_bin_orig.begin(), d_bin_orig.end(), 0, pn, sub_bins);
 
-                  dest_bin_subs& sub_bins = d_bin.emplace<dest_bin_subs>();
-                  partition_sub_bins(
-                      d_bin_orig_.begin(), d_bin_orig_.end(), 0, p.n,
-                      d_bin_orig_.data(), d_bin_begin_gptr, sub_bins);
+                  auto d_bin_cs = ityr::make_checkout(&d_bin_ref, 1, ityr::checkout_mode::read_write);
+                  dest_bin& d_bin = d_bin_cs[0];
+                  d_bin.emplace<dest_bin_subs>(std::move(sub_bins));
                 }
-
-                // store the total dest bin size (for reading) for each part
-                p.dest_bins_read_size += d_bin_size;
               });
         });
   });
