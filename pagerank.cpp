@@ -1,13 +1,8 @@
 #include "common.hpp"
 
-struct prof_event_user_scatter_l1 : public ityr::common::profiler::event {
+struct prof_event_user_scatter : public ityr::common::profiler::event {
   using event::event;
-  std::string str() const override { return "user_scatter_l1"; }
-};
-
-struct prof_event_user_scatter_l2 : public ityr::common::profiler::event {
-  using event::event;
-  std::string str() const override { return "user_scatter_l2"; }
+  std::string str() const override { return "user_scatter"; }
 };
 
 struct prof_event_user_gather_l1 : public ityr::common::profiler::event {
@@ -125,7 +120,6 @@ int         max_iters        = 100;
 const char* dataset_filename = nullptr;
 std::size_t cutoff_v         = 4096;
 std::size_t cutoff_e         = std::size_t(16) * 1024;
-std::size_t cutoff_s         = std::size_t(128) * 1024;
 std::size_t cutoff_g         = std::size_t(1024) * 1024;
 exec_t      exec_type        = exec_t::Naive;
 long        bin_width        = 16 * 1024;
@@ -832,54 +826,28 @@ void pagerank_gpop(graph&                    g,
           auto bin_edge_offsets  = ityr::global_span<long>(p_cs[0].bin_edge_offsets);
           auto bin_edges         = p_cs[0].bin_edges;
           auto update_bins_write = ityr::global_span<update_bin>(p_cs[0].update_bins_write);
-          bool do_parallel       = p_cs[0].bin_edges.size() > cutoff_s;
           p_cs.checkin();
 
-          if (do_parallel) {
-            ityr::for_each(
-                ityr::execution::par,
-                ityr::make_global_iterator(update_bins_write.begin(), ityr::checkout_mode::read),
-                ityr::make_global_iterator(update_bins_write.end()  , ityr::checkout_mode::read),
-                ityr::make_global_iterator(bin_edge_offsets.begin() , ityr::checkout_mode::read),
-                [=](update_bin& u_bin, long e_begin) {
-                  ITYR_PROFILER_RECORD(prof_event_user_scatter_l2);
+          ityr::for_each(
+              ityr::execution::par,
+              ityr::make_global_iterator(update_bins_write.begin(), ityr::checkout_mode::read),
+              ityr::make_global_iterator(update_bins_write.end()  , ityr::checkout_mode::read),
+              ityr::make_global_iterator(bin_edge_offsets.begin() , ityr::checkout_mode::read),
+              [=](update_bin& u_bin, long e_begin) {
+                ITYR_PROFILER_RECORD(prof_event_user_scatter);
 
-                  auto p_div_ = ityr::make_checkout(&p_div[v_begin], pn, ityr::checkout_mode::read);
+                auto p_div_ = ityr::make_checkout(&p_div[v_begin], pn, ityr::checkout_mode::read);
 
-                  ityr::for_each(
-                      ityr::execution::sequenced_policy(u_bin.size()),
-                      ityr::make_global_iterator(u_bin.begin()      , ityr::checkout_mode::write),
-                      ityr::make_global_iterator(u_bin.end()        , ityr::checkout_mode::write),
-                      ityr::make_global_iterator(&bin_edges[e_begin], ityr::checkout_mode::read),
-                      [&](real_t& update, bin_edge_elem_t vid_offset) {
-                        assert(vid_offset < pn);
-                        update = p_div_[vid_offset];
-                      });
-                });
-
-            } else {
-              ITYR_PROFILER_RECORD(prof_event_user_scatter_l1);
-
-              auto p_div_ = ityr::make_checkout(&p_div[v_begin], pn, ityr::checkout_mode::read);
-
-              ityr::for_each(
-                  ityr::execution::sequenced_policy(n_parts),
-                  ityr::make_global_iterator(update_bins_write.begin(), ityr::checkout_mode::read),
-                  ityr::make_global_iterator(update_bins_write.end()  , ityr::checkout_mode::read),
-                  ityr::make_global_iterator(bin_edge_offsets.begin() , ityr::checkout_mode::read),
-                  [&](update_bin& u_bin, long e_begin) {
-
-                    ityr::for_each(
-                        ityr::execution::sequenced_policy(u_bin.size()),
-                        ityr::make_global_iterator(u_bin.begin()      , ityr::checkout_mode::write),
-                        ityr::make_global_iterator(u_bin.end()        , ityr::checkout_mode::write),
-                        ityr::make_global_iterator(&bin_edges[e_begin], ityr::checkout_mode::read),
-                        [&](real_t& update, bin_edge_elem_t vid_offset) {
-                          assert(vid_offset < pn);
-                          update = p_div_[vid_offset];
-                        });
-                  });
-            }
+                ityr::for_each(
+                    ityr::execution::sequenced_policy(u_bin.size()),
+                    ityr::make_global_iterator(u_bin.begin()      , ityr::checkout_mode::write),
+                    ityr::make_global_iterator(u_bin.end()        , ityr::checkout_mode::write),
+                    ityr::make_global_iterator(&bin_edges[e_begin], ityr::checkout_mode::read),
+                    [&](real_t& update, bin_edge_elem_t vid_offset) {
+                      assert(vid_offset < pn);
+                      update = p_div_[vid_offset];
+                    });
+              });
         });
 
     auto t1 = ityr::gettime_ns();
@@ -1133,7 +1101,6 @@ void show_help_and_exit(int argc [[maybe_unused]], char** argv) {
            "    -f : path to the dataset binary file (string)\n"
            "    -v : cutoff count for vertices (size_t)\n"
            "    -e : cutoff count for edges (size_t)\n"
-           "    -s : cutoff count for leaf tasks in the scatter phase (size_t)\n"
            "    -g : cutoff count for leaf tasks in the gather phase (size_t)\n"
            "    -t : execution type (0: naive, 1: gpop)\n"
            "    -b : bin width (power of 2) for gpop (long)\n", argv[0]);
@@ -1144,16 +1111,15 @@ void show_help_and_exit(int argc [[maybe_unused]], char** argv) {
 int main(int argc, char** argv) {
   ityr::init();
 
-  ityr::common::profiler::event_initializer<prof_event_user_scatter_l1> ITYR_ANON_VAR;
-  ityr::common::profiler::event_initializer<prof_event_user_scatter_l2> ITYR_ANON_VAR;
-  ityr::common::profiler::event_initializer<prof_event_user_gather_l1>  ITYR_ANON_VAR;
-  ityr::common::profiler::event_initializer<prof_event_user_gather_l2>  ITYR_ANON_VAR;
-  ityr::common::profiler::event_initializer<prof_event_user_gather_l3>  ITYR_ANON_VAR;
+  ityr::common::profiler::event_initializer<prof_event_user_scatter>   ITYR_ANON_VAR;
+  ityr::common::profiler::event_initializer<prof_event_user_gather_l1> ITYR_ANON_VAR;
+  ityr::common::profiler::event_initializer<prof_event_user_gather_l2> ITYR_ANON_VAR;
+  ityr::common::profiler::event_initializer<prof_event_user_gather_l3> ITYR_ANON_VAR;
 
   set_signal_handlers();
 
   int opt;
-  while ((opt = getopt(argc, argv, "r:i:f:v:e:s:g:t:b:h")) != EOF) {
+  while ((opt = getopt(argc, argv, "r:i:f:v:e:g:t:b:h")) != EOF) {
     switch (opt) {
       case 'r':
         n_repeats = atoi(optarg);
@@ -1169,9 +1135,6 @@ int main(int argc, char** argv) {
         break;
       case 'e':
         cutoff_e = atol(optarg);
-        break;
-      case 's':
-        cutoff_s = atol(optarg);
         break;
       case 'g':
         cutoff_g = atol(optarg);
@@ -1199,19 +1162,18 @@ int main(int argc, char** argv) {
     setlocale(LC_NUMERIC, "en_US.UTF-8");
     printf("=============================================================\n"
            "[PageRank]\n"
-           "# of processes:                %d\n"
-           "Real number type:              %s (%ld bytes)\n"
-           "Max iterations:                %d\n"
-           "Dataset:                       %s\n"
-           "Cutoff for vertices:           %ld\n"
-           "Cutoff for edges:              %ld\n"
-           "Cutoff for scatter leaf tasks: %ld\n"
-           "Cutoff for gather leaf tasks:  %ld\n"
-           "Execution type:                %s\n"
-           "Bin width (for gpop):          %ld\n"
+           "# of processes:               %d\n"
+           "Real number type:             %s (%ld bytes)\n"
+           "Max iterations:               %d\n"
+           "Dataset:                      %s\n"
+           "Cutoff for vertices:          %ld\n"
+           "Cutoff for edges:             %ld\n"
+           "Cutoff for gather leaf tasks: %ld\n"
+           "Execution type:               %s\n"
+           "Bin width (for gpop):         %ld\n"
            "-------------------------------------------------------------\n",
            ityr::n_ranks(), typename_str<real_t>(), sizeof(real_t), max_iters, dataset_filename,
-           cutoff_v, cutoff_e, cutoff_s, cutoff_g, to_str(exec_type).c_str(), bin_width);
+           cutoff_v, cutoff_e, cutoff_g, to_str(exec_type).c_str(), bin_width);
 
     printf("[Compile Options]\n");
     ityr::print_compile_options();
