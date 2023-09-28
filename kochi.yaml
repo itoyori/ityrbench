@@ -56,7 +56,7 @@ dependencies:
       - name: v1.11.2
         before_script: UCX_VERSION=1.11.2 CONFIGURE_OPTS="--disable-logging --disable-debug --disable-assertions --disable-params-check"
     script:
-      - wget https://github.com/openucx/ucx/releases/download/v${UCX_VERSION}/ucx-${UCX_VERSION}.tar.gz
+      - wget -q https://github.com/openucx/ucx/releases/download/v${UCX_VERSION}/ucx-${UCX_VERSION}.tar.gz
       - tar xvf ucx-${UCX_VERSION}.tar.gz
       - cd ucx-${UCX_VERSION}/
       - ./configure CFLAGS="${CFLAGS:+$CFLAGS} -gdwarf-4" --prefix=$KOCHI_INSTALL_PREFIX ${CONFIGURE_OPTS:+$CONFIGURE_OPTS}
@@ -153,34 +153,56 @@ dependencies:
       - make -j
       - make install
 
-  gbbs:
-    git: https://github.com/ParAlg/gbbs.git
-    commit_hash: b1a90f5fa3b36b8be9fa5c336e3dc5783ae75d76
+  rmatter:
+    git: https://github.com/s417-lama/rmatter.git
+    branch: master
     recipes:
       - name: dataset
         script: |
           # R-MAT
-          for nm in "20 24" "24 28" "27 31"; do
+          for nm in "20 24" "21 25" "22 26" "23 27" "24 28" "25 29" "26 30" "27 31" "28 32"; do
             read -r n m <<< "$nm"
-            ./utils/generators/RMAT -n $(echo "2^$n" | bc) -m $(echo "2^$m" | bc) -outfile ${KOCHI_INSTALL_PREFIX}/rmat_${n}_${m}
-            convert_graph ${KOCHI_INSTALL_PREFIX}/rmat_${n}_${m}
+            time ./rmatter -n $(echo "2^$n" | bc) -m $(echo "2^$m" | bc) -o ${KOCHI_INSTALL_PREFIX}/rmat_${n}_${m}.txt
+            time ./converter -i ${KOCHI_INSTALL_PREFIX}/rmat_${n}_${m}.txt -o ${KOCHI_INSTALL_PREFIX}/rmat_${n}_${m}.binedgelist
           done
           # twitter2010
-          wget https://snap.stanford.edu/data/twitter-2010.txt.gz
-          gunzip twitter-2010.txt.gz
-          mv twitter-2010.txt ${KOCHI_INSTALL_PREFIX}/twitter2010
-          convert_graph ${KOCHI_INSTALL_PREFIX}/twitter2010
+          echo "Downloading twitter2010 dataset..."
+          time wget -q https://snap.stanford.edu/data/twitter-2010.txt.gz
+          echo "Unzipping twitter2010 dataset..."
+          time gunzip twitter-2010.txt.gz
+          mv twitter-2010.txt ${KOCHI_INSTALL_PREFIX}/twitter2010.txt
+          time ./converter -i ${KOCHI_INSTALL_PREFIX}/twitter2010.txt -o ${KOCHI_INSTALL_PREFIX}/twitter2010.binedgelist
+    on_machine: true
+    before_script: |
+      make -j
+
+  gbbs:
+    git: https://github.com/ParAlg/gbbs.git
+    commit_hash: b1a90f5fa3b36b8be9fa5c336e3dc5783ae75d76
+    depends:
+      - name: rmatter
+        recipe: dataset
+    recipes:
+      - name: dataset
+        script: |
+          # R-MAT
+          for nm in "20 24" "21 25" "22 26" "23 27" "24 28" "25 29" "26 30" "27 31" "28 32"; do
+            read -r n m <<< "$nm"
+            convert_graph rmat_${n}_${m}
+          done
+          # twitter2010
+          convert_graph twitter2010
     on_machine: true
     before_script: |
       make -j -C utils
-      make -j -C utils/generators
       function convert_graph() {
-        snap_graph_file=$1
-        ./utils/snap_converter -i $snap_graph_file -o ${snap_graph_file}.adj
-        ./utils/converter -enc binary -o ${snap_graph_file}.bin ${snap_graph_file}.adj
-        ./utils/compressor -o ${snap_graph_file}.bytepda ${snap_graph_file}.adj
-        if [[ $KOCHI_MACHINE != wisteria-o ]]; then
-          # awk '{printf("%08x%08x\n", $1, $2)}' $snap_graph_file | xxd -r -p - ${snap_graph_file}.binedgelist # for gemini (big endian)
-          awk '{printf("%02x%02x%02x%02x%02x%02x%02x%02x\n", and(0xff,$1), and(0xff,rshift($1,8)), and(0xff,rshift($1,16)), and(0xff,rshift($1,24)), and(0xff,$2), and(0xff,rshift($2,8)), and(0xff,rshift($2,16)), and(0xff,rshift($2,24)))}' $snap_graph_file | xxd -r -p - ${snap_graph_file}.binedgelist # for gemini (little endian)
-        fi
+        graph_basename=$1
+        input_basepath=${KOCHI_INSTALL_PREFIX_RMATTER}/${graph_basename}
+        output_basepath=${KOCHI_INSTALL_PREFIX}/${graph_basename}
+        ln -s ${input_basepath}.txt ${output_basepath}.txt
+        ln -s ${input_basepath}.binedgelist ${output_basepath}.binedgelist
+        echo "Converting $graph_basename graph..."
+        time ./utils/snap_converter -i ${input_basepath}.txt -o ${output_basepath}.adj
+        time ./utils/converter -enc binary -o ${output_basepath}.bin ${output_basepath}.adj
+        time ./utils/compressor -o ${output_basepath}.bytepda ${output_basepath}.adj
       }
