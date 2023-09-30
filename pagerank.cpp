@@ -62,7 +62,7 @@ using dest_bin_normal = ityr::global_span<dest_bin_elem_t>;
 
 struct dest_sub_bin {
   dest_bin_normal               elems;
-  std::pair<uint16_t, uint16_t> offset_range;
+  std::pair<uint32_t, uint32_t> offset_range;
 };
 
 using dest_bin_subs = ityr::global_vector<dest_sub_bin>;
@@ -257,40 +257,41 @@ graph load_dataset(const char* filename) {
     fflush(stdout);
   }
 
-  return {
-    .n          = n,
-    .m          = m,
-    .v_in_data  = std::move(v_in_data),
-    .v_out_data = std::move(v_out_data),
-    .in_edges   = std::move(in_edges_vec),
-    .out_edges  = std::move(out_edges_vec),
-    .n_parts    = 0,
-    .parts      = {},
-  };
+  graph g;
+  g.n          = n;
+  g.m          = m;
+  g.v_in_data  = std::move(v_in_data);
+  g.v_out_data = std::move(v_out_data);
+  g.in_edges   = std::move(in_edges_vec);
+  g.out_edges  = std::move(out_edges_vec);
+  g.n_parts    = 0;
+  return g;
 }
 
-void partition_sub_bins(ityr::ori::global_ptr<dest_bin_elem_t> first,
-                        ityr::ori::global_ptr<dest_bin_elem_t> last,
-                        uint16_t                               offset_b,
-                        uint16_t                               offset_e,
-                        dest_bin_subs&                         d_sub_bins) {
+dest_bin_subs partition_sub_bins(ityr::ori::global_ptr<dest_bin_elem_t> first,
+                                 ityr::ori::global_ptr<dest_bin_elem_t> last,
+                                 uint32_t                               offset_b,
+                                 uint32_t                               offset_e) {
   if (std::size_t(last - first) < cutoff_g) {
-    d_sub_bins.push_back({dest_bin_normal(first, last),
-                          std::make_pair(offset_b, offset_e)});
-    return;
+    return dest_bin_subs(1, {dest_bin_normal(first, last),
+                             std::make_pair(offset_b, offset_e)});
   }
 
-  uint16_t offset_m = offset_b + (offset_e - offset_b) / 2;
+  uint32_t offset_m = offset_b + (offset_e - offset_b) / 2;
   auto mid = ityr::stable_partition(
-      ityr::execution::parallel_policy(cutoff_e),
+      ityr::execution::parallel_policy(cutoff_g),
       first, last,
       [=](dest_bin_elem_t dest) {
         auto dest_offset = dest & 0xffff;
         return dest_offset < offset_m;
       });
 
-  partition_sub_bins(first, mid , offset_b, offset_m, d_sub_bins);
-  partition_sub_bins(mid  , last, offset_m, offset_e, d_sub_bins);
+  auto [db1, db2] = ityr::parallel_invoke(
+      [=] { return partition_sub_bins(first, mid , offset_b, offset_m); },
+      [=] { return partition_sub_bins(mid  , last, offset_m, offset_e); });
+
+  db1.insert(db1.end(), db2.begin(), db2.end());
+  return db1;
 }
 
 void partition(long n_parts, graph& g) {
@@ -638,8 +639,7 @@ void partition(long n_parts, graph& g) {
 
                 if (d_bin_orig.size() > cutoff_g) {
                   // partition sub bins
-                  dest_bin_subs sub_bins;
-                  partition_sub_bins(d_bin_orig.begin(), d_bin_orig.end(), 0, pn, sub_bins);
+                  dest_bin_subs sub_bins = partition_sub_bins(d_bin_orig.begin(), d_bin_orig.end(), 0, pn);
 
                   auto d_bin_cs = ityr::make_checkout(&d_bin_ref, 1, ityr::checkout_mode::read_write);
                   dest_bin& d_bin = d_bin_cs[0];
@@ -847,6 +847,8 @@ void pagerank_gpop(graph&                    g,
 
                 auto p_div_ = ityr::make_checkout(&p_div[v_begin], pn, ityr::checkout_mode::read);
 
+                if (u_bin.size() == 0) return;
+
                 ityr::for_each(
                     ityr::execution::sequenced_policy(u_bin.size()),
                     ityr::make_global_iterator(u_bin.begin()      , ityr::checkout_mode::write),
@@ -990,22 +992,22 @@ void pagerank_gpop(graph&                    g,
                 [&](const dest_bin& d_bin, const update_bin& u_bin) {
                   auto&& d_bin_ = std::get<dest_bin_normal>(d_bin);
 
-                  if (u_bin.size() > 0) {
-                    auto u_bin_ = ityr::make_checkout(u_bin, ityr::checkout_mode::read);
+                  if (u_bin.size() == 0) return;
 
-                    ityr::for_each(
-                        ityr::execution::sequenced_policy(d_bin_.size()),
-                        ityr::make_global_iterator(d_bin_.begin(), ityr::checkout_mode::read),
-                        ityr::make_global_iterator(d_bin_.end()  , ityr::checkout_mode::read),
-                        [&](dest_bin_elem_t dest) {
-                          auto u_bin_offset = dest >> 16;
-                          auto dest_offset  = dest & 0xffff;
+                  auto u_bin_ = ityr::make_checkout(u_bin, ityr::checkout_mode::read);
 
-                          assert(dest_offset < pn);
-                          assert(u_bin_offset < u_bin.size());
-                          p_next_[dest_offset] += u_bin_[u_bin_offset];
-                        });
-                  }
+                  ityr::for_each(
+                      ityr::execution::sequenced_policy(d_bin_.size()),
+                      ityr::make_global_iterator(d_bin_.begin(), ityr::checkout_mode::read),
+                      ityr::make_global_iterator(d_bin_.end()  , ityr::checkout_mode::read),
+                      [&](dest_bin_elem_t dest) {
+                        auto u_bin_offset = dest >> 16;
+                        auto dest_offset  = dest & 0xffff;
+
+                        assert(dest_offset < pn);
+                        assert(u_bin_offset < u_bin.size());
+                        p_next_[dest_offset] += u_bin_[u_bin_offset];
+                      });
                 });
 
             for (auto& x : p_next_) {

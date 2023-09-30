@@ -131,6 +131,10 @@ if [[ ! -z ${KOCHI_INSTALL_PREFIX_ITOYORI+x} ]]; then
   export ITYR_ORI_SUB_BLOCK_SIZE=$KOCHI_PARAM_SUB_BLOCK_SIZE
   export ITYR_ORI_MAX_DIRTY_CACHE_SIZE=$(bc <<< "$KOCHI_PARAM_MAX_DIRTY * 2^20 / 1")
   export ITYR_ORI_NONCOLL_ALLOCATOR_SIZE=$(bc <<< "$KOCHI_PARAM_NONCOLL_ALLOC_SIZE * 2^20 / 1")
+
+  if [[ $KOCHI_PARAM_NODES == 1 ]]; then
+    export ITYR_ORI_CACHE_SIZE=65536
+  fi
 fi
 
 if [[ $KOCHI_PARAM_DEBUGGER == 1 ]] && [[ -z "${PS1+x}" ]]; then
