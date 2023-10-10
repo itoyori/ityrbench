@@ -220,7 +220,12 @@ load_from_range(const char *file, Conv converter, uint32_t max_num)
 
 	int32_t* begin = (int32_t*)(fileptr+header_size);
 	int32_t* end = begin + num_points;
-	auto [offsets, total] = parlay::scan(parlay::make_slice(begin,end));
+
+	/* auto [offsets, total] = parlay::scan(parlay::make_slice(begin,end)); */
+	auto offsets_total = parlay::scan(parlay::make_slice(begin,end));
+        auto offsets = std::get<0>(offsets_total);
+        auto total = std::get<1>(offsets_total);
+
 	offsets.push_back(total);
 	std::cout << "num_matches: " << num_matches << ' ' << total << std::endl;
 

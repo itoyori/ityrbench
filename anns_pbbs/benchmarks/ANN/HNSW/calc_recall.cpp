@@ -188,14 +188,23 @@ void output_recall(HNSW<U> &g, commandLine param, parlay::internal::timer &t)
 {
 	const char* file_query = param.getOptionValue("-q");
 	const char* file_groundtruth = param.getOptionValue("-g");
-	auto [q,_] = load_point(file_query, to_point<typename U::type_elem>);
+
+	/* auto [q,_] = load_point(file_query, to_point<typename U::type_elem>); */
+	auto q_ = load_point(file_query, to_point<typename U::type_elem>);
+        auto q = std::get<0>(q_);
+        auto _ = std::get<1>(q_);
+
 	t.next("Read queryFile");
 	printf("%s: [%lu,%u]\n", file_query, q.size(), _);
 
 	visit_point(q, q.size(), g.dim);
 	t.next("Fetch query vectors");
 
-	auto [gt,rank_max] = load_point(file_groundtruth, gt_converter<uint32_t>{});
+	/* auto [gt,rank_max] = load_point(file_groundtruth, gt_converter<uint32_t>{}); */
+	auto gt_rank_max = load_point(file_groundtruth, gt_converter<uint32_t>{});
+        auto gt = std::get<0>(gt_rank_max);
+        auto rank_max = std::get<1>(gt_rank_max);
+
 	t.next("Read groundTruthFile");
 	printf("%s: [%lu,%u]\n", file_groundtruth, gt.size(), rank_max);
 
