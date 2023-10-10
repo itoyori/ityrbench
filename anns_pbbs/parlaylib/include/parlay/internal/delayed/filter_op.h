@@ -7,6 +7,7 @@
 #include <utility>
 
 #include "../../range.h"
+#include "../../relocation.h"
 #include "../../sequence.h"
 #include "../../utilities.h"
 
@@ -65,7 +66,7 @@ struct block_delayed_filter_op_t :
  private:
   template<typename UV, typename UP>
   auto filter_blocks(UV&& v, UP&& p) {
-    size_t temp_size = (std::min)(parlay::size(v), block_size);
+    size_t temp_size = (std::min<size_t>)(parlay::size(v), block_size);
     return parlay::internal::tabulate(num_blocks(v), [&](size_t i) {
       // Note: For some reason, inlining this code results in a performance
       // decrease!! Calling a separate function here is 2% faster (on GCC 9)

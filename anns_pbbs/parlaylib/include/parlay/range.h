@@ -50,6 +50,7 @@
 
 #include <iterator>       // IWYU pragma: keep
 #include <type_traits>
+#include <utility>
 
 #include "type_traits.h"
 
@@ -194,6 +195,22 @@ struct is_sentinel_for<It_, Sentinel_, std::void_t<
 // True if Sentinel_ is a sentinel type for the iterator It_
 template<typename It_, typename Sentinel_>
 inline constexpr bool is_sentinel_for_v = is_sentinel_for<It_, Sentinel_>::value;
+
+// Provides the member value true if Sentinel_ is a sized sentinel type
+// for the iterator type It_
+template<typename It_, typename Sentinel_, typename = std::void_t<>>
+struct is_sized_sentinel_for : public std::false_type {};
+
+template<typename It_, typename Sentinel_>
+struct is_sized_sentinel_for<It_, Sentinel_, std::void_t<
+  std::enable_if_t< is_sentinel_for_v<It_, Sentinel_> >,
+  std::enable_if_t< std::is_same_v<decltype(std::declval<It_>() - std::declval<Sentinel_>()), iterator_difference_type_t<It_>> >,
+  std::enable_if_t< std::is_same_v<decltype(std::declval<Sentinel_>() - std::declval<It_>()), iterator_difference_type_t<It_>> >
+>> : std::true_type {};
+
+// True if Sentinel_ is a sized sentinel type for the iterator It_
+template<typename It_, typename Sentinel_>
+inline constexpr bool is_sized_sentinel_for_v = is_sized_sentinel_for<It_, Sentinel_>::value;
 
 // Defines a member constant value true if the iterator It_ is at least an input iterator
 template<typename It_, typename = std::void_t<>>
@@ -465,20 +482,116 @@ struct is_block_iterable_range<Range_, std::void_t<
 template<typename Range_>
 inline constexpr bool is_block_iterable_range_v = is_block_iterable_range<Range_>::value;
 
-/*  --------------------- Range operations -----------------------
+/*  --------------------- Range size -----------------------
     size(r) -> size_t : returns the size of a range
 */
 
-// Return the size (number of elements) of the range r
+// Defines the member value true if the given type is an array of known bound
+template<typename T>
+struct is_bounded_array: std::false_type {};
+
+template<typename T, std::size_t N>
+struct is_bounded_array<T[N]> : std::true_type {};
+
+// true if the given type is an array of known bound
+template<typename T>
+inline constexpr bool is_bounded_array_v = is_bounded_array<T>::value;
+
+namespace internal {
+
+// Defines the member value true if the given type has a member function size()
+// which takes no arguments
+template<typename, typename = std::void_t<>>
+struct has_size_member : public std::false_type {};
+
 template<typename Range_>
-size_t size(Range_&& r) {
-  if constexpr (is_random_access_range_v<Range_>) {
-    return std::end(r) - std::begin(r);
+struct has_size_member<Range_, std::void_t<
+  decltype( std::declval<Range_>().size() )
+>> : std::true_type {};
+
+// true if the given type has a member function size() which takes no arguments
+template<typename Range_>
+inline constexpr bool has_size_member_v = has_size_member<Range_>::value;
+
+namespace nonmember_size_impl {
+
+// Deleting the size function in this scope forces overload
+// resolution to look for ADL matches for the size function
+
+template<typename T>
+void size(T&) = delete;
+
+template<typename T>
+void size(const T&) = delete;
+
+// Defines the member value true if the given type has a non-
+// member function size(r) that can be found via ADL
+template<typename, typename = std::void_t<>>
+struct has_nonmember_size : public std::false_type {};
+
+template<typename Range_>
+struct has_nonmember_size<Range_, std::void_t<
+ decltype( size(std::declval<Range_>()) )
+>> : std::true_type {};
+
+// true if the given type has a non-member function size(r) that can be found via ADL
+template<typename Range_>
+inline constexpr bool has_nonmember_size_v = has_nonmember_size<Range_>::value;
+
+// Invokes the non-member size function for the given range
+template<typename Range_>
+auto invoke_size(Range_&& r) {
+  static_assert(has_nonmember_size_v<Range_>);
+  return size(std::forward<Range_>(r));
+}
+
+}  // namespace nonmember_size_impl
+
+// The implementation of parlay::size is hidden inside a namespace
+// and pulled in with a using directive to hide it from ADL
+namespace size_impl {
+
+// Return the size (number of elements) of the range r. This is:
+//
+// * std::extent_v<Range_>          if Range_ is a bounded array type
+// * FORWARD(r).size()              if Range_ is a type with a .size() member
+// * size(FORWARD(r))               if a non-member size function is found by ADL
+// * std::end(r) - std::begin(r)    if begin(r) and end(r) model a sized-sentinel pair
+//
+// In the future, this could be replaced by C++20 std::ranges::size
+template<typename Range_>
+auto size(Range_&& r) {
+  static_assert(is_range_v<Range_>);
+  static_assert(is_bounded_array_v<Range_> ||
+                has_size_member_v<Range_> ||
+                nonmember_size_impl::has_nonmember_size_v<Range_> ||
+                is_sized_sentinel_for_v<range_iterator_type_t<Range_>, range_sentinel_type_t<Range_>>);
+
+  if constexpr (is_bounded_array_v<Range_>) {
+    return std::extent_v<Range_>;
+  }
+  else if constexpr (has_size_member_v<Range_>) {
+    return std::forward<Range_>(r).size();
+  }
+  else if constexpr (nonmember_size_impl::has_nonmember_size_v<Range_>) {
+    return nonmember_size_impl::invoke_size(std::forward<Range_>(r));
   }
   else {
-    return r.size();
+    return std::make_unsigned_t<range_difference_type_t<Range_>>(std::end(r) - std::begin(r));
   }
 }
+
+}  // size_impl
+
+} // namespace internal
+
+using internal::size_impl::size;
+
+// A functional that takes a range r and returns its size as given by parlay::size(FORWARD(r))
+struct size_of {
+  template<typename Range_>
+  decltype(auto) operator()(Range_&& r) const { return parlay::size(std::forward<Range_>(r)); }
+};
 
 }  // namespace parlay
 

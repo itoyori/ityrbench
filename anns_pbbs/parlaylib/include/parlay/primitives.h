@@ -10,30 +10,34 @@
 #include <atomic>
 #include <functional>
 #include <optional>
+#include <random>
+#include <tuple>                          // IWYU pragma: keep
 #include <type_traits>
 #include <utility>
 
+#include "internal/counting_sort.h"
 #include "internal/integer_sort.h"
+#include "internal/group_by.h"            // IWYU pragma: export
+#include "internal/heap_tree.h"           // IWYU pragma: keep
 #include "internal/merge.h"
 #include "internal/merge_sort.h"
-#include "internal/sequence_ops.h"     // IWYU pragma: export
+#include "internal/sequence_ops.h"        // IWYU pragma: export
 #include "internal/sample_sort.h"
 
-#include "internal/delayed/filter_op.h"
-#include "internal/delayed/scan.h"
-#include "internal/delayed/terminal.h"
-#include "internal/delayed/zip.h"
-
+#include "delayed.h"
 #include "delayed_sequence.h"
-#include "monoid.h"                    // IWYU pragma: export
+#include "monoid.h"                       // IWYU pragma: export
 #include "parallel.h"
+#include "random.h"
 #include "range.h"
+#include "relocation.h"
 #include "sequence.h"
 #include "slice.h"
 #include "type_traits.h"               // IWYU pragma: keep
 #include "utilities.h"
 
 // IWYU pragma: no_include <sstream>
+// IWYU pragma: no_include <bits/utility.h>
 
 namespace parlay {
 
@@ -285,6 +289,8 @@ auto filter_into_uninitialized(R_in&& in, R_out&& out, UnaryPred&& f) {
 
 // TODO: nth element
 
+// TODO: partial sort? maybe
+
 /* ----------------------- Merging --------------------- */
 
 template<typename R1, typename R2, typename BinaryPred>
@@ -310,7 +316,7 @@ auto merge(R1&& r1, R2&& r2) {
 
 // Sort the given sequence and return the sorted sequence
 template<typename R>
-auto sort(R&& in) {
+[[nodiscard]] auto sort(R&& in) {
   static_assert(is_random_access_range_v<R>);
   static_assert(is_less_than_comparable_v<range_reference_type_t<R>>);
   static_assert(std::is_constructible_v<range_value_type_t<R>, range_reference_type_t<R>>);
@@ -321,7 +327,7 @@ auto sort(R&& in) {
 // comparison operation. Elements are sorted such that
 // for an element x < y in the sequence, comp(x,y) = true
 template<typename R, typename Compare>
-auto sort(const R& in, Compare&& comp) {
+[[nodiscard]] auto sort(R&& in, Compare&& comp) {
   static_assert(is_random_access_range_v<R>);
   static_assert(std::is_invocable_r_v<bool, Compare, range_reference_type_t<R>, range_reference_type_t<R>>);
   static_assert(std::is_constructible_v<range_value_type_t<R>, range_reference_type_t<R>>);
@@ -329,7 +335,7 @@ auto sort(const R& in, Compare&& comp) {
 }
 
 template<typename R>
-auto stable_sort(R&& in) {
+[[nodiscard]] auto stable_sort(R&& in) {
   static_assert(is_random_access_range_v<R>);
   static_assert(is_less_than_comparable_v<range_reference_type_t<R>>);
   static_assert(std::is_constructible_v<range_value_type_t<R>, range_reference_type_t<R>>);
@@ -337,7 +343,7 @@ auto stable_sort(R&& in) {
 }
 
 template<typename R, typename Compare>
-auto stable_sort(const R& in, Compare&& comp) {
+[[nodiscard]] auto stable_sort(R&& in, Compare&& comp) {
   static_assert(is_random_access_range_v<R>);
   static_assert(std::is_invocable_r_v<bool, Compare, range_reference_type_t<R>, range_reference_type_t<R>>);
   static_assert(std::is_constructible_v<range_value_type_t<R>, range_reference_type_t<R>>);
@@ -376,12 +382,10 @@ void stable_sort_inplace(R&& in) {
   stable_sort_inplace(std::forward<R>(in), std::less<>{});
 }
 
-
-
 /* -------------------- Integer Sorting -------------------- */
 
 template<typename R>
-auto integer_sort(const R& in) {
+[[nodiscard]] auto integer_sort(R&& in) {
   static_assert(is_random_access_range_v<R>);
   static_assert(std::is_integral_v<range_value_type_t<R>>);
   static_assert(std::is_unsigned_v<range_value_type_t<R>>);
@@ -389,7 +393,7 @@ auto integer_sort(const R& in) {
 }
 
 template<typename R, typename Key>
-auto integer_sort(const R& in, Key&& key) {
+[[nodiscard]] auto integer_sort(R&& in, Key&& key) {
   static_assert(is_random_access_range_v<R>);
   static_assert(std::is_invocable_v<Key, range_reference_type_t<R>>);
   using key_type = std::invoke_result_t<Key, range_reference_type_t<R>>;
@@ -419,7 +423,7 @@ void integer_sort_inplace(R&& in, Key&& key) {
 }
 
 template<typename R, typename Key>
-auto stable_integer_sort(const R& in, Key&& key) {
+[[nodiscard]] auto stable_integer_sort(R&& in, Key&& key) {
   static_assert(is_random_access_range_v<R>);
   static_assert(std::is_invocable_v<Key, range_reference_type_t<R>>);
   using key_type = std::invoke_result_t<Key, range_reference_type_t<R>>;
@@ -438,6 +442,56 @@ void stable_integer_sort_inplace(R&& in, Key&& key) {
   static_assert(std::is_unsigned_v<key_type>);
   static_assert(std::is_swappable_v<range_reference_type_t<R>>);
   internal::integer_sort_inplace(make_slice(in), std::forward<Key>(key));
+}
+
+/* -------------------- Counting Sort -------------------- */
+
+template<typename Range>
+[[nodiscard]] auto counting_sort(Range&& in, size_t num_buckets) {
+  static_assert(is_random_access_range_v<Range>);
+  static_assert(std::is_integral_v<range_value_type_t<Range>>);
+  static_assert(std::is_unsigned_v<range_value_type_t<Range>>);
+  return internal::count_sort(make_slice(in), make_slice(in), num_buckets);
+}
+
+template<typename Range, typename Key>
+[[nodiscard]] auto counting_sort(Range&& in, size_t num_buckets, Key&& key) {
+  static_assert(is_random_access_range_v<Range>);
+  static_assert(std::is_invocable_v<Key, range_reference_type_t<Range>>);
+  using key_type = std::invoke_result_t<Key, range_reference_type_t<Range>>;
+  static_assert(std::is_integral_v<key_type>);
+  static_assert(std::is_unsigned_v<key_type>);
+  auto keys = internal::delayed_map(in, std::forward<Key>(key));
+  return internal::count_sort(make_slice(in), keys, num_buckets);
+}
+
+template<typename Range>
+auto counting_sort_inplace(Range&& in, size_t num_buckets) {
+  static_assert(is_random_access_range_v<Range>);
+  static_assert(std::is_integral_v<range_value_type_t<Range>>);
+  static_assert(std::is_unsigned_v<range_value_type_t<Range>>);
+  return internal::count_sort_inplace(make_slice(in), make_slice(in), num_buckets);
+}
+
+template<typename Range, typename Key>
+auto counting_sort_inplace(Range&& in, size_t num_buckets, Key&& key) {
+  static_assert(is_random_access_range_v<Range>);
+  static_assert(std::is_invocable_v<Key, range_reference_type_t<Range>>);
+  using key_type = std::invoke_result_t<Key, range_reference_type_t<Range>>;
+  static_assert(std::is_integral_v<key_type>);
+  static_assert(std::is_unsigned_v<key_type>);
+  auto keys = internal::delayed_map(in, std::forward<Key>(key));
+  return internal::count_sort_inplace(make_slice(in), keys, num_buckets);
+}
+
+template<typename Range>
+[[nodiscard]] auto counting_sort_by_keys(Range&& in, size_t num_buckets) {
+  static_assert(is_random_access_range_v<Range>);
+  static_assert(is_pair_v<range_reference_type_t<Range>>);
+  static_assert(std::is_integral_v<std::tuple_element_t<0, range_reference_type_t<Range>>>);
+  static_assert(std::is_unsigned_v<std::tuple_element_t<0, range_reference_type_t<Range>>>);
+  auto values = delayed::values_view(in);
+  return internal::count_sort(make_slice(values), delayed::keys_view(in), num_buckets);
 }
 
 /* -------------------- Internal count and find -------------------- */
@@ -476,13 +530,14 @@ size_t find_if_index(size_t n, IntegerPred&& p, size_t granularity = 1000) {
 
 }  // namespace internal
 
-
 /* -------------------- For each -------------------- */
 
 template <typename R, typename UnaryFunction>
 void for_each(R&& r , UnaryFunction&& f) {
   static_assert(is_random_access_range_v<R>);
   static_assert(std::is_invocable_v<UnaryFunction, range_reference_type_t<R>>);
+  // TODO: For many iterator types, calling operator[] is slower than ++.
+  // Would be nice if this could instead use ++ at the leaves
   parallel_for(0, parlay::size(r),
     [&f, it = std::begin(r)](size_t i) { f(it[i]); });
 }
@@ -925,6 +980,12 @@ auto flatten(R&& r) {
   static_assert(std::is_constructible_v<range_value_type_t<range_reference_type_t<R>>,
                                         range_reference_type_t<range_reference_type_t<R>>>);
 
+  // For prvalue ranges, we materialize the range to avoid generating its elements multiple
+  // times, or worse, generating them then taking references to them that dangle!
+  if constexpr (!std::is_reference_v<range_reference_type_t<R>>) {
+    return flatten(to_sequence(std::forward<R>(r)));
+  }
+
   using T = range_value_type_t<range_reference_type_t<R>>;
   auto offsets = tabulate(parlay::size(r), [it = std::begin(r)](size_t i)
                           { return parlay::size(it[i]); });
@@ -932,8 +993,9 @@ auto flatten(R&& r) {
   auto res = sequence<T>::uninitialized(len);
   parallel_for(0, parlay::size(r), [&, it = std::begin(r)](size_t i) {
     auto dit = std::begin(res)+offsets[i];
-    auto sit = std::begin(it[i]);
-    parallel_for(0, parlay::size(it[i]), [=] (size_t j) {
+    auto&& inner = it[i];
+    auto sit = std::begin(inner);
+    parallel_for(0, parlay::size(inner), [=] (size_t j) {
       assign_uninitialized(*(dit+j), *(sit+j));
     }, 1000);
   });
@@ -1156,8 +1218,82 @@ auto zip(Ranges&&... rs) {
   return internal::delayed::to_sequence(internal::delayed::zip(std::forward<Ranges>(rs)...));
 }
 
-}  // namespace parlay
+// Returns a sequence consisting of the rank of each element in the input range. The rank
+// of an element is the number of elements in the range that compare less than it, according
+// to the binary operator compare, which defaults to less-than comparison.
+template<typename size_type, typename Range, typename BinaryOperator = std::less<>>
+auto rank(Range&& r, BinaryOperator&& compare = {}) {
+  static_assert(is_random_access_range_v<Range>);
+  static_assert(std::is_invocable_r_v<bool, BinaryOperator, range_reference_type_t<Range>, range_reference_type_t<Range>>);
+  parlay::sequence<size_type> position = parlay::to_sequence(parlay::iota<size_type>(size(r)));
+  parlay::stable_sort_inplace(position, [it = std::begin(r), compare = std::forward<BinaryOperator>(compare)]
+                                (auto i, auto j) { return compare(it[i], it[j]); });
+  auto rank = parlay::sequence<size_type>::uninitialized(position.size());
+  parallel_for(0, position.size(), [&](size_t i) {
+    rank[position[i]] = i;
+  });
+  return rank;
+}
 
-#include "internal/group_by.h"            // IWYU pragma: export
+template<typename Range, typename BinaryOperator = std::less<>>
+auto rank(Range&& r, BinaryOperator&& compare = {}) {
+  return parlay::rank<std::make_unsigned_t<range_difference_type_t<Range>>>(
+      std::forward<Range>(r), std::forward<BinaryOperator>(compare));
+}
+
+
+template <typename Range, typename Compare = std::less<>>
+auto kth_smallest_copy(Range&& in, size_t k, Compare&& less = {}) {
+  static_assert(is_random_access_range_v<Range>);
+  static_assert(std::is_constructible_v<range_value_type_t<Range>, range_reference_type_t<Range>>);
+  static_assert(std::is_invocable_r_v<bool, Compare, range_reference_type_t<Range>, range_reference_type_t<Range>>);
+
+  size_t n = parlay::size(in);
+  assert(k < n);
+  if (n <= 1000) return parlay::sort(std::forward<Range>(in), std::forward<Compare>(less))[k];
+
+  auto it = std::begin(in);
+
+  // pick 31 pivots by randomly choosing 8 * 31 keys, sorting them,
+  // and taking every 8th key (i.e. oversampling)
+  constexpr size_t sample_size = 31;
+  constexpr size_t over = 8;
+
+  parlay::random_generator gen;
+  std::uniform_int_distribution<size_t> dis(0, n-1);
+  auto pivots = parlay::sort(parlay::tabulate(sample_size*over, [&] (size_t i) -> range_value_type_t<Range> {
+    auto r = gen[i];
+    return it[dis(r)];
+  }), less);
+  pivots = parlay::tabulate(sample_size,[&] (size_t i) { return pivots[i*over]; });
+
+  // Determine which of the 32 buckets each key belongs in
+  internal::heap_tree ss(pivots);
+  auto ids = parlay::tabulate(n, [&] (long i) -> unsigned char {
+    return ss.rank(it[i], less);});
+
+  // Count how many in keys are each bucket
+  auto sums = parlay::histogram_by_index(ids, sample_size+1);
+  
+  // find which bucket k belongs in, and pack the keys in that bucket into next
+  auto [offsets, total] = parlay::scan(sums);
+  auto id = std::upper_bound(offsets.begin(), offsets.end(), k) - offsets.begin() - 1;
+  auto next = parlay::pack(in, parlay::delayed_map(ids, [=] (auto b) {return b == id;}));
+  
+  // recurse on much smaller set, adjusting k as needed
+  return kth_smallest_copy(next, k - offsets[id], std::forward<Compare>(less));
+}
+
+template <typename Range, typename Compare = std::less<>>
+auto kth_smallest(Range&& in, size_t k, Compare&& less = {}) {
+  static_assert(is_random_access_range_v<Range>);
+  static_assert(std::is_invocable_r_v<bool, Compare, range_reference_type_t<Range>, range_reference_type_t<Range>>);
+  auto iterators = parlay::tabulate(parlay::size(in), [it = std::begin(in)](size_t i) { return it + i; });
+  return kth_smallest_copy(iterators, k, [less = std::forward<Compare>(less)](auto&& it1, auto&& it2) {
+    return less(*it1, *it2);
+  });
+}
+
+}  // namespace parlay
 
 #endif  // PARLAY_PRIMITIVES_H_

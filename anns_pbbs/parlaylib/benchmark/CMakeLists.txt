@@ -7,7 +7,6 @@ set(NUMA_COMMAND numactl -i all)
 function(add_benchmark NAME)
   add_executable(bench_${NAME} bench_${NAME}.cpp)
   target_link_libraries(bench_${NAME} PRIVATE parlay benchmark_main)
-  target_compile_options(bench_${NAME} PRIVATE -Wall -Wextra -Wfatal-errors -march=native)
   target_compile_definitions(bench_${NAME} PRIVATE -DPARLAY_BENCHMARK_DIRECTORY="${CMAKE_CURRENT_SOURCE_DIR}")
   if(PARLAY_BENCHMARK_NUMACTL_TARGETS)
     add_custom_target(numactl_bench_${NAME}
@@ -22,3 +21,10 @@ add_benchmark(standard)
 add_benchmark(parsing)
 add_benchmark(sequence)
 add_benchmark(delayed)
+
+if (PARLAY_BENCHMARK_FOLLY_TS)
+  add_benchmark(thread_specific)
+
+  find_package(folly REQUIRED)
+  target_link_libraries(bench_thread_specific PRIVATE folly glog dl double-conversion fmt gflags)
+endif()

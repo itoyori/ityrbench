@@ -24,6 +24,8 @@ static_assert(sizeof(parlay::sequence<int>) <= 16);
 static_assert(sizeof(parlay::short_sequence<int>) <= 16);
 #endif
 
+static_assert(alignof(parlay::sequence<int>) >= 8);
+
 
 TEST(TestSequence, TestDefaultConstruct) {
   auto s = parlay::sequence<int>();
@@ -419,6 +421,15 @@ TEST(TestSequence, TestInsert) {
   ASSERT_EQ(s, s2);
 }
 
+TEST(TestSequence, TestInsertRef) {
+  auto s = parlay::sequence<int>{1,2,4,5};
+  auto s2 = parlay::sequence<int>{1,2,3,4,5};
+  ASSERT_FALSE(s.empty());
+  int x = 3;
+  s.insert(s.begin() + 2, x);
+  ASSERT_EQ(s, s2);
+}
+
 TEST(TestSequence, TestInsertMove) {
   auto s = parlay::sequence<std::unique_ptr<int>>{};
   s.emplace_back(std::make_unique<int>(1));
@@ -628,6 +639,30 @@ TEST(TestSequence, TestCutConst) {
   ASSERT_TRUE(std::equal(s2.begin(), s2.end(), ss.begin()));
 }
 
+TEST(TestSequence, TestSubstrToEnd) {
+  const auto s = parlay::sequence<int>{1,2,3,4,5,6,7,8,9};
+  const auto s2 = parlay::sequence<int>{4,5,6,7,8,9};
+  auto ss = s.substr(3);
+  ASSERT_EQ(ss.size(), 6);
+  ASSERT_TRUE(std::equal(s2.begin(), s2.end(), ss.begin()));
+}
+
+TEST(TestSequence, TestSubstr) {
+  const auto s = parlay::sequence<int>{1,2,3,4,5,6,7,8,9};
+  const auto s2 = parlay::sequence<int>{4,5,6,7};
+  auto ss = s.substr(3,4);
+  ASSERT_EQ(ss.size(), 4);
+  ASSERT_TRUE(std::equal(s2.begin(), s2.end(), ss.begin()));
+}
+
+TEST(TestSequence, TestSubseq) {
+  const auto s = parlay::sequence<int>{1,2,3,4,5,6,7,8,9};
+  const auto s2 = parlay::sequence<int>{4,5,6,7};
+  auto ss = s.subseq(3,7);
+  ASSERT_EQ(ss.size(), 4);
+  ASSERT_TRUE(std::equal(s2.begin(), s2.end(), ss.begin()));
+}
+
 TEST(TestSequence, TestHeadConst) {
   auto s = parlay::sequence<int>{1,2,3,4,5,6,7,8,9};
   auto s2 = parlay::sequence<int>{1,2,3,4,5};
@@ -801,6 +836,26 @@ TEST(TestSequence, TestNonDefaultConstructibleType) {
   }
 }
 
+TEST(TestSequence, TestCopyElisionFromFunction) {
+  struct foo {
+    std::atomic<int> x, y;
+  };
+  static_assert(!std::is_copy_constructible_v<foo>);
+  static_assert(!std::is_move_constructible_v<foo>);
+
+  // foo is not copy or move constructible, so this will only
+  // work if copy elision succeeds in directly constructing
+  // the foo straight into the sequence
+  auto s = parlay::sequence<foo>::from_function(100000, [](int i) {
+    return foo{i, i+1};
+  });
+
+  for (size_t i = 0; i < s.size(); i++) {
+    ASSERT_EQ(s[i].x.load(), i);
+    ASSERT_EQ(s[i].y.load(), i+1);
+  }
+}
+
 struct NonStandardLayout {
   int x;
   NonStandardLayout(int _x) : x(_x) { }
@@ -844,6 +899,36 @@ TEST(TestSequence, TestLessThan) {
   ASSERT_LT(s, s3);
   ASSERT_LT(s, s4);
 }
+
+#if defined(PARLAY_EXCEPTIONS_ENABLED)
+
+TEST(TestSequence, TestAtThrow) {
+  auto s = parlay::sequence<int>{1,2,3,4,5,6,7,8,9};
+  EXPECT_THROW({ s.at(9); }, std::out_of_range);
+}
+
+TEST(TestSequence, TestAtThrowConst) {
+  const auto s = parlay::sequence<int>{1,2,3,4,5,6,7,8,9};
+  EXPECT_THROW({ s.at(9); }, std::out_of_range);
+}
+
+#else
+
+TEST(TestSequenceDeathTest, TestAt) {
+  ASSERT_EXIT({
+    auto s = parlay::sequence<int>({1,2,3,4,5,6,7,8,9});
+    s.at(9);
+  }, testing::KilledBySignal(SIGABRT), "sequence access out of bounds");
+}
+
+TEST(TestSequenceDeathTest, TestAtConst) {
+  ASSERT_EXIT({
+    const auto s = parlay::sequence<int>({1,2,3,4,5,6,7,8,9});
+    s.at(9);
+  }, testing::KilledBySignal(SIGABRT), "sequence access out of bounds");
+}
+
+#endif  // defined(PARLAY_EXCEPTIONS_ENABLED)
 
 // TODO: More thorough tests with custom allocators
 // to validate allocator usage.

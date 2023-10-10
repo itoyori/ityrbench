@@ -21,8 +21,8 @@
 
 #include "../parallel.h"
 #include "../portability.h"
+#include "../relocation.h"
 #include "../type_traits.h"      // IWYU pragma: keep  // for is_trivially_relocatable
-#include "../utilities.h"
 
 #ifdef PARLAY_DEBUG_UNINITIALIZED
 #include "debug_uninitialized.h"
@@ -38,7 +38,7 @@ namespace sequence_internal {
 //  Allocator = An allocator for elements of type T
 //  EnableSSO = True to enable small-size optimization
 template<typename T, typename Allocator, bool EnableSSO>
-struct sequence_base {
+struct alignas(uint64_t) sequence_base {
 
   // Only use SSO for trivial types
   constexpr static bool use_sso = EnableSSO && std::is_trivial<T>::value;
@@ -387,7 +387,7 @@ struct sequence_base {
 
       value_type* data() { return elements.data(); }
       const value_type* data() const { return elements.data(); }
-    };
+    } PARLAY_PACKED;
 
 
     // Store either a short or a long sequence. By default, we
@@ -471,11 +471,22 @@ struct sequence_base {
       }
     }
 
-    // Constructs am object of type value_type at an
+    // Constructs an object of type value_type at an
     // uninitialized memory location p using args...
     template<typename... Args>
     void initialize(value_type* p, Args&&... args) {
       std::allocator_traits<T_allocator_type>::construct(*this, p, std::forward<Args>(args)...);
+    }
+
+    // Constructs an object of type value_type at an uninitialized
+    // memory location p using f() by copy elision. This circumvents
+    // the allocator and hence should only be used when initialize
+    // and initialize_explicit are not applicable (e.g., for a type
+    // that is not copyable or movable).
+    template<typename F>
+    void initialize_with_copy_elision(value_type* p, F&& f) {
+      static_assert(std::is_same_v<value_type, std::invoke_result_t<F&&>>);
+      new (p) value_type(f());
     }
 
     // Perform a copy or move initialization. This is equivalent
@@ -501,7 +512,7 @@ struct sequence_base {
 
     const value_type& at(size_t i) const { return data()[i]; }
 
-    // Should only be called during intitialization. Same as
+    // Should only be called during initialization. Same as
     // ensure_capacity, except does not need to copy elements
     // from the existing buffer.
     void initialize_capacity(size_t desired) {
@@ -531,7 +542,7 @@ struct sequence_base {
       if (current < desired) {
         // Allocate a new buffer that is at least
         // 50% larger than the old capacity
-        size_t new_capacity = (std::max)(desired, (15 * current + 9) / 10);
+        size_t new_capacity = (std::max)(desired, (5 * current)/ 2);//(15 * current + 9) / 10);
         auto alloc = get_raw_allocator();
         capacitated_buffer new_buffer(new_capacity, alloc);
 
@@ -569,7 +580,7 @@ struct sequence_base {
     }
   };
 
-  sequence_base() : storage() {}
+  sequence_base() : storage() { num_workers();  /* Touch the scheduler to force it to initialize before any sequence */ }
   explicit sequence_base(const storage_impl& other) : storage(other) {}
   explicit sequence_base(storage_impl&& other) : storage(std::move(other)) {}
   ~sequence_base() {}

@@ -9,7 +9,7 @@
 #include <cstring>
 
 #include <algorithm>
-#include <array>
+#include <array>            // IWYU pragma: keep
 #include <iterator>
 #include <fstream>
 #include <string>
@@ -18,6 +18,9 @@
 #include "primitives.h"
 #include "sequence.h"
 #include "slice.h"
+
+
+// IWYU pragma: no_include <tuple>
 
 namespace parlay {
 
@@ -345,21 +348,21 @@ inline chars to_chars(const char* s) {
 }
 
 template<typename A, typename B>
-chars to_chars(const std::pair<A, B>& P) {
+chars to_chars(const std::pair<A, B>& p) {
   sequence<chars> s = {
-      to_chars('('), to_chars(P.first),
+      to_chars('('), to_chars(p.first),
       to_chars(std::string(", ")),
-      to_chars(P.second), to_chars(')')};
+      to_chars(p.second), to_chars(')')};
   return flatten(s);
 }
 
 template<typename A, long unsigned int N>
 chars to_chars(const std::array<A, N>& P) {
-  if (N == 0) return to_chars(std::string("()"));
+  if (N == 0) return to_chars(std::string("[]"));
   auto separator = to_chars(std::string(", "));
   return flatten(tabulate(2 * N + 1, [&](size_t i) {
-    if (i == 0) return to_chars('(');
-    if (i == 2 * N) return to_chars(')');
+    if (i == 0) return to_chars('[');
+    if (i == 2 * N) return to_chars(']');
     if (i & 1) return to_chars(P[i / 2]);
     return separator;
   }));
