@@ -5,7 +5,9 @@
 #ifndef EFANNA2E_DISTANCE_H
 #define EFANNA2E_DISTANCE_H
 
+#ifdef __x86_64__
 #include <x86intrin.h>
+#endif
 #include <iostream>
 #include <algorithm>
 #include <type_traits>
