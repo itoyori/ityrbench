@@ -206,3 +206,12 @@ dependencies:
         time ./utils/converter -enc binary -o ${output_basepath}.bin ${output_basepath}.adj
         time ./utils/compressor -o ${output_basepath}.bytepda ${output_basepath}.adj
       }
+
+  big-anns:
+    git: https://github.com/harsha-simhadri/big-ann-benchmarks
+    commit_hash: f5bb90b5674843b2438ed5cf8e7f8522356cae4c
+    recipes:
+      - name: dataset
+        script: |
+          python3 create_dataset.py --dataset msspacev-1M
+          mv data/* ${KOCHI_INSTALL_PREFIX}

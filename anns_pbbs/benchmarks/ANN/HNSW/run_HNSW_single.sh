@@ -43,8 +43,8 @@ echo "Setting thread=${thread}"
 export PARLAY_NUM_THREADS=${thread}
 
 LOG_PATH=${RESULT_DIR}/${scale}M.log
-echo "./calc_recall ${param_basic} ${param_building} ${param_query} ${param_other} > ${LOG_PATH} 2>&1"
-./calc_recall ${param_basic} ${param_building} ${param_query} ${param_other} > ${LOG_PATH} 2>&1
+echo "./calc_recall ${param_basic} ${param_building} ${param_query} ${param_other} 2>&1 | tee ${LOG_PATH}"
+./calc_recall ${param_basic} ${param_building} ${param_query} ${param_other} 2>&1 | tee ${LOG_PATH}
 
 shortname=$(echo $dataset | tr '[:upper:]' '[:lower:]')
 if [[ "$dataset" == "BIGANN" ]]; then

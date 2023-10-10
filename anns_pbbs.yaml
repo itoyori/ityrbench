@@ -1,0 +1,97 @@
+depends:
+  - name: itoyori
+    recipe: release
+  - name: big-anns
+    recipe: dataset
+
+default_params:
+  nodes: 1
+  cores:
+    - value: 48
+      machines: [wisteria-o]
+    - value: 76
+      machines: [squid-c]
+    - value: 6
+      machines: [local]
+  dataset: msspacev-1M
+  repeats: 11
+  # common params
+  serial: 0
+  sched: randws # randws/adws
+  cache_policy: writeback_lazy # nocache/writethrough/writeback/writeback_lazy/getput
+  dist_policy: default # default/block/cyclic/block_adws
+  cache_size: 128 # MB
+  block_size: 65536 # bytes
+  sub_block_size: 4096 # bytes
+  max_dirty: $cache_size # MB
+  noncoll_alloc_size: 64 # MB
+  shared_mem: 1
+  prof: disabled # disabled/stats/trace
+  dag_prof: disabled # disabled/workspan
+  cache_prof: disabled # disabled/stats
+  debugger: 0
+
+default_name: anns
+default_queue: node_${nodes}
+default_duplicates: 1
+
+build:
+  depend_params: [dist_policy, block_size, prof, dag_prof, cache_prof]
+  script: |
+    source build_common.bash
+
+    CXXFLAGS="${CXXFLAGS:+$CXXFLAGS} -DITYR_ALLOCATOR_USE_DYNAMIC_WIN=false"
+
+    cd anns_pbbs/benchmarks/ANN/HNSW
+    $CXX -O3 -g -std=c++17 -Wall -Wextra -Wl,--unresolved-symbols=ignore-all -I../bench $CXXFLAGS -o calc_recall calc_recall.cpp -lpthread
+
+run:
+  depend_params: [nodes, cores, dataset, repeats, serial, sched, cache_policy, cache_size, sub_block_size, max_dirty, noncoll_alloc_size, shared_mem, prof, debugger]
+  script: |
+    source run_common.bash
+
+    n_nodes=$(echo $KOCHI_PARAM_NODES | cut -f 1 -d ":" | sed 's/x/*/g' | bc)
+    if [[ $n_nodes != 1 ]]; then
+      echo "The number of nodes must be 1."
+      exit 1
+    fi
+
+    cd anns_pbbs/benchmarks/ANN/HNSW
+
+    dataset_prefix=${KOCHI_PARAM_DATASET%-*}
+    dataset_suffix=${KOCHI_PARAM_DATASET#*-}
+
+    case $dataset_suffix in
+      1M)
+        dataset_nb=1000000
+        export scale=1
+        ;;
+      *) echo "Unknown dataset scale: $dataset_suffix"; exit 1 ;;
+    esac
+
+    case $dataset_prefix in
+      msspacev)
+        export dataset=MSSPACEV
+        export dtype=int8
+        export dist=L2
+        export m=32
+        export efc=128
+        export alpha=0.83
+        export file_in=${KOCHI_INSTALL_PREFIX_BIG_ANNS}/MSSPACEV1B/spacev1b_base.i8bin.crop_nb_${dataset_nb}:i8bin
+        export file_q=${KOCHI_INSTALL_PREFIX_BIG_ANNS}/MSSPACEV1B/query.i8bin:i8bin
+        export file_gt=${KOCHI_INSTALL_PREFIX_BIG_ANNS}/MSSPACEV1B/msspacev-gt-${dataset_suffix}:ubin
+        export th=0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,0.95,0.99
+        ;;
+      *) echo "Unknown dataset name: $dataset_prefix"; exit 1 ;;
+    esac
+
+    export rr=10
+    export ef=15,20,30,50,75,100,125,250,500
+    export beta=1
+    export warmup=0
+    export save_graph=1
+    export limit_eval=1
+    export thread=$KOCHI_PARAM_CORES
+    export RESULT_PREFIX=$(pwd)/results
+
+    bash run_HNSW_single.sh
