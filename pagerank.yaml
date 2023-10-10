@@ -21,17 +21,17 @@ default_params:
   cutoff_e: 16384
   cutoff_g: 1048576
   exec_type: gpop # naive/gpop
-  bin_width: 16384
+  bin_width: 32768
   # common params
   serial: 0
   sched: randws # randws/adws
   cache_policy: writeback_lazy # nocache/writethrough/writeback/writeback_lazy/getput
   dist_policy: default # default/block/cyclic/block_adws
-  cache_size: 128 # MB
+  cache_size: 256 # MB
   block_size: 65536 # bytes
   sub_block_size: 4096 # bytes
   max_dirty: $cache_size # MB
-  noncoll_alloc_size: 128 # MB
+  noncoll_alloc_size: 64 # MB
   shared_mem: 1
   prof: disabled # disabled/stats/trace
   dag_prof: disabled # disabled/workspan
@@ -41,6 +41,25 @@ default_params:
 default_name: pagerank
 default_queue: node_${nodes}
 default_duplicates: 1
+
+batches:
+  strong:
+    name: pagerank_${batch_name}
+    params:
+      nodes:
+        - value: [1, 2:torus, 2x3:torus, 2x3x2:torus, 3x4x3:torus]
+          machines: [wisteria-o]
+        - value: [1, 2, 4, 8, 16]
+          machines: [squid-c]
+      dataset: [twitter2010]
+    artifacts:
+      - type: stdout
+        dest: pagerank/${batch_name}/nodes_${nodes}_${dataset}_${duplicate}.log
+      - type: stats
+        dest: pagerank/${batch_name}/nodes_${nodes}_${dataset}_${duplicate}.stats
+      - type: file
+        src: mpirun_out.txt
+        dest: pagerank/${batch_name}/nodes_${nodes}_${dataset}_${duplicate}.out
 
 build:
   depend_params: [real_type, dist_policy, block_size, prof, dag_prof, cache_prof]
