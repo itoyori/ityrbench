@@ -1,6 +1,4 @@
 depends:
-  - name: itoyori
-    recipe: release
   - name: big-anns
     recipe: dataset
 
@@ -15,38 +13,21 @@ default_params:
       machines: [local]
   dataset: msspacev-1M
   repeats: 11
-  # common params
-  serial: 0
-  sched: randws # randws/adws
-  cache_policy: writeback_lazy # nocache/writethrough/writeback/writeback_lazy/getput
-  dist_policy: default # default/block/cyclic/block_adws
-  cache_size: 128 # MB
-  block_size: 65536 # bytes
-  sub_block_size: 4096 # bytes
-  max_dirty: $cache_size # MB
-  noncoll_alloc_size: 64 # MB
-  shared_mem: 1
-  prof: disabled # disabled/stats/trace
-  dag_prof: disabled # disabled/workspan
-  cache_prof: disabled # disabled/stats
-  debugger: 0
 
 default_name: anns
 default_queue: node_${nodes}
 default_duplicates: 1
 
 build:
-  depend_params: [dist_policy, block_size, prof, dag_prof, cache_prof]
+  depend_params: []
   script: |
     source build_common.bash
 
-    CXXFLAGS="${CXXFLAGS:+$CXXFLAGS} -DITYR_ALLOCATOR_USE_DYNAMIC_WIN=false"
-
     cd anns_pbbs/benchmarks/ANN/HNSW
-    $CXX -O3 -g -std=c++17 -Wall -Wextra -Wl,--unresolved-symbols=ignore-all -I../bench $CXXFLAGS -o calc_recall calc_recall.cpp -lpthread
+    $CXX -O3 -g -std=c++17 -Wall -Wextra -Wl,--unresolved-symbols=ignore-all -I../bench ${CXXFLAGS:+$CXXFLAGS} -o calc_recall calc_recall.cpp -lpthread
 
 run:
-  depend_params: [nodes, cores, dataset, repeats, serial, sched, cache_policy, cache_size, sub_block_size, max_dirty, noncoll_alloc_size, shared_mem, prof, debugger]
+  depend_params: [nodes, cores, dataset, repeats]
   script: |
     source run_common.bash
 

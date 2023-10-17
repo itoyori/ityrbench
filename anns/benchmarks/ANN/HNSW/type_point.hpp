@@ -83,14 +83,15 @@ public:
 	using type = point<T>;
 
 	template<typename Iter>
-	type operator()(uint32_t id, Iter begin, [[maybe_unused]] Iter end)
+	type operator()(uint32_t id, Iter begin, [[maybe_unused]] Iter end) const
 	{
 		using type_src = typename std::iterator_traits<Iter>::value_type;
 		static_assert(std::is_convertible_v<type_src,T>, "Cannot convert to the target type");
 
-		if constexpr(std::is_same_v<Iter,ptr_mapped<T,ptr_mapped_src::PERSISTENT>>||
+                if constexpr(std::is_same_v<Iter,ptr_mapped<T,ptr_mapped_src::PERSISTENT>>||
 			std::is_same_v<Iter,ptr_mapped<const T,ptr_mapped_src::PERSISTENT>>)
 			return point<T>(id, &*begin);
+#if 0
 		else if constexpr(std::is_same_v<Iter,ptr_mapped<T,ptr_mapped_src::TRANSITIVE>>||
 			std::is_same_v<Iter,ptr_mapped<const T,ptr_mapped_src::TRANSITIVE>>)
 		{
@@ -107,9 +108,13 @@ public:
 				coord[i] = *(begin+i);
 			return point<T>(id, coord.get(), fake_copyable(std::move(coord)));
 		}
+#else
+                else throw std::runtime_error("ptr_mapped_src is not PERSISTENT");
+#endif
 	}
 };
 
+#if 0
 template<typename Src, class Conv>
 inline std::pair<parlay::sequence<typename Conv::type>,uint32_t>
 load_from_vec(const char *file, Conv converter, uint32_t max_num)
@@ -138,6 +143,7 @@ load_from_vec(const char *file, Conv converter, uint32_t max_num)
 
 	return {std::move(ps), dim};
 }
+#endif
 
 template<class, class=void>
 class trait_type{
@@ -161,6 +167,7 @@ public:
 	using type = T;
 };
 
+#if 0
 template<class Conv>
 inline std::pair<parlay::sequence<typename Conv::type>,uint32_t>
 load_from_HDF5(const char *file, const char *dir, Conv converter, uint32_t max_num)
@@ -188,27 +195,41 @@ load_from_HDF5(const char *file, const char *dir, Conv converter, uint32_t max_n
 	return {std::move(ps), dim};
 #endif
 }
+#endif
 
 template<typename Src, class Conv>
-inline std::pair<parlay::sequence<typename Conv::type>,uint32_t>
+inline std::tuple<ityr::unique_file_ptr<char>,ityr::global_vector<typename Conv::type>,uint32_t>
 load_from_bin(const char *file, Conv converter, uint32_t max_num)
 {
-	auto [fileptr, length] = mmapStringFromFile(file); (void)length;
+  auto ufp = ityr::make_unique_file<char>(file);
+  char* fileptr = ufp.get();
+
 	const uint32_t n = std::min(max_num, *((uint32_t*)fileptr));
 	const uint32_t dim = *((uint32_t*)(fileptr+sizeof(n)));
 	const size_t vector_size = sizeof(Src)*dim;
 	const size_t header_size = sizeof(n)+sizeof(dim);
 
-	typedef ptr_mapped<const Src,ptr_mapped_src::PERSISTENT> type_ptr;
-	parlay::sequence<typename Conv::type> ps(n);
-	parlay::parallel_for(0, n, [&,fp=fileptr](uint32_t i){
-		const Src *coord = (const Src*)(fp+header_size+i*vector_size);
-		ps[i] = converter(i, type_ptr(coord), type_ptr(coord+dim));
-	});
+        ityr::global_vector_options global_vec_coll_opts {true, true, true, 1024};
 
-	return {std::move(ps), dim};
+	typedef ptr_mapped<const Src,ptr_mapped_src::PERSISTENT> type_ptr;
+        ityr::global_vector<typename Conv::type> ps(global_vec_coll_opts, n);
+        ityr::global_span<typename Conv::type> ps_ref(ps);
+        ityr::root_exec([=] {
+          ityr::transform(
+              ityr::execution::parallel_policy(1024),
+              ityr::count_iterator<uint32_t>(0),
+              ityr::count_iterator<uint32_t>(n),
+              ps_ref.begin(),
+              [=, fp=fileptr](uint32_t i){
+                const Src *coord = (const Src*)(fp+header_size+i*vector_size);
+                return converter(i, type_ptr(coord), type_ptr(coord+dim));
+              });
+        });
+
+	return {std::move(ufp), std::move(ps), dim};
 }
 
+#if 0
 template<typename Src, class Conv>
 inline std::pair<parlay::sequence<typename Conv::type>,uint32_t>
 load_from_range(const char *file, Conv converter, uint32_t max_num)
@@ -243,6 +264,7 @@ load_from_range(const char *file, Conv converter, uint32_t max_num)
 
 	return {std::move(ps), 0};
 }
+#endif
 /*
 template<typename Src=void, class Conv>
 inline auto load_point(const char *file, file_format input_format, Conv converter, size_t max_num=0, std::any aux={})
@@ -280,6 +302,7 @@ inline auto load_point(const char *input_name, Conv converter, size_t max_num=0)
 	if(!max_num)
 		max_num = std::numeric_limits<decltype(max_num)>::max();
 
+#if 0
 	if(input_spec[0]=='/')
 		return load_from_HDF5(file, input_spec, converter, max_num);
 	if(!strcmp(input_spec,"fvecs"))
@@ -288,6 +311,7 @@ inline auto load_point(const char *input_name, Conv converter, size_t max_num=0)
 		return load_from_vec<uint8_t>(file, converter, max_num);
 	if(!strcmp(input_spec,"ivecs"))
 		return load_from_vec<int32_t>(file, converter, max_num);
+#endif
 	if(!strcmp(input_spec,"u8bin"))
 		return load_from_bin<uint8_t>(file, converter, max_num);
 	if(!strcmp(input_spec,"i8bin"))
@@ -298,8 +322,10 @@ inline auto load_point(const char *input_name, Conv converter, size_t max_num=0)
 		return load_from_bin<uint32_t>(file, converter, max_num);
 	if(!strcmp(input_spec,"fbin"))
 		return load_from_bin<float>(file, converter, max_num);
+#if 0
 	if(!strcmp(input_spec,"irange"))
 		return load_from_range<int32_t>(file, converter, max_num);
+#endif
 
 	throw std::invalid_argument("Unsupported input spec");
 }

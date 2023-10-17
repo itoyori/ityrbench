@@ -22,9 +22,9 @@ point_converter_default<T> to_point;
 template<typename T>
 class gt_converter{
 public:
-	using type = parlay::sequence<T>;
+	using type = ityr::global_vector<T>;
 	template<typename Iter>
-	type operator()([[maybe_unused]] uint32_t id, Iter begin, Iter end)
+	type operator()([[maybe_unused]] uint32_t id, Iter begin, Iter end) const
 	{
 		using type_src = typename std::iterator_traits<Iter>::value_type;
 		static_assert(std::is_convertible_v<type_src,T>, "Cannot convert to the target type");
@@ -32,9 +32,14 @@ public:
 		const uint32_t n = std::distance(begin, end);
 
 		// T *gt = new T[n];
-		auto gt = parlay::sequence<T>(n);
-		for(uint32_t i=0; i<n; ++i)
-			gt[i] = *(begin+i);
+		auto gt = ityr::global_vector<T>(n);
+                ityr::transform(
+                    ityr::execution::sequenced_policy(1024),
+                    ityr::count_iterator<uint32_t>(0),
+                    ityr::count_iterator<uint32_t>(n),
+                    gt.begin(),
+                    [=](uint32_t i) { return *(begin+i); });
+
 		return gt;
 	}
 };
@@ -42,49 +47,65 @@ public:
 // Visit all the vectors in the given 2D array of points
 // This triggers the page fetching if the vectors are mmap-ed
 template<class T>
-void visit_point(const T &array, size_t dim0, size_t dim1)
+void visit_point(const T& begin, const T& end, size_t dim)
 {
-	parlay::parallel_for(0, dim0, [&](size_t i){
-		const auto &a = array[i];
+  ityr::for_each(ityr::execution::sequenced_policy(1024),
+                 ityr::make_global_iterator(begin, ityr::checkout_mode::read),
+                 ityr::make_global_iterator(end  , ityr::checkout_mode::read),
+                 [=](const auto& a){
 		[[maybe_unused]] volatile auto elem = a.coord[0];
-		for(size_t j=1; j<dim1; ++j)
+		for(size_t j=1; j<dim; ++j)
 			elem = a.coord[j];
 	});
 }
 
 template<class U>
 double output_recall(HNSW<U> &g, parlay::internal::timer &t, uint32_t ef, uint32_t k, 
-	uint32_t cnt_query, parlay::sequence<typename U::type_point> &q, parlay::sequence<parlay::sequence<uint32_t>> &gt, 
+	uint32_t cnt_query, ityr::global_span<typename U::type_point> q, ityr::global_span<ityr::global_vector<uint32_t>> gt, 
 	uint32_t rank_max, float beta, bool warmup, std::optional<float> radius, std::optional<uint32_t> limit_eval)
 {
+  return ityr::root_exec([=, &g]() mutable {
+#if 0
 	per_visited.resize(cnt_query);
 	per_eval.resize(cnt_query);
 	per_size_C.resize(cnt_query);
+#endif
+        ityr::global_vector_options global_vec_coll_opts {true, true, true, 1024};
+
 	//std::vector<std::vector<std::pair<uint32_t,float>>> res(cnt_query);
-	parlay::sequence<parlay::sequence<std::pair<uint32_t,float>>> res(cnt_query);
+        ityr::global_vector<ityr::global_vector<std::pair<uint32_t,float>>> res(global_vec_coll_opts, cnt_query);
 	if(warmup)
 	{
-		parlay::parallel_for(0, cnt_query, [&](size_t i){
-			res[i] = g.search(q[i], k, ef);
-		});
+          ityr::transform(
+              ityr::execution::par,
+              q.begin(), q.begin() + cnt_query, res.begin(),
+              [=, &g](const auto& q_) {
+                  return g.search(q_, k, ef);
+              });
 	}
-	t.next("Doing search");
+        t.next("Doing search");
 
-	parlay::parallel_for(0, cnt_query, [&](size_t i){
+        ityr::transform(
+            ityr::execution::par,
+            q.begin(), q.begin() + cnt_query,
+            ityr::count_iterator<std::size_t>(0), res.begin(),
+            [=, &g](const auto& q_, std::size_t i) {
 		search_control ctrl{};
 		ctrl.log_per_stat = i;
 		ctrl.beta = beta;
 		ctrl.radius = radius;
 		ctrl.limit_eval = limit_eval;
-		res[i] = g.search(q[i], k, ef, ctrl);
-	});
-	const double time_query = t.next_time();
-	const auto qps = cnt_query/time_query;
-	printf("HNSW: Find neighbors: %.4f\n", time_query);
+		return g.search(q_, k, ef, ctrl);
+            });
+
+        const double time_query = t.next_time();
+        const auto qps = cnt_query/time_query;
+        my_printf("HNSW: Find neighbors: %.4f\n", time_query);
 
 	double ret_val = 0;
 	if(radius) // range search
 	{
+#if 0
 		// -----------------
 		float nonzero_correct = 0.0;
 		float zero_correct = 0.0;
@@ -124,23 +145,34 @@ double output_recall(HNSW<U> &g, parlay::internal::timer &t, uint32_t ef, uint32
 		printf("size of range candidates: %lu\n", parlay::reduce(g.total_range_candidate,parlay::addm<size_t>{}));
 
 		ret_val = nonzero_recall;
+#else
+                throw std::runtime_error("range search not supported");
+#endif
 	}
 	else // k-NN search
 	{
 		if(rank_max<k)
 		{
-			fprintf(stderr, "Adjust k from %u to %u\n", k, rank_max);
+			my_printf("Adjust k from %u to %u\n", k, rank_max);
 			k = rank_max;
 		}
 	//	uint32_t cnt_all_shot = 0;
 		std::vector<uint32_t> result(k+1);
-		printf("measure recall@%u with ef=%u beta=%.4f on %u queries\n", k, ef, beta, cnt_query);
+		my_printf("measure recall@%u with ef=%u beta=%.4f on %u queries\n", k, ef, beta, cnt_query);
 		for(uint32_t i=0; i<cnt_query; ++i)
 		{
+                  auto res_v_cs = ityr::make_checkout(&res[i], 1, ityr::checkout_mode::read);
+                  auto& res_v = res_v_cs[0];
+                  auto res_cs = ityr::make_checkout(res_v.data(), res_v.size(), ityr::checkout_mode::read);
+
+                  auto gt_v_cs = ityr::make_checkout(&gt[i], 1, ityr::checkout_mode::read);
+                  auto& gt_v = gt_v_cs[0];
+                  auto gt_cs = ityr::make_checkout(gt_v.data(), gt_v.size(), ityr::checkout_mode::read);
+
 			uint32_t cnt_shot = 0;
 			for(uint32_t j=0; j<k; ++j)
-				if(std::find_if(res[i].begin(),res[i].end(),[&](const std::pair<uint32_t,double> &p){
-					return p.first==gt[i][j];}) != res[i].end())
+				if(std::find_if(res_cs.begin(),res_cs.end(),[&](const std::pair<uint32_t,double> &p){
+					return p.first==gt_cs[j];}) != res_cs.end())
 				{
 					cnt_shot++;
 				}
@@ -149,14 +181,15 @@ double output_recall(HNSW<U> &g, parlay::internal::timer &t, uint32_t ef, uint32
 		size_t total_shot = 0;
 		for(size_t i=0; i<=k; ++i)
 		{
-			printf("%u ", result[i]);
+			my_printf("%u ", result[i]);
 			total_shot += result[i]*i;
 		}
-		putchar('\n');
-		printf("%.6f at %ekqps\n", float(total_shot)/cnt_query/k, qps/1000);
+		my_printf("\n");
+		my_printf("%.6f at %ekqps\n", float(total_shot)/cnt_query/k, qps/1000);
 
 		ret_val = double(total_shot)/cnt_query/k;
 	}
+#if 0
 	printf("# visited: %lu\n", parlay::reduce(per_visited,parlay::addm<size_t>{}));
 	printf("# eval: %lu\n", parlay::reduce(per_eval,parlay::addm<size_t>{}));
 	printf("size of C: %lu\n", parlay::reduce(per_size_C,parlay::addm<size_t>{}));
@@ -180,7 +213,9 @@ double output_recall(HNSW<U> &g, parlay::internal::timer &t, uint32_t ef, uint32
 		printf("\tsize of C: %lu\n", per_size_C[tail_index]);
 	}
 	puts("---");
+#endif
 	return ret_val;
+  });
 }
 
 template<class U>
@@ -191,22 +226,28 @@ void output_recall(HNSW<U> &g, commandLine param, parlay::internal::timer &t)
 
 	/* auto [q,_] = load_point(file_query, to_point<typename U::type_elem>); */
 	auto q_ = load_point(file_query, to_point<typename U::type_elem>);
-        auto q = std::get<0>(q_);
-        auto _ = std::get<1>(q_);
+        auto q = std::get<1>(q_);
+        auto _ = std::get<2>(q_);
 
-	t.next("Read queryFile");
-	printf("%s: [%lu,%u]\n", file_query, q.size(), _);
+        if (ityr::is_master()) {
+          t.next("Read queryFile");
+        }
+        my_printf("%s: [%lu,%u]\n", file_query, q.size(), _);
 
-	visit_point(q, q.size(), g.dim);
-	t.next("Fetch query vectors");
+	visit_point(q.begin(), q.end(), g.dim);
+        if (ityr::is_master()) {
+          t.next("Fetch query vectors");
+        }
 
 	/* auto [gt,rank_max] = load_point(file_groundtruth, gt_converter<uint32_t>{}); */
 	auto gt_rank_max = load_point(file_groundtruth, gt_converter<uint32_t>{});
-        auto gt = std::get<0>(gt_rank_max);
-        auto rank_max = std::get<1>(gt_rank_max);
+        auto gt = std::get<1>(gt_rank_max);
+        auto rank_max = std::get<2>(gt_rank_max);
 
-	t.next("Read groundTruthFile");
-	printf("%s: [%lu,%u]\n", file_groundtruth, gt.size(), rank_max);
+        if (ityr::is_master()) {
+          t.next("Read groundTruthFile");
+        }
+        my_printf("%s: [%lu,%u]\n", file_groundtruth, gt.size(), rank_max);
 
 	auto parse_array = [](const std::string &s, auto f){
 		std::stringstream ss;
@@ -245,23 +286,23 @@ void output_recall(HNSW<U> &g, commandLine param, parlay::internal::timer &t)
 		// return std::make_pair(best_recall, best_beta);
 		return best_recall;
 	};
-	puts("pattern: (k,ef_max,beta)");
+        my_printf("pattern: (k,ef_max,beta)\n");
 	const auto ef_max = *ef.rbegin();
 	for(auto k : cnt_rank_cmp)
 		get_best(k, ef_max);
 
-	puts("pattern: (k_min,ef,beta)");
+        my_printf("pattern: (k_min,ef,beta)\n");
 	const auto k_min = *cnt_rank_cmp.begin();
 	for(auto efq : ef)
 		get_best(k_min, efq);
 
-	puts("pattern: (k,threshold)");
+        my_printf("pattern: (k,threshold)\n");
 	for(auto k : cnt_rank_cmp)
 	{
 		uint32_t l_last = k;
 		for(auto t : threshold)
 		{
-			printf("searching for k=%u, th=%f\n", k, t);
+			my_printf("searching for k=%u, th=%f\n", k, t);
 			const double target = t;
 			// const size_t target = t*cnt_query*k;
 			uint32_t l=l_last, r_limit=std::max(k*100, ef_max);
@@ -292,6 +333,7 @@ void output_recall(HNSW<U> &g, commandLine param, parlay::internal::timer &t)
 		}
 	}
 
+#if 0
 	if(limit_eval)
 	{
 		puts("pattern: (ef_min,k,le,threshold(low numbers))");
@@ -318,6 +360,7 @@ void output_recall(HNSW<U> &g, commandLine param, parlay::internal::timer &t)
 			}
 		}
 	}
+#endif
 }
 
 template<typename U>
@@ -336,22 +379,30 @@ void run_test(commandLine parameter) // intend to be pass-by-value manner
 	parlay::internal::timer t("HNSW", true);
 
 	using T = typename U::type_elem;
-	auto [ps,dim] = load_point(file_in, to_point<T>, cnt_points);
-	t.next("Read inFile");
-	printf("%s: [%lu,%u]\n", file_in, ps.size(), dim);
+	auto [ufp,ps,dim] = load_point(file_in, to_point<T>, cnt_points);
+        if (ityr::is_master()) {
+          t.next("Read inFile");
+        }
+        my_printf("%s: [%lu,%u]\n", file_in, ps.size(), dim);
 
-	visit_point(ps, ps.size(), dim);
-	t.next("Fetch input vectors");
+	visit_point(ps.begin(), ps.end(), dim);
+        if (ityr::is_master()) {
+          t.next("Fetch input vectors");
+        }
 
-	fputs("Start building HNSW\n", stderr);
-	HNSW<U> g(
-		ps.begin(), ps.begin()+ps.size(), dim,
+        my_printf("Start building HNSW\n");
+	static std::optional<HNSW<U>> g;
+        g.emplace(
+		ps.begin(), ps.end(), dim,
 		m_l, m, efc, alpha, batch_base, do_fixing
 	);
-	t.next("Build index");
+        if (ityr::is_master()) {
+          t.next("Build index");
+        }
 
-	const uint32_t height = g.get_height();
-	printf("Highest level: %u\n", height);
+	const uint32_t height = g->get_height();
+        my_printf("Highest level: %u\n", height);
+#if 0
 	puts("level     #vertices         #degrees  max_degree");
 	for(uint32_t i=0; i<=height; ++i)
 	{
@@ -362,21 +413,44 @@ void run_test(commandLine parameter) // intend to be pass-by-value manner
 		printf("#%2u: %14lu %16lu %11lu\n", level, cnt_vertex, cnt_degree, degree_max);
 	}
 	t.next("Count vertices and degrees");
+#endif
 
+#if 0
 	if(file_out)
 	{
 		g.save(file_out);
 		t.next("Write to the file");
 	}
+#endif
 
-	output_recall(g, parameter, t);
+	output_recall(*g, parameter, t);
+
+        g.reset();
 }
 
 int main(int argc, char **argv)
 {
+  ityr::init();
+
+  set_signal_handlers();
+
+  if (ityr::is_master()) {
+    printf("=============================================================\n");
+
 	for(int i=0; i<argc; ++i)
 		printf("%s ", argv[i]);
 	putchar('\n');
+
+    printf("[Compile Options]\n");
+    ityr::print_compile_options();
+    printf("-------------------------------------------------------------\n");
+    printf("[Runtime Options]\n");
+    ityr::print_runtime_options();
+    printf("=============================================================\n");
+    printf("PID of the main worker: %d\n", getpid());
+    printf("\n");
+    fflush(stdout);
+  }
 
 	commandLine parameter(argc, argv, 
 		"-type <elemType> -dist <distance> -n <numInput> -ml <m_l> -m <m> "
@@ -406,5 +480,8 @@ int main(int argc, char **argv)
 	else if(!strcmp(type,"float"))
 		run_test_helper(float{});
 	else throw std::invalid_argument("Unsupported element type");
+
+  ityr::fini();
+
 	return 0;
 }

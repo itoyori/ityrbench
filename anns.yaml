@@ -1,0 +1,112 @@
+depends:
+  - name: itoyori
+    recipe: release
+  - name: big-anns
+    recipe: dataset
+
+default_params:
+  nodes: 1
+  cores:
+    - value: 48
+      machines: [wisteria-o]
+    - value: 76
+      machines: [squid-c]
+    - value: 6
+      machines: [local]
+  dataset: msspacev-1M
+  repeats: 11
+  # common params
+  serial: 0
+  sched: randws # randws/adws
+  cache_policy: writeback_lazy # nocache/writethrough/writeback/writeback_lazy/getput
+  dist_policy: default # default/block/cyclic/block_adws
+  cache_size: 128 # MB
+  block_size: 65536 # bytes
+  sub_block_size: 4096 # bytes
+  max_dirty: $cache_size # MB
+  noncoll_alloc_size: 64 # MB
+  shared_mem: 1
+  prof: disabled # disabled/stats/trace
+  dag_prof: disabled # disabled/workspan
+  cache_prof: disabled # disabled/stats
+  debugger: 0
+
+default_name: anns
+default_queue: node_${nodes}
+default_duplicates: 1
+
+build:
+  depend_params: [dist_policy, block_size, prof, dag_prof, cache_prof]
+  script: |
+    source build_common.bash
+
+    CXXFLAGS="${CXXFLAGS:+$CXXFLAGS} -DITYR_ALLOCATOR_USE_DYNAMIC_WIN=false"
+
+    CC=$MPICC CXX=$MPICXX cmake -DCMAKE_CXX_FLAGS="$CXXFLAGS" $CMAKE_OPTIONS .
+    make clean
+    make -j anns
+
+run:
+  depend_params: [nodes, cores, dataset, repeats, serial, sched, cache_policy, cache_size, sub_block_size, max_dirty, noncoll_alloc_size, shared_mem, prof, debugger]
+  script: |
+    source run_common.bash
+
+    if [[ $KOCHI_PARAM_SERIAL == 1 ]]; then
+      config_name=serial
+    else
+      config_name=${KOCHI_PARAM_SCHED}_${KOCHI_PARAM_CACHE_POLICY}
+    fi
+
+    opts=""
+    opts="$opts -ml 0.36"
+    opts="$opts -b 2"
+    opts="$opts -f 0"
+
+    dataset_prefix=${KOCHI_PARAM_DATASET%-*}
+    dataset_suffix=${KOCHI_PARAM_DATASET#*-}
+
+    case $dataset_suffix in
+      1M)
+        dataset_nb=1000000
+        opts="$opts -n ${dataset_nb}"
+        ;;
+      *) echo "Unknown dataset scale: $dataset_suffix"; exit 1 ;;
+    esac
+
+    case $dataset_prefix in
+      msspacev)
+        opts="$opts -type int8"
+        opts="$opts -dist L2"
+        opts="$opts -m 32"
+        opts="$opts -efc 128"
+        opts="$opts -alpha 0.83"
+        opts="$opts -in ${KOCHI_INSTALL_PREFIX_BIG_ANNS}/MSSPACEV1B/spacev1b_base.i8bin.crop_nb_${dataset_nb}:i8bin"
+        opts="$opts -q ${KOCHI_INSTALL_PREFIX_BIG_ANNS}/MSSPACEV1B/query.i8bin:i8bin"
+        opts="$opts -g ${KOCHI_INSTALL_PREFIX_BIG_ANNS}/MSSPACEV1B/msspacev-gt-${dataset_suffix}:ubin"
+        opts="$opts -th 0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,0.95,0.99"
+        ;;
+      *) echo "Unknown dataset name: $dataset_prefix"; exit 1 ;;
+    esac
+
+    opts="$opts -ef 15,20,30,50,75,100,125,250,500"
+    opts="$opts -r 10"
+    opts="$opts -beta 1"
+    opts="$opts -w 0"
+    opts="$opts -le 1"
+
+    # TODO: remove
+    export PARLAY_NUM_THREADS=1
+
+    commands="./anns_${config_name}.out $opts"
+
+    n_nodes=$(echo $KOCHI_PARAM_NODES | cut -f 1 -d ":" | sed 's/x/*/g' | bc)
+
+    if [[ $KOCHI_PARAM_DEBUGGER == 0 ]]; then
+      ityr_mpirun $((n_nodes * KOCHI_PARAM_CORES)) $KOCHI_PARAM_CORES core $commands
+    else
+      MPIEXEC=mpitx ityr_mpirun $((n_nodes * KOCHI_PARAM_CORES)) $KOCHI_PARAM_CORES core gdb --args $commands
+    fi
+
+    # python3 ./anns/benchmarks/ANN/HNSW/parse_kNN.py $STDOUT_FILE 0 log.csv
+
+    if [[ $KOCHI_PARAM_PROF == trace ]]; then run_trace_viewer; fi

@@ -26,6 +26,7 @@
 #include <fstream>
 #include <string>
 #include <cstring>
+#include "ityr/ityr.hpp"
 
 struct commandLine {
   int argc;
@@ -41,7 +42,9 @@ struct commandLine {
     : argc(_c), argv(_v), comLine("bad arguments") { }
 
   void badArgument() {
-    std::cout << "usage: " << argv[0] << " " << comLine << std::endl;
+    if (ityr::is_master()) {
+      std::cout << "usage: " << argv[0] << " " << comLine << std::endl;
+    }
     exit(0);
   }
 
