@@ -12,7 +12,6 @@ default_params:
     - value: 6
       machines: [local]
   dataset: msspacev-1M
-  repeats: 11
 
 default_name: anns
 default_queue: node_${nodes}
@@ -27,7 +26,7 @@ build:
     $CXX -O3 -g -std=c++17 -Wall -Wextra -Wl,--unresolved-symbols=ignore-all -I../bench ${CXXFLAGS:+$CXXFLAGS} -o calc_recall calc_recall.cpp -lpthread
 
 run:
-  depend_params: [nodes, cores, dataset, repeats]
+  depend_params: [nodes, cores, dataset]
   script: |
     source run_common.bash
 

@@ -12,11 +12,9 @@
 #include "dist.hpp"
 using ANN::HNSW;
 
-#if 0
-parlay::sequence<size_t> per_visited;
-parlay::sequence<size_t> per_eval;
-parlay::sequence<size_t> per_size_C;
-#endif
+ityr::global_vector<size_t> per_visited;
+ityr::global_vector<size_t> per_eval;
+ityr::global_vector<size_t> per_size_C;
 
 template<typename T>
 point_converter_default<T> to_point;
@@ -66,15 +64,14 @@ double output_recall(HNSW<U> &g, uint32_t ef, uint32_t k,
 	uint32_t cnt_query, ityr::global_span<typename U::type_point> q, ityr::global_span<ityr::global_vector<uint32_t>> gt, 
 	uint32_t rank_max, float beta, bool warmup, std::optional<float> radius, std::optional<uint32_t> limit_eval)
 {
-  return ityr::root_exec([=, &g]() mutable {
-#if 0
-	per_visited.resize(cnt_query);
-	per_eval.resize(cnt_query);
-	per_size_C.resize(cnt_query);
-#endif
-        ityr::global_vector_options global_vec_coll_opts {true, true, true, 1024};
+  per_visited.resize(cnt_query);
+  per_eval.resize(cnt_query);
+  per_size_C.resize(cnt_query);
 
+  return ityr::root_exec([=, &g]() mutable {
         timer t;
+
+        ityr::global_vector_options global_vec_coll_opts {true, true, true, 1024};
 
 	//std::vector<std::vector<std::pair<uint32_t,float>>> res(cnt_query);
         ityr::global_vector<ityr::global_vector<std::pair<uint32_t,float>>> res(global_vec_coll_opts, cnt_query);
@@ -193,31 +190,30 @@ double output_recall(HNSW<U> &g, uint32_t ef, uint32_t k,
 
 		ret_val = double(total_shot)/cnt_query/k;
 	}
-#if 0
-	printf("# visited: %lu\n", parlay::reduce(per_visited,parlay::addm<size_t>{}));
-	printf("# eval: %lu\n", parlay::reduce(per_eval,parlay::addm<size_t>{}));
-	printf("size of C: %lu\n", parlay::reduce(per_size_C,parlay::addm<size_t>{}));
-	if(limit_eval)
-		printf("limit the number of evaluated nodes : %u\n", *limit_eval);
-	else
-		puts("no limit on the number of evaluated nodes");
 
-	parlay::sort_inplace(per_visited);
-	parlay::sort_inplace(per_eval);
-	parlay::sort_inplace(per_size_C);
+	my_printf("# visited: %lu\n", ityr::reduce(ityr::execution::parallel_policy(1024), per_visited.begin(), per_visited.end()));
+	my_printf("# eval: %lu\n",    ityr::reduce(ityr::execution::parallel_policy(1024), per_eval.begin(), per_eval.end()));
+	my_printf("size of C: %lu\n", ityr::reduce(ityr::execution::parallel_policy(1024), per_size_C.begin(), per_size_C.end()));
+	if(limit_eval)
+		my_printf("limit the number of evaluated nodes : %u\n", *limit_eval);
+	else
+		my_printf("no limit on the number of evaluated nodes\n");
+
+	ityr::sort(ityr::execution::parallel_policy(1024), per_visited.begin(), per_visited.end());
+	ityr::sort(ityr::execution::parallel_policy(1024), per_eval.begin(), per_eval.end());
+	ityr::sort(ityr::execution::parallel_policy(1024), per_size_C.begin(), per_size_C.end());
 	const double tail_ratio[] = {0.9, 0.99, 0.999};
 	for(size_t i=0; i<sizeof(tail_ratio)/sizeof(*tail_ratio); ++i)
 	{
 		const auto r = tail_ratio[i];
 		const uint32_t tail_index = r*cnt_query;
-		printf("%.4f tail stat (at %u):\n", r, tail_index);
+		my_printf("%.4f tail stat (at %u):\n", r, tail_index);
 
-		printf("\t# visited: %lu\n", per_visited[tail_index]);
-		printf("\t# eval: %lu\n", per_eval[tail_index]);
-		printf("\tsize of C: %lu\n", per_size_C[tail_index]);
+		my_printf("\t# visited: %lu\n", per_visited[tail_index].get());
+		my_printf("\t# eval: %lu\n", per_eval[tail_index].get());
+		my_printf("\tsize of C: %lu\n", per_size_C[tail_index].get());
 	}
-	puts("---");
-#endif
+	my_printf("---\n");
 	return ret_val;
   });
 }
@@ -333,15 +329,17 @@ void output_recall(HNSW<U> &g, commandLine param)
 		}
 	}
 
-#if 0
 	if(limit_eval)
 	{
-		puts("pattern: (ef_min,k,le,threshold(low numbers))");
+		my_printf("pattern: (ef_min,k,le,threshold(low numbers))\n");
 		const auto ef_min = *ef.begin();
 		for(auto k : cnt_rank_cmp)
 		{
 			const auto base_shot = get_best(k,ef_min);
-			const auto base_eval = parlay::reduce(per_eval,parlay::addm<size_t>{})/cnt_query+1;
+                        auto sum_eval = ityr::root_exec([] {
+                          return ityr::reduce(ityr::execution::parallel_policy(1024), per_eval.begin(), per_eval.end());
+                        });
+			const auto base_eval = sum_eval/cnt_query+1;
 			auto base_it = std::lower_bound(threshold.begin(), threshold.end(), base_shot);
 			uint32_t l_last = 0; // limit #eval to 0 must keep the recall below the threshold
 			for(auto it=threshold.begin(); it!=base_it; ++it)
@@ -360,7 +358,6 @@ void output_recall(HNSW<U> &g, commandLine param)
 			}
 		}
 	}
-#endif
 }
 
 template<typename U>
@@ -377,6 +374,12 @@ void run_test(commandLine parameter) // intend to be pass-by-value manner
 #if 0
 	const char *file_out = parameter.getOptionValue("-out");
 #endif
+
+        ityr::global_vector_options global_vec_coll_opts {true, true, true, 1024};
+
+        per_visited = ityr::global_vector<size_t>(global_vec_coll_opts);
+        per_eval    = ityr::global_vector<size_t>(global_vec_coll_opts);
+        per_size_C  = ityr::global_vector<size_t>(global_vec_coll_opts);
 
         timer t;
 
@@ -422,6 +425,10 @@ void run_test(commandLine parameter) // intend to be pass-by-value manner
 	output_recall(*g, parameter);
 
         g.reset();
+
+        per_visited = {};
+        per_eval = {};
+        per_size_C = {};
 }
 
 int main(int argc, char **argv)

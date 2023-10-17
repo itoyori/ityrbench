@@ -1226,14 +1226,18 @@ auto HNSW<U,Allocator>::search_layer(const node &u, const ityr::global_vector<no
 	total_visited[id] += visited.size();
 	total_size_C[id] += C.size()+cnt_eval;
 	total_eval[id] += cnt_eval;
+#endif
 	if(ctrl.log_per_stat)
 	{
 		const auto qid = *ctrl.log_per_stat;
-		per_visited[qid] += visited.size();
-		per_eval[qid] += C.size()+cnt_eval;
-		per_size_C[qid] += cnt_eval;
+                auto [pv, pe, ps] =
+                  ityr::make_checkouts(&per_visited[qid], 1, ityr::checkout_mode::read_write,
+                                       &per_eval[qid]   , 1, ityr::checkout_mode::read_write,
+                                       &per_size_C[qid] , 1, ityr::checkout_mode::read_write);
+		pv[0] += visited.size();
+		pe[0] += C.size()+cnt_eval;
+		ps[0] += cnt_eval;
 	}
-#endif
 
 #if 0
 	if(ctrl.radius)
@@ -1554,14 +1558,18 @@ ityr::global_vector<std::pair<uint32_t,float>> HNSW<U,Allocator>::search(const T
 	total_visited[id] = 0;
 	total_eval[id] = 0;
 	total_size_C[id] = 0;
+#endif
 	if(ctrl.log_per_stat)
 	{
 		const auto qid = *ctrl.log_per_stat;
-		per_visited[qid] = 0;
-		per_eval[qid] = 0;
-		per_size_C[qid] = 0;
+                auto [pv, pe, ps] =
+                  ityr::make_checkouts(&per_visited[qid], 1, ityr::checkout_mode::write,
+                                       &per_eval[qid]   , 1, ityr::checkout_mode::write,
+                                       &per_size_C[qid] , 1, ityr::checkout_mode::write);
+		pv[0] = 0;
+		pe[0] = 0;
+		ps[0] = 0;
 	}
-#endif
 
 	node u{0, {}, q}; // To optimize
 	// std::priority_queue<dist,parlay::sequence<dist>,farthest> W;

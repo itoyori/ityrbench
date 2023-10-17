@@ -14,7 +14,7 @@ default_params:
     - value: 6
       machines: [local]
   dataset: msspacev-1M
-  repeats: 11
+  n_points: default
   # common params
   serial: 0
   sched: randws # randws/adws
@@ -47,7 +47,7 @@ build:
     make -j anns
 
 run:
-  depend_params: [nodes, cores, dataset, repeats, serial, sched, cache_policy, cache_size, sub_block_size, max_dirty, noncoll_alloc_size, shared_mem, prof, debugger]
+  depend_params: [nodes, cores, dataset, n_points, serial, sched, cache_policy, cache_size, sub_block_size, max_dirty, noncoll_alloc_size, shared_mem, prof, debugger]
   script: |
     source run_common.bash
 
@@ -66,12 +66,15 @@ run:
     dataset_suffix=${KOCHI_PARAM_DATASET#*-}
 
     case $dataset_suffix in
-      1M)
-        dataset_nb=1000000
-        opts="$opts -n ${dataset_nb}"
-        ;;
-      *) echo "Unknown dataset scale: $dataset_suffix"; exit 1 ;;
+      1M) dataset_nb=1000000 ;;
+      *)  echo "Unknown dataset scale: $dataset_suffix"; exit 1 ;;
     esac
+
+    if [[ $KOCHI_PARAM_N_POINTS == default ]]; then
+      opts="$opts -n $dataset_nb"
+    else
+      opts="$opts -n $KOCHI_PARAM_N_POINTS"
+    fi
 
     case $dataset_prefix in
       msspacev)
@@ -93,9 +96,6 @@ run:
     opts="$opts -beta 1"
     opts="$opts -w 0"
     opts="$opts -le 1"
-
-    # TODO: remove
-    export PARLAY_NUM_THREADS=1
 
     commands="./anns_${config_name}.out $opts"
 
