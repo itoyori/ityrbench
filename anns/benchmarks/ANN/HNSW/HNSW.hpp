@@ -24,10 +24,6 @@
 #include <thread>
 #include "../../../../common.hpp"
 // #include "parallelize.h"
-#include <parlay/parallel.h>
-#include <parlay/primitives.h>
-#include <parlay/delayed_sequence.h>
-#include <parlay/random.h>
 #include "debug.hpp"
 #define DEBUG_OUTPUT 0
 #if DEBUG_OUTPUT
@@ -48,6 +44,27 @@ inline void my_printf(const char* format, ...) {
   va_end(args);
   fflush(stdout);
 }
+
+struct timer {
+public:
+  timer() {
+    tick_ns();
+  }
+
+  ityr::wallclock_t tick_ns() {
+    auto t = ityr::gettime_ns();
+    auto duration = t - time_;
+    time_ = t;
+    return duration;
+  }
+
+  double tick_s() {
+    return tick_ns() / 1000000000.0;
+  }
+
+private:
+  ityr::wallclock_t time_;
+};
 
 namespace ANN{
 

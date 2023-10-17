@@ -12,9 +12,9 @@
 #include <algorithm>
 #include <type_traits>
 #include <math.h>
-#include "parlay/parallel.h"
-#include "parlay/primitives.h"
+#if 0
 #include "common/geometry.h"
+#endif
 
 extern bool report_stats;
 

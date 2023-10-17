@@ -12,9 +12,11 @@
 #include "dist.hpp"
 using ANN::HNSW;
 
+#if 0
 parlay::sequence<size_t> per_visited;
 parlay::sequence<size_t> per_eval;
 parlay::sequence<size_t> per_size_C;
+#endif
 
 template<typename T>
 point_converter_default<T> to_point;
@@ -60,7 +62,7 @@ void visit_point(const T& begin, const T& end, size_t dim)
 }
 
 template<class U>
-double output_recall(HNSW<U> &g, parlay::internal::timer &t, uint32_t ef, uint32_t k, 
+double output_recall(HNSW<U> &g, uint32_t ef, uint32_t k, 
 	uint32_t cnt_query, ityr::global_span<typename U::type_point> q, ityr::global_span<ityr::global_vector<uint32_t>> gt, 
 	uint32_t rank_max, float beta, bool warmup, std::optional<float> radius, std::optional<uint32_t> limit_eval)
 {
@@ -71,6 +73,8 @@ double output_recall(HNSW<U> &g, parlay::internal::timer &t, uint32_t ef, uint32
 	per_size_C.resize(cnt_query);
 #endif
         ityr::global_vector_options global_vec_coll_opts {true, true, true, 1024};
+
+        timer t;
 
 	//std::vector<std::vector<std::pair<uint32_t,float>>> res(cnt_query);
         ityr::global_vector<ityr::global_vector<std::pair<uint32_t,float>>> res(global_vec_coll_opts, cnt_query);
@@ -83,7 +87,7 @@ double output_recall(HNSW<U> &g, parlay::internal::timer &t, uint32_t ef, uint32
                   return g.search(q_, k, ef);
               });
 	}
-        t.next("Doing search");
+        my_printf("HNSW: Doing search: %.4f\n", t.tick_s());
 
         ityr::transform(
             ityr::execution::par,
@@ -98,7 +102,7 @@ double output_recall(HNSW<U> &g, parlay::internal::timer &t, uint32_t ef, uint32
 		return g.search(q_, k, ef, ctrl);
             });
 
-        const double time_query = t.next_time();
+        const double time_query = t.tick_s();
         const auto qps = cnt_query/time_query;
         my_printf("HNSW: Find neighbors: %.4f\n", time_query);
 
@@ -219,34 +223,30 @@ double output_recall(HNSW<U> &g, parlay::internal::timer &t, uint32_t ef, uint32
 }
 
 template<class U>
-void output_recall(HNSW<U> &g, commandLine param, parlay::internal::timer &t)
+void output_recall(HNSW<U> &g, commandLine param)
 {
 	const char* file_query = param.getOptionValue("-q");
 	const char* file_groundtruth = param.getOptionValue("-g");
+
+        timer t;
 
 	/* auto [q,_] = load_point(file_query, to_point<typename U::type_elem>); */
 	auto q_ = load_point(file_query, to_point<typename U::type_elem>);
         auto q = std::get<1>(q_);
         auto _ = std::get<2>(q_);
 
-        if (ityr::is_master()) {
-          t.next("Read queryFile");
-        }
+        my_printf("HNSW: Read queryFile: %.4f\n", t.tick_s());
         my_printf("%s: [%lu,%u]\n", file_query, q.size(), _);
 
 	visit_point(q.begin(), q.end(), g.dim);
-        if (ityr::is_master()) {
-          t.next("Fetch query vectors");
-        }
+        my_printf("HNSW: Fetch query vectors: %.4f\n", t.tick_s());
 
 	/* auto [gt,rank_max] = load_point(file_groundtruth, gt_converter<uint32_t>{}); */
 	auto gt_rank_max = load_point(file_groundtruth, gt_converter<uint32_t>{});
         auto gt = std::get<1>(gt_rank_max);
         auto rank_max = std::get<2>(gt_rank_max);
 
-        if (ityr::is_master()) {
-          t.next("Read groundTruthFile");
-        }
+        my_printf("HNSW: Read groundTruthFile: %.4f\n", t.tick_s());
         my_printf("%s: [%lu,%u]\n", file_groundtruth, gt.size(), rank_max);
 
 	auto parse_array = [](const std::string &s, auto f){
@@ -276,7 +276,7 @@ void output_recall(HNSW<U> &g, commandLine param, parlay::internal::timer &t)
 		for(auto b : beta)
 		{
 			const double cur_recall = 
-				output_recall(g, t, ef, k, cnt_query, q, gt, rank_max, b, enable_warmup, radius, limit_eval);
+				output_recall(g, ef, k, cnt_query, q, gt, rank_max, b, enable_warmup, radius, limit_eval);
 			if(cur_recall>best_recall)
 			{
 				best_recall = cur_recall;
@@ -374,21 +374,19 @@ void run_test(commandLine parameter) // intend to be pass-by-value manner
 	const float alpha = parameter.getOptionDoubleValue("-alpha", 1);
 	const float batch_base = parameter.getOptionDoubleValue("-b", 2);
 	const bool do_fixing = !!parameter.getOptionIntValue("-f", 0);
+#if 0
 	const char *file_out = parameter.getOptionValue("-out");
-	
-	parlay::internal::timer t("HNSW", true);
+#endif
+
+        timer t;
 
 	using T = typename U::type_elem;
 	auto [ufp,ps,dim] = load_point(file_in, to_point<T>, cnt_points);
-        if (ityr::is_master()) {
-          t.next("Read inFile");
-        }
+        my_printf("HNSW: Read inFile: %.4f\n", t.tick_s());
         my_printf("%s: [%lu,%u]\n", file_in, ps.size(), dim);
 
 	visit_point(ps.begin(), ps.end(), dim);
-        if (ityr::is_master()) {
-          t.next("Fetch input vectors");
-        }
+        my_printf("HNSW: Fetch input vectors: %.4f\n", t.tick_s());
 
         my_printf("Start building HNSW\n");
 	static std::optional<HNSW<U>> g;
@@ -396,9 +394,7 @@ void run_test(commandLine parameter) // intend to be pass-by-value manner
 		ps.begin(), ps.end(), dim,
 		m_l, m, efc, alpha, batch_base, do_fixing
 	);
-        if (ityr::is_master()) {
-          t.next("Build index");
-        }
+        my_printf("HNSW: Build index: %.4f\n", t.tick_s());
 
 	const uint32_t height = g->get_height();
         my_printf("Highest level: %u\n", height);
@@ -423,7 +419,7 @@ void run_test(commandLine parameter) // intend to be pass-by-value manner
 	}
 #endif
 
-	output_recall(*g, parameter, t);
+	output_recall(*g, parameter);
 
         g.reset();
 }

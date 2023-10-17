@@ -26,10 +26,10 @@
 #include <algorithm>
 #include <iterator>
 #include <type_traits>
-#include "parlay/parallel.h"
-#include "parlay/primitives.h"
+#if 0
 #include "common/geometry.h"
 #include "common/geometryIO.h"
+#endif
 #include "common/parse_command_line.h"
 #include "../utils/types.h"
 // #include "common/time_loop.h"
@@ -40,7 +40,9 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#if 0
 using namespace benchIO;
+#endif
 
 enum class ptr_mapped_src{
   NATIVE, VOLATILE, PERSISTENT, TRANSITIVE
@@ -225,6 +227,7 @@ auto parse_ivecs(const char* filename)
   }).first;
 }
 */
+#if 0
 auto parse_fvecs(const char* filename) {
   auto [fileptr, length] = mmapStringFromFile(filename);
   // std::cout << "Successfully mmap'd" << std::endl;
@@ -357,7 +360,7 @@ auto parse_bvecs(const char* filename) {
 //     // slicecoords =  parlay::make_slice(coords.begin(), coords.end());
 //     points[i].coordinates = slicecoords;
 //   });
-
+#endif
 
 
 //   return points;

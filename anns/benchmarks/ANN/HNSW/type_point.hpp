@@ -145,6 +145,7 @@ load_from_vec(const char *file, Conv converter, uint32_t max_num)
 }
 #endif
 
+#if 0
 template<class, class=void>
 class trait_type{
 };
@@ -167,7 +168,6 @@ public:
 	using type = T;
 };
 
-#if 0
 template<class Conv>
 inline std::pair<parlay::sequence<typename Conv::type>,uint32_t>
 load_from_HDF5(const char *file, const char *dir, Conv converter, uint32_t max_num)

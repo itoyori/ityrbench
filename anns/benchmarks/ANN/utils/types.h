@@ -24,6 +24,7 @@
 #define TYPES
 
 #include <algorithm>
+#if 0
 #include "parlay/parallel.h"
 #include "parlay/primitives.h"
 
@@ -57,5 +58,6 @@ struct ivec_point {
   ivec_point() :
     coordinates(parlay::make_slice<int*, int*>(nullptr, nullptr)), distances(parlay::make_slice<float*, float*>(nullptr, nullptr)) {}
 };
+#endif
 
 #endif
