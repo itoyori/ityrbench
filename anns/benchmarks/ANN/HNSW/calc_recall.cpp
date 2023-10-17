@@ -437,6 +437,7 @@ int main(int argc, char **argv)
 		printf("%s ", argv[i]);
 	putchar('\n');
 
+    printf("-------------------------------------------------------------\n");
     printf("[Compile Options]\n");
     ityr::print_compile_options();
     printf("-------------------------------------------------------------\n");
@@ -461,20 +462,22 @@ int main(int argc, char **argv)
 		using T = decltype(type);
 		if(!strcmp(dist_func,"L2"))
 			run_test<descr_l2<T>>(parameter);
-		else if(!strcmp(dist_func,"angular"))
-			run_test<descr_ang<T>>(parameter);
-		else if(!strcmp(dist_func,"ndot"))
-			run_test<descr_ndot<T>>(parameter);
+		/* else if(!strcmp(dist_func,"angular")) */
+		/* 	run_test<descr_ang<T>>(parameter); */
+		/* else if(!strcmp(dist_func,"ndot")) */
+		/* 	run_test<descr_ndot<T>>(parameter); */
 		else throw std::invalid_argument("Unsupported distance type");
 	};
 
 	const char* type = parameter.getOptionValue("-type");
-	if(!strcmp(type,"uint8"))
-		run_test_helper(uint8_t{});
-	else if(!strcmp(type,"int8"))
+	/* if(!strcmp(type,"uint8")) */
+	/* 	run_test_helper(uint8_t{}); */
+	/* else if(!strcmp(type,"int8")) */
+	/* 	run_test_helper(int8_t{}); */
+	/* else if(!strcmp(type,"float")) */
+	/* 	run_test_helper(float{}); */
+	if(!strcmp(type,"int8"))
 		run_test_helper(int8_t{});
-	else if(!strcmp(type,"float"))
-		run_test_helper(float{});
 	else throw std::invalid_argument("Unsupported element type");
 
   ityr::fini();
