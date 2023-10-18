@@ -15,6 +15,7 @@ default_params:
       machines: [local]
   dataset: msspacev-1M
   n_points: default
+  n_queries: default
   # common params
   serial: 0
   sched: randws # randws/adws
@@ -47,7 +48,7 @@ build:
     make -j anns
 
 run:
-  depend_params: [nodes, cores, dataset, n_points, serial, sched, cache_policy, cache_size, sub_block_size, max_dirty, noncoll_alloc_size, shared_mem, prof, debugger]
+  depend_params: [nodes, cores, dataset, n_points, n_queries, serial, sched, cache_policy, cache_size, sub_block_size, max_dirty, noncoll_alloc_size, shared_mem, prof, debugger]
   script: |
     source run_common.bash
 
@@ -74,6 +75,10 @@ run:
       opts="$opts -n $dataset_nb"
     else
       opts="$opts -n $KOCHI_PARAM_N_POINTS"
+    fi
+
+    if [[ $KOCHI_PARAM_N_QUERIES != default ]]; then
+      opts="$opts -k $KOCHI_PARAM_N_QUERIES"
     fi
 
     case $dataset_prefix in

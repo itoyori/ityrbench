@@ -195,9 +195,9 @@ public:
 		// uint32_t id;
 		uint32_t level;
                 ityr::global_vector<ityr::global_vector<node_id>> neighbors;
-		T data;
+		T data; // point
                 node() {}
-                node(uint32_t level, ityr::global_vector<ityr::global_vector<node_id>>&& neighbors, T data)
+                node(uint32_t level, ityr::global_vector<ityr::global_vector<node_id>>&& neighbors, const T& data)
                   : level(level), neighbors(std::move(neighbors)), data(data) {}
 	};
 
@@ -475,7 +475,7 @@ public:
 		// asm volatile("movl %0, %%esp":"=a"(esp));
 		// static thread_local std::hash<std::thread::id> h;
 		// static thread_local std::mt19937 gen{h(std::this_thread::get_id())};
-		static thread_local std::uniform_real_distribution<> dis(std::numeric_limits<float>::min(), 1.0);
+		static std::uniform_real_distribution<> dis(std::numeric_limits<float>::min(), 1.0);
 		const uint32_t res = uint32_t(-log(dis(rng))*m_l);
 		return res;
 	}
@@ -793,7 +793,7 @@ HNSW<U,Allocator>::HNSW(Iter begin, Iter end, uint32_t dim_, float m_l_, uint32_
                         begin, end, rng);
         });
 
-        uint64_t seed = 417;
+        uint64_t seed = 42;
         ityr::default_random_engine rng(seed);
 
 	const auto level_ep = get_level_random(rng);
@@ -923,7 +923,12 @@ void HNSW<U,Allocator>::insert(Iter begin, Iter end, bool from_blank, Rng&& rng)
 	// then we process them layer by layer (from high to low)
 	for(int32_t l_c=level_ep; l_c>=0; --l_c) // TODO: fix the type
 	{
-          ityr::global_vector<ityr::global_vector<std::pair<node_id,node_id>>> edge_add(global_vec_coll_opts, size_batch);
+          struct edge {
+            node_id src;
+            node_id dst;
+          };
+
+          ityr::global_vector<ityr::global_vector<edge>> edge_add(global_vec_coll_opts, size_batch);
 
 		debug_output("Finding neighbors on lev. %d\n", l_c);
                 ityr::for_each(
@@ -957,7 +962,7 @@ void HNSW<U,Allocator>::insert(Iter begin, Iter end, bool from_blank, Rng&& rng)
                       {
                         auto neighbors_vec_cs = ityr::make_checkout(neighbors_vec.data(), neighbors_vec.size(), ityr::checkout_mode::read);
                         for(node_id pv : neighbors_vec_cs)
-                                edge_u.emplace_back(pv, pu);
+                                edge_u.emplace_back(edge{pv, pu});
                       }
                       nbh_new_u = std::move(neighbors_vec);
 
@@ -990,7 +995,7 @@ void HNSW<U,Allocator>::insert(Iter begin, Iter end, bool from_blank, Rng&& rng)
 		debug_output("Adding reverse edges\n");
 		// now we add edges in the other direction
 		/* auto edge_add_flatten = parlay::flatten(edge_add); */
-                ityr::global_vector<std::pair<node_id,node_id>> edge_add_flatten(global_vec_coll_opts);
+                ityr::global_vector<edge> edge_add_flatten(global_vec_coll_opts);
                 {
                   ityr::global_vector<std::size_t> indices(global_vec_coll_opts, edge_add.size() + 1);
                   indices.front().put(0);
@@ -1002,7 +1007,7 @@ void HNSW<U,Allocator>::insert(Iter begin, Iter end, bool from_blank, Rng&& rng)
 
                   edge_add_flatten.resize(indices.back().get());
 
-                  ityr::global_span<std::pair<node_id,node_id>> edge_add_flatten_ref(edge_add_flatten);
+                  ityr::global_span<edge> edge_add_flatten_ref(edge_add_flatten);
 
                   ityr::for_each(
                       ityr::execution::par,
@@ -1021,10 +1026,10 @@ void HNSW<U,Allocator>::insert(Iter begin, Iter end, bool from_blank, Rng&& rng)
                 groupby(
                     ityr::make_global_iterator(edge_add_flatten.begin(), ityr::checkout_mode::read_write),
                     ityr::make_global_iterator(edge_add_flatten.end()  , ityr::checkout_mode::read_write),
-                    [](const auto& a, const auto& b) { return a.first < b.first; },
+                    [](const auto& a, const auto& b) { return a.src < b.src; },
                     [=](auto first, auto last) {
                       auto edges_cs = ityr::make_checkout(first, last - first, ityr::checkout_mode::read);
-                      node_id pv = edges_cs[0].first;
+                      node_id pv = edges_cs[0].src;
 
                       auto node_cs = ityr::make_checkout(&node_pool[pv], 1, ityr::checkout_mode::read);
                       auto& u = node_cs[0];

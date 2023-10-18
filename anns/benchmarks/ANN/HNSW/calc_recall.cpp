@@ -228,8 +228,8 @@ void output_recall(HNSW<U> &g, commandLine param)
 
 	/* auto [q,_] = load_point(file_query, to_point<typename U::type_elem>); */
 	auto q_ = load_point(file_query, to_point<typename U::type_elem>);
-        auto q = std::get<1>(q_);
-        auto _ = std::get<2>(q_);
+        auto& q = std::get<1>(q_);
+        auto& _ = std::get<2>(q_);
 
         my_printf("HNSW: Read queryFile: %.4f\n", t.tick_s());
         my_printf("%s: [%lu,%u]\n", file_query, q.size(), _);
@@ -239,8 +239,8 @@ void output_recall(HNSW<U> &g, commandLine param)
 
 	/* auto [gt,rank_max] = load_point(file_groundtruth, gt_converter<uint32_t>{}); */
 	auto gt_rank_max = load_point(file_groundtruth, gt_converter<uint32_t>{});
-        auto gt = std::get<1>(gt_rank_max);
-        auto rank_max = std::get<2>(gt_rank_max);
+        auto& gt = std::get<1>(gt_rank_max);
+        auto& rank_max = std::get<2>(gt_rank_max);
 
         my_printf("HNSW: Read groundTruthFile: %.4f\n", t.tick_s());
         my_printf("%s: [%lu,%u]\n", file_groundtruth, gt.size(), rank_max);

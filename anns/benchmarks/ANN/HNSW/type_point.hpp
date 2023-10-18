@@ -55,6 +55,7 @@ struct point
 	uint32_t id;
 	const T *coord;
 
+#if 0
 	point()
 		: id(~0u), coord(NULL), closure()
 	{
@@ -70,6 +71,16 @@ struct point
 	}
 private:
 	std::any closure;
+#else
+	point()
+		: id(~0u), coord(NULL)
+	{
+	}
+	point(uint32_t id_, const T *coord_)
+		: id(id_), coord(coord_)
+	{
+	}
+#endif
 };
 
 enum class file_format{
