@@ -786,12 +786,12 @@ HNSW<U,Allocator>::HNSW(Iter begin, Iter end, uint32_t dim_, float m_l_, uint32_
 
 	if(n==0) return;
 
-        ityr::root_exec([=] {
-          uint64_t seed = 42;
-          ityr::default_random_engine rng(seed);
-          ityr::shuffle(ityr::execution::parallel_policy(1024 * 16),
-                        begin, end, rng);
-        });
+        /* ityr::root_exec([=] { */
+        /*   uint64_t seed = 42; */
+        /*   ityr::default_random_engine rng(seed); */
+        /*   ityr::shuffle(ityr::execution::parallel_policy(1024 * 16), */
+        /*                 begin, end, rng); */
+        /* }); */
 
         uint64_t seed = 42;
         ityr::default_random_engine rng(seed);
