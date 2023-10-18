@@ -107,6 +107,6 @@ run:
       MPIEXEC=mpitx ityr_mpirun $((n_nodes * KOCHI_PARAM_CORES)) $KOCHI_PARAM_CORES core gdb --args $commands
     fi
 
-    # python3 ./anns/benchmarks/ANN/HNSW/parse_kNN.py $STDOUT_FILE 0 log.csv
+    python3 ./anns/benchmarks/ANN/HNSW/parse_kNN.py $STDOUT_FILE 0 log.csv
 
     if [[ $KOCHI_PARAM_PROF == trace ]]; then run_trace_viewer; fi

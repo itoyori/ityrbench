@@ -242,12 +242,11 @@ public:
 	uint32_t n;
 	Allocator<node> allocator;
         ityr::global_vector<node> node_pool;
-#if 0
-	mutable parlay::sequence<size_t> total_visited = parlay::sequence<size_t>(parlay::num_workers());
-	mutable parlay::sequence<size_t> total_eval = parlay::sequence<size_t>(parlay::num_workers());
-	mutable parlay::sequence<size_t> total_size_C = parlay::sequence<size_t>(parlay::num_workers());
-	mutable parlay::sequence<size_t> total_range_candidate = parlay::sequence<size_t>(parlay::num_workers());
-#endif
+
+        mutable std::size_t total_visited = 0;
+        mutable std::size_t total_eval = 0;
+        mutable std::size_t total_size_C = 0;
+        mutable std::size_t total_range_candidate = 0;
 
 #if 0
 	// `set_neighbourhood` will consume `vNewConn`
@@ -592,36 +591,40 @@ public:
 		return e_cs[0].level;
 	}
 
-#if 0
 	size_t cnt_degree(uint32_t l) const
 	{
-		auto cnt_each = parlay::delayed_seq<size_t>(n, [&](size_t i){
-			node_id pu = i;
-			return get_node(pu).level<l? 0:
-				neighbourhood(get_node(pu),l).size();
-		});
-		return parlay::reduce(cnt_each, parlay::addm<size_t>());
+          return ityr::transform_reduce(
+              ityr::execution::parallel_policy(1024),
+              node_pool.begin(), node_pool.end(),
+              ityr::reducer::plus<std::size_t>{},
+              [=](const node& u) {
+                auto nbh_v_cs = ityr::make_checkout(&u.neighbors[l], 1, ityr::checkout_mode::read);
+			return u.level<l? 0: nbh_v_cs[0].size();
+              });
 	}
 
 	size_t cnt_vertex(uint32_t l) const
 	{
-		auto cnt_each = parlay::delayed_seq<size_t>(n, [&](size_t i){
-			node_id pu = i;
-			return get_node(pu).level<l? 0: 1;
-		});
-		return parlay::reduce(cnt_each, parlay::addm<size_t>());
+          return ityr::transform_reduce(
+              ityr::execution::parallel_policy(1024),
+              node_pool.begin(), node_pool.end(),
+              ityr::reducer::plus<std::size_t>{},
+              [=](const node& u) {
+			return u.level<l? 0: 1;
+              });
 	}
 
 	size_t get_degree_max(uint32_t l) const
 	{
-		auto cnt_each = parlay::delayed_seq<size_t>(n, [&](size_t i){
-			node_id pu = i;
-			return get_node(pu).level<l? 0:
-				neighbourhood(get_node(pu),l).size();
-		});
-		return parlay::reduce(cnt_each, parlay::maxm<size_t>());
+          return ityr::transform_reduce(
+              ityr::execution::parallel_policy(1024),
+              node_pool.begin(), node_pool.end(),
+              ityr::reducer::max<std::size_t>{},
+              [=](const node& u) {
+                auto nbh_v_cs = ityr::make_checkout(&u.neighbors[l], 1, ityr::checkout_mode::read);
+			return u.level<l? 0: nbh_v_cs[0].size();
+              });
 	}
-#endif
 /*
 	void debug_output_graph(uint32_t l)
 	{
@@ -818,19 +821,15 @@ HNSW<U,Allocator>::HNSW(Iter begin, Iter end, uint32_t dim_, float m_l_, uint32_
 		{
 			progress = float(batch_end)/n;
                         my_printf("Built: %3.2f%%\n", progress*100);
-#if 0
-			fprintf(stderr, "# visited: %lu\n", parlay::reduce(total_visited,parlay::addm<size_t>{}));
-			fprintf(stderr, "# eval: %lu\n", parlay::reduce(total_eval,parlay::addm<size_t>{}));
-			fprintf(stderr, "size of C: %lu\n", parlay::reduce(total_size_C,parlay::addm<size_t>{}));
-#endif
+			my_printf("# visited: %lu\n", ityr::common::mpi_reduce_value(total_visited, 0, MPI_COMM_WORLD));
+			my_printf("# eval: %lu\n", ityr::common::mpi_reduce_value(total_eval, 0, MPI_COMM_WORLD));
+			my_printf("size of C: %lu\n", ityr::common::mpi_reduce_value(total_size_C, 0, MPI_COMM_WORLD));
 		}
 	}
 
-#if 0
-	fprintf(stderr, "# visited: %lu\n", parlay::reduce(total_visited,parlay::addm<size_t>{}));
-	fprintf(stderr, "# eval: %lu\n", parlay::reduce(total_eval,parlay::addm<size_t>{}));
-	fprintf(stderr, "size of C: %lu\n", parlay::reduce(total_size_C,parlay::addm<size_t>{}));
-#endif
+        my_printf("# visited: %lu\n", ityr::common::mpi_reduce_value(total_visited, 0, MPI_COMM_WORLD));
+        my_printf("# eval: %lu\n", ityr::common::mpi_reduce_value(total_eval, 0, MPI_COMM_WORLD));
+        my_printf("size of C: %lu\n", ityr::common::mpi_reduce_value(total_size_C, 0, MPI_COMM_WORLD));
 #if 0
 	if(do_fixing) fix_edge();
 #endif
@@ -1219,14 +1218,12 @@ auto HNSW<U,Allocator>::search_layer(const node &u, const ityr::global_vector<no
 		}
 	}
 
-#if 0
 	//total_visited += visited.size();
 	//total_visited += visited.size()-std::count(visited.begin(),visited.end(),n+1);
-	const auto id = parlay::worker_id();
-	total_visited[id] += visited.size();
-	total_size_C[id] += C.size()+cnt_eval;
-	total_eval[id] += cnt_eval;
-#endif
+	total_visited += visited.size();
+	total_size_C += C.size()+cnt_eval;
+	total_eval += cnt_eval;
+
 	if(ctrl.log_per_stat)
 	{
 		const auto qid = *ctrl.log_per_stat;
@@ -1552,13 +1549,11 @@ parlay::sequence<std::pair<uint32_t,float>> HNSW<U,Allocator>::search(const T &q
 template<typename U, template<typename> class Allocator>
 ityr::global_vector<std::pair<uint32_t,float>> HNSW<U,Allocator>::search(const T &q, uint32_t k, uint32_t ef, search_control ctrl)
 {
-#if 0
-	const auto id = parlay::worker_id();
-	total_range_candidate[id] = 0;
-	total_visited[id] = 0;
-	total_eval[id] = 0;
-	total_size_C[id] = 0;
-#endif
+	total_range_candidate = 0;
+	total_visited = 0;
+	total_eval = 0;
+	total_size_C = 0;
+
 	if(ctrl.log_per_stat)
 	{
 		const auto qid = *ctrl.log_per_stat;

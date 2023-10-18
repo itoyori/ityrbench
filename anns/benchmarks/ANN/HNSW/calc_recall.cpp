@@ -399,20 +399,21 @@ void run_test(commandLine parameter) // intend to be pass-by-value manner
 	);
         my_printf("HNSW: Build index: %.4f\n", t.tick_s());
 
-	const uint32_t height = g->get_height();
-        my_printf("Highest level: %u\n", height);
-#if 0
-	puts("level     #vertices         #degrees  max_degree");
-	for(uint32_t i=0; i<=height; ++i)
-	{
-		const uint32_t level = height-i;
-		size_t cnt_vertex = g.cnt_vertex(level);
-		size_t cnt_degree = g.cnt_degree(level);
-		size_t degree_max = g.get_degree_max(level);
-		printf("#%2u: %14lu %16lu %11lu\n", level, cnt_vertex, cnt_degree, degree_max);
-	}
-	t.next("Count vertices and degrees");
-#endif
+        ityr::root_exec([=] {
+          const uint32_t height = g->get_height();
+          my_printf("Highest level: %u\n", height);
+
+          my_printf("level     #vertices         #degrees  max_degree\n");
+          for(uint32_t i=0; i<=height; ++i)
+          {
+                  const uint32_t level = height-i;
+                  size_t cnt_vertex = g->cnt_vertex(level);
+                  size_t cnt_degree = g->cnt_degree(level);
+                  size_t degree_max = g->get_degree_max(level);
+                  my_printf("#%2u: %14lu %16lu %11lu\n", level, cnt_vertex, cnt_degree, degree_max);
+          }
+        });
+        my_printf("HNSW: Count vertices and degrees: %.4f\n", t.tick_s());
 
 #if 0
 	if(file_out)

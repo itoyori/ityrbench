@@ -3,7 +3,7 @@ import re
 import functools
 import csv
 
-p_cmd = re.compile(r"\./calc_recall -n ([0-9]*) .*?-m ([0-9]*) .*?-efc ([0-9]*)")
+p_cmd = re.compile(r"\./anns_.* -n ([0-9]*) .*?-m ([0-9]*) .*?-efc ([0-9]*)")
 p_algo = re.compile(r"Start building (.*)")
 p_buildtime = re.compile(r"Build index: (.*)")
 p_deg0 = re.compile(r"# 0: *([0-9]*) *([0-9]*) *([0-9]*)")
