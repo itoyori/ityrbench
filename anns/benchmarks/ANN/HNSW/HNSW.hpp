@@ -268,8 +268,8 @@ public:
 	}
 */
 	// node* insert(const T &q, uint32_t id);
-	template<typename Iter>
-	void insert(Iter begin, Iter end, bool from_blank);
+	template<typename Iter, typename Rng>
+	void insert(Iter begin, Iter end, bool from_blank, Rng&& rng);
 
 #if 0
 	template<typename Queue>
@@ -467,17 +467,16 @@ public:
 		return select_neighbors_heuristic(u, C, M, level, extendCandidate, keepPrunedConnections);
 	}
 
-	uint32_t get_level_random()
+        template <typename Rng>
+	uint32_t get_level_random(Rng&& rng)
 	{
 		// static thread_local int32_t anchor;
 		// uint32_t esp;
 		// asm volatile("movl %0, %%esp":"=a"(esp));
 		// static thread_local std::hash<std::thread::id> h;
 		// static thread_local std::mt19937 gen{h(std::this_thread::get_id())};
-                // TODO: deterministic RNG
-		static thread_local std::mt19937 gen(ityr::my_rank());
 		static thread_local std::uniform_real_distribution<> dis(std::numeric_limits<float>::min(), 1.0);
-		const uint32_t res = uint32_t(-log(dis(gen))*m_l);
+		const uint32_t res = uint32_t(-log(dis(rng))*m_l);
 		return res;
 	}
 
@@ -794,7 +793,10 @@ HNSW<U,Allocator>::HNSW(Iter begin, Iter end, uint32_t dim_, float m_l_, uint32_
                         begin, end, rng);
         });
 
-	const auto level_ep = get_level_random();
+        uint64_t seed = 417;
+        ityr::default_random_engine rng(seed);
+
+	const auto level_ep = get_level_random(rng);
 	// node *entrance_init = allocator.allocate(1);
 	// node_pool.push_back(entrance_init);
 	node_id entrance_init = 0;
@@ -814,7 +816,7 @@ HNSW<U,Allocator>::HNSW(Iter begin, Iter end, uint32_t dim_, float m_l_, uint32_
 		*/
 		// batch_end = batch_begin+1;
 
-		insert(begin+batch_begin, begin+batch_end, true);
+		insert(begin+batch_begin, begin+batch_end, true, rng);
 		// insert(rand_seq.begin()+batch_begin, rand_seq.begin()+batch_end, false);
 
 		if(batch_end>n*(progress+0.05))
@@ -854,10 +856,10 @@ HNSW<U,Allocator>::HNSW(Iter begin, Iter end, uint32_t dim_, float m_l_, uint32_
 }
 
 template<typename U, template<typename> class Allocator>
-template<typename Iter>
-void HNSW<U,Allocator>::insert(Iter begin, Iter end, bool from_blank)
+template<typename Iter, typename Rng>
+void HNSW<U,Allocator>::insert(Iter begin, Iter end, bool from_blank, Rng&& rng)
 {
-      ityr::root_exec([=] {
+      ityr::root_exec([=, rng = rng.split()]() mutable {
         ityr::global_vector_options global_vec_coll_opts {true, true, true, 1024};
 
         auto e_cs = ityr::make_checkout(&node_pool[entrance[0].get()], 1, ityr::checkout_mode::read);
@@ -881,9 +883,10 @@ void HNSW<U,Allocator>::insert(Iter begin, Iter end, bool from_blank)
           });
           ityr::transform(
               ityr::execution::parallel_policy(1024),
-              begin, end, node_pool.begin() + offset,
-              [=](const T& q) {
-                const auto level_u = get_level_random();
+              begin, end, ityr::count_iterator<uint64_t>(0), node_pool.begin() + offset,
+              [=](const T& q, uint64_t i) {
+                auto rng_ = rng;
+                const auto level_u = get_level_random(rng_.split(i));
                 return node{level_u, ityr::global_vector<ityr::global_vector<node_id>>(level_u + 1), q};
               });
 	}
