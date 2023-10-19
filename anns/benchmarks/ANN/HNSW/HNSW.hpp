@@ -48,13 +48,13 @@ inline void my_printf(const char* format, ...) {
 struct timer {
 public:
   timer() {
-    tick_ns();
+    reset();
   }
 
   ityr::wallclock_t tick_ns() {
     auto t = ityr::gettime_ns();
-    auto duration = t - time_;
-    time_ = t;
+    auto duration = t - prev_time_;
+    prev_time_ = t;
     return duration;
   }
 
@@ -62,8 +62,23 @@ public:
     return tick_ns() / 1000000000.0;
   }
 
+  ityr::wallclock_t total_duration_ns() const {
+    return ityr::gettime_ns() - init_time_;
+  }
+
+  double total_duration_s() const {
+    return total_duration_ns() / 1000000000.0;
+  }
+
+  void reset() {
+    auto t = ityr::gettime_ns();
+    prev_time_ = t;
+    init_time_ = t;
+  }
+
 private:
-  ityr::wallclock_t time_;
+  ityr::wallclock_t prev_time_;
+  ityr::wallclock_t init_time_;
 };
 
 namespace ANN{
@@ -804,6 +819,8 @@ HNSW<U,Allocator>::HNSW(Iter begin, Iter end, uint32_t dim_, float m_l_, uint32_
         node_pool.emplace_back(level_ep, ityr::global_vector<ityr::global_vector<node_id>>(level_ep+1), (*begin).get()/*anything else*/);
 	entrance.push_back(entrance_init);
 
+        ityr::profiler_begin();
+
 	uint32_t batch_begin=0, batch_end=1, size_limit=n*0.02;
 	float progress = 0.0;
 	while(batch_end<n)
@@ -826,12 +843,19 @@ HNSW<U,Allocator>::HNSW(Iter begin, Iter end, uint32_t dim_, float m_l_, uint32_
 			my_printf("# visited: %lu\n", ityr::common::mpi_reduce_value(total_visited, 0, MPI_COMM_WORLD));
 			my_printf("# eval: %lu\n", ityr::common::mpi_reduce_value(total_eval, 0, MPI_COMM_WORLD));
 			my_printf("size of C: %lu\n", ityr::common::mpi_reduce_value(total_size_C, 0, MPI_COMM_WORLD));
+
+                        ityr::profiler_end();
+                        ityr::profiler_flush();
+                        ityr::profiler_begin();
 		}
 	}
 
         my_printf("# visited: %lu\n", ityr::common::mpi_reduce_value(total_visited, 0, MPI_COMM_WORLD));
         my_printf("# eval: %lu\n", ityr::common::mpi_reduce_value(total_eval, 0, MPI_COMM_WORLD));
         my_printf("size of C: %lu\n", ityr::common::mpi_reduce_value(total_size_C, 0, MPI_COMM_WORLD));
+
+        ityr::profiler_end();
+        ityr::profiler_flush();
 #if 0
 	if(do_fixing) fix_edge();
 #endif
@@ -860,6 +884,8 @@ template<typename Iter, typename Rng>
 void HNSW<U,Allocator>::insert(Iter begin, Iter end, bool from_blank, Rng&& rng)
 {
       ityr::root_exec([=, rng = rng.split()]() mutable {
+        timer t;
+
         ityr::global_vector_options global_vec_coll_opts {true, true, true, 1024};
 
         auto e_cs = ityr::make_checkout(&node_pool[entrance[0].get()], 1, ityr::checkout_mode::read);
@@ -901,6 +927,7 @@ void HNSW<U,Allocator>::insert(Iter begin, Iter end, bool from_blank, Rng&& rng)
 #endif
 	}
 
+	debug_output("insert: prologue: %.4f\n", t.tick_s());
 	debug_output("Nodes are settled\n");
 	// TODO: merge ops
         ityr::transform(
@@ -919,6 +946,7 @@ void HNSW<U,Allocator>::insert(Iter begin, Iter end, bool from_blank, Rng&& rng)
               return eps_u;
             });
 
+	debug_output("insert: search entrance: %.4f\n", t.tick_s());
 	debug_output("Finish searching entrances\n");
 	// then we process them layer by layer (from high to low)
 	for(int32_t l_c=level_ep; l_c>=0; --l_c) // TODO: fix the type
@@ -931,6 +959,10 @@ void HNSW<U,Allocator>::insert(Iter begin, Iter end, bool from_blank, Rng&& rng)
           ityr::global_vector<ityr::global_vector<edge>> edge_add(global_vec_coll_opts, size_batch);
 
 		debug_output("Finding neighbors on lev. %d\n", l_c);
+                static ityr::wallclock_t t_acc;
+#if DEBUG_OUTPUT
+                ityr::coll_exec([] { t_acc = 0; });
+#endif
                 ityr::for_each(
                     ityr::execution::par,
                     ityr::make_global_iterator(node_pool.begin() + offset, ityr::checkout_mode::read),
@@ -942,7 +974,13 @@ void HNSW<U,Allocator>::insert(Iter begin, Iter end, bool from_blank, Rng&& rng)
                     [=](const node& u, auto& eps_u, auto& nbh_new_u, auto& edge_u, node_id pu) {
                       if((uint32_t)l_c>u.level) return;
 
+#if DEBUG_OUTPUT
+                      timer t;
                       auto res = search_layer(u, eps_u, ef_construction, l_c);
+                      t_acc += t.tick_ns();
+#else
+                      auto res = search_layer(u, eps_u, ef_construction, l_c);
+#endif
                       auto neighbors_vec = select_neighbors(u.data, res, get_threshold_m(l_c)*factor_m, l_c);
                       // nbh_u.clear();
                       edge_u.clear();
@@ -978,7 +1016,11 @@ void HNSW<U,Allocator>::insert(Iter begin, Iter end, bool from_blank, Rng&& rng)
                       for(const auto e : res)
                               eps_u.push_back(e.u);
                     });
+                debug_output("insert: search_layer (level %d): %.4f\n", l_c, ityr::coll_exec([] {
+                  return ityr::common::mpi_reduce_value(t_acc, 0, MPI_COMM_WORLD);
+                }) / 1000000000.0 / ityr::n_ranks());
 
+                debug_output("insert: search (level %d): %.4f\n", l_c, t.tick_s());
 		debug_output("Adding forward edges\n");
                 ityr::for_each(
                     ityr::execution::par,
@@ -992,6 +1034,7 @@ void HNSW<U,Allocator>::insert(Iter begin, Iter end, bool from_blank, Rng&& rng)
                         }
                     });
 
+                debug_output("insert: add forward edges (level %d): %.4f\n", l_c, t.tick_s());
 		debug_output("Adding reverse edges\n");
 		// now we add edges in the other direction
 		/* auto edge_add_flatten = parlay::flatten(edge_add); */
@@ -1021,6 +1064,8 @@ void HNSW<U,Allocator>::insert(Iter begin, Iter end, bool from_blank, Rng&& rng)
                 }
 
                 edge_add = {}; // destroy
+                               //
+                debug_output("insert: flatten (level %d): %.4f\n", l_c, t.tick_s());
 
 		/* auto edge_add_grouped = parlay::group_by_key(edge_add_flatten); */
                 groupby(
@@ -1089,6 +1134,8 @@ void HNSW<U,Allocator>::insert(Iter begin, Iter end, bool from_blank, Rng&& rng)
                         nbh_v.insert(nbh_v.end(),nbh_v_add.begin(), nbh_v_add.end());
                       }
                     });
+
+                debug_output("insert: groupby (level %d): %.4f\n", l_c, t.tick_s());
 	}
 
 	debug_output("Updating entrance\n");
@@ -1118,11 +1165,15 @@ void HNSW<U,Allocator>::insert(Iter begin, Iter end, bool from_blank, Rng&& rng)
 		debug_output("New entrance [%u] at lev %u\n", U::get_id(node.data), node.level);
 	}
 
+        debug_output("insert: update entrance: %.4f\n", t.tick_s());
+
 	// and add new nodes to the pool
 	/*
 	if(from_blank)
 	node_pool.insert(node_pool.end(), node_new.get(), node_new.get()+size_batch);
 	*/
+
+        debug_output("insert: total: %.4f\n", t.total_duration_s());
       });
 }
 
@@ -1209,6 +1260,7 @@ auto HNSW<U,Allocator>::search_layer(const node &u, const ityr::global_vector<no
 			if(W.size()<ef||d<W[0].d)
 			{
 				C.insert({d,pv});
+
 				// C.push_back({d,pv,dc+1});
 				// std::push_heap(C.begin(), C.end(), nearest());
 				W.push_back({d,pv});
