@@ -799,9 +799,9 @@ HNSW<U,Allocator>::HNSW(const std::string &filename_model, G getter)
 template<typename U, template<typename> class Allocator>
 template<typename Iter>
 HNSW<U,Allocator>::HNSW(Iter begin, Iter end, uint32_t dim_, float m_l_, uint32_t m_, uint32_t ef_construction_, float alpha_, float batch_base, bool do_fixing [[maybe_unused]])
-	: entrance(ityr::global_vector_options{true, true, true, 1024}), // coll
+	: entrance(ityr::global_vector_options(true, 1024)), // coll
           dim(dim_), m_l(m_l_), m(m_), ef_construction(ef_construction_), alpha(alpha_), n(std::distance(begin,end)),
-          node_pool(ityr::global_vector_options{true, true, true, 1024}) // coll
+          node_pool(ityr::global_vector_options(true, 1024)) // coll
 {
 	static_assert(std::is_same_v<typename std::iterator_traits<Iter>::value_type, T>);
 	static_assert(std::is_base_of_v<
@@ -894,7 +894,7 @@ void HNSW<U,Allocator>::insert(Iter begin, Iter end, bool from_blank, Rng&& rng)
       ityr::root_exec([=, rng = rng.split()]() mutable {
         timer t;
 
-        ityr::global_vector_options global_vec_coll_opts {true, true, true, 1024};
+        ityr::global_vector_options global_vec_coll_opts(true, 1024);
 
         auto e_cs = ityr::make_checkout(&node_pool[entrance[0].get()], 1, ityr::checkout_mode::read);
 	const auto level_ep = e_cs[0].level;
@@ -1195,7 +1195,7 @@ auto HNSW<U,Allocator>::search_layer(const node &u, const ityr::global_vector<no
 	//parlay::sequence<uint32_t> visited(mask+1, n+1);
 	// TODO: Try hash to an array
 	// TODO: monitor the size of `visited`
-	std::unordered_set<uint32_t> visited;
+	std::unordered_set<node_id> visited;
         std::vector<dist> W, discarded;
 	std::set<dist,farthest> C;
 	W.reserve(ef);
@@ -1207,7 +1207,7 @@ auto HNSW<U,Allocator>::search_layer(const node &u, const ityr::global_vector<no
             auto e_cs = ityr::make_checkout(&node_pool[ep], 1, ityr::checkout_mode::read);
                   //const auto id = U::get_id(get_node(ep).data);
                   //visited[parlay::hash64_2(id)&mask] = id;
-                  visited.insert(U::get_id(e_cs[0].data));
+                  visited.insert(ep);
                   const auto d = U::distance(u.data,e_cs[0].data,dim);
                   C.insert({d,ep});
                   W.push_back({d,ep});
@@ -1264,9 +1264,9 @@ auto HNSW<U,Allocator>::search_layer(const node &u, const ityr::global_vector<no
 			//const auto idx = parlay::hash64_2(id)&mask;
 			//if(visited[idx]==id) continue;
 			//visited[idx] = id;
+			if(!visited.insert(pv).second) continue;
                         auto node_cs = ityr::make_checkout(&node_pool[pv], 1, ityr::checkout_mode::read);
                         auto& node = node_cs[0];
-			if(!visited.insert(U::get_id(node.data)).second) continue;
 			const auto d = U::distance(u.data,node.data,dim);
 			if(W.size()<ef||d<W[0].d)
 			{
