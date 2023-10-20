@@ -57,7 +57,7 @@ function(build_bench_policy bench_name config_name)
   cmake_parse_arguments(PARSE_ARGV 0 ARG "${options}" "${single_value_args}" "${multi_value_args}")
 
   build_bench_each(${bench_name} "${config_name}_nocache" FILES ${ARG_FILES} INCLUDE_DIRS ${ARG_INCLUDE_DIRS}
-                   CXXFLAGS "${ARG_CXXFLAGS} -DITYR_ORI_CORE=nocache -DITYR_ORI_FORCE_GETPUT=1")
+                   CXXFLAGS "${ARG_CXXFLAGS} -DITYR_ORI_CORE=nocache -DITYR_ORI_FORCE_GETPUT=1 -DITYR_RMA_IMPL=mpi")
 
   build_bench_each(${bench_name} "${config_name}_writethrough" FILES ${ARG_FILES} INCLUDE_DIRS ${ARG_INCLUDE_DIRS}
                    CXXFLAGS "${ARG_CXXFLAGS} -DITYR_ORI_ENABLE_LAZY_RELEASE=0 -DITYR_ORI_ENABLE_WRITE_THROUGH=1")
