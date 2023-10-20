@@ -23,7 +23,7 @@ default_params:
   dist_policy: default # default/block/cyclic/block_adws
   cache_size: 128 # MB
   block_size: 65536 # bytes
-  sub_block_size: 4096 # bytes
+  sub_block_size: 512 # bytes
   max_dirty: $cache_size # MB
   noncoll_alloc_size: 64 # MB
   shared_mem: 1
