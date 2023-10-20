@@ -16,6 +16,7 @@ default_params:
   dataset: msspacev-1M
   n_points: default
   n_queries: default
+  max_layer: 7
   # common params
   serial: 0
   sched: randws # randws/adws
@@ -37,10 +38,11 @@ default_queue: node_${nodes}
 default_duplicates: 1
 
 build:
-  depend_params: [dist_policy, block_size, prof, dag_prof, cache_prof]
+  depend_params: [max_layer, dist_policy, block_size, prof, dag_prof, cache_prof]
   script: |
     source build_common.bash
 
+    CXXFLAGS="${CXXFLAGS:+$CXXFLAGS} -DHNSW_MAX_LAYER=$KOCHI_PARAM_MAX_LAYER"
     CXXFLAGS="${CXXFLAGS:+$CXXFLAGS} -DITYR_ALLOCATOR_USE_DYNAMIC_WIN=false"
 
     CC=$MPICC CXX=$MPICXX cmake -DCMAKE_CXX_FLAGS="$CXXFLAGS" $CMAKE_OPTIONS .
