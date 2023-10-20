@@ -611,9 +611,13 @@ public:
               ityr::execution::parallel_policy(1024),
               node_pool.begin(), node_pool.end(),
               ityr::reducer::plus<std::size_t>{},
-              [=](const node& u) {
-                auto nbh_v_cs = ityr::make_checkout(&u.neighbors[l], 1, ityr::checkout_mode::read);
-			return u.level<l? 0: nbh_v_cs[0].size();
+              [=](const node& u) -> std::size_t {
+                if (u.level < l) {
+                  return 0;
+                } else {
+                  auto nbh_v_cs = ityr::make_checkout(&u.neighbors[l], 1, ityr::checkout_mode::read);
+                  return nbh_v_cs[0].size();
+                }
               });
 	}
 
@@ -634,9 +638,13 @@ public:
               ityr::execution::parallel_policy(1024),
               node_pool.begin(), node_pool.end(),
               ityr::reducer::max<std::size_t>{},
-              [=](const node& u) {
-                auto nbh_v_cs = ityr::make_checkout(&u.neighbors[l], 1, ityr::checkout_mode::read);
-			return u.level<l? 0: nbh_v_cs[0].size();
+              [=](const node& u) -> std::size_t {
+                if (u.level < l) {
+                  return 0;
+                } else {
+                  auto nbh_v_cs = ityr::make_checkout(&u.neighbors[l], 1, ityr::checkout_mode::read);
+                  return nbh_v_cs[0].size();
+                }
               });
 	}
 /*
@@ -890,6 +898,7 @@ void HNSW<U,Allocator>::insert(Iter begin, Iter end, bool from_blank, Rng&& rng)
 
         auto e_cs = ityr::make_checkout(&node_pool[entrance[0].get()], 1, ityr::checkout_mode::read);
 	const auto level_ep = e_cs[0].level;
+        e_cs.checkin();
 	const auto size_batch = std::distance(begin,end);
         ityr::global_vector<ityr::global_vector<node_id>> nbh_new(global_vec_coll_opts, size_batch);
         ityr::global_vector<ityr::global_vector<node_id>> eps(global_vec_coll_opts, size_batch);
@@ -1148,21 +1157,23 @@ void HNSW<U,Allocator>::insert(Iter begin, Iter end, bool from_blank, Rng&& rng)
             });
         node_id node_highest = node_highest_gptr - node_pool.begin();
         auto node_cs = ityr::make_checkout(node_highest_gptr, 1, ityr::checkout_mode::read);
-        auto& node = node_cs[0];
-	if(node.level>level_ep)
+        auto node_level = node_cs[0].level;
+        auto node_data = node_cs[0].data;
+        node_cs.checkin();
+	if(node_level>level_ep)
 	{
           ityr::coll_exec([=] {
 		entrance.clear();
 		entrance.push_back(node_highest);
                 });
-		debug_output("New entrance [%u] at lev %u\n", U::get_id(node.data), node.level);
+		debug_output("New entrance [%u] at lev %u\n", U::get_id(node_data), node_level);
 	}
-	else if(node.level==level_ep)
+	else if(node_level==level_ep)
 	{
           ityr::coll_exec([=] {
 		entrance.push_back(node_highest);
                 });
-		debug_output("New entrance [%u] at lev %u\n", U::get_id(node.data), node.level);
+		debug_output("New entrance [%u] at lev %u\n", U::get_id(node_data), node_level);
 	}
 
         debug_output("insert: update entrance: %.4f\n", t.tick_s());
