@@ -553,7 +553,8 @@ void partition(long n_parts, graph& g) {
               ityr::make_global_iterator(p.update_bins_write.begin(), ityr::checkout_mode::write),
               [&](const part& p2, dest_bin& d_bin, update_bin& u_bin) {
                 // bin_write[i][j] = bin_read[j][i]
-                d_bin = p2.dest_bins_read[p.id].get();
+                auto d_bin_cs = ityr::make_checkout(&p2.dest_bins_read[p.id], 1, ityr::checkout_mode::read);
+                d_bin = d_bin_cs[0];
                 u_bin = p2.update_bins_read[p.id].get();
               });
         });

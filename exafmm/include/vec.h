@@ -21,10 +21,6 @@ namespace EXAFMM_NAMESPACE {
     vec(const T &v) {                                           // Copy constructor (scalar)
       for (int i=0; i<N; i++) data[i] = v;
     }
-    vec(const vec &v) {                                         // Copy constructor (vector)
-      for (int i=0; i<N; i++) data[i] = v[i];
-    }
-    ~vec(){}                                                    // Destructor
     const vec &operator=(const T v) {                           // Scalar assignment
       for (int i=0; i<N; i++) data[i] = v;
       return *this;
@@ -59,10 +55,6 @@ namespace EXAFMM_NAMESPACE {
     }
     const vec &operator|=(const T v) {                          // Scalar compound assignment (bitwise or)
       for (int i=0; i<N; i++) data[i] |= v;
-      return *this;
-    }
-    const vec &operator=(const vec & v) {                       // Vector assignment
-      for (int i=0; i<N; i++) data[i] = v[i];
       return *this;
     }
     const vec &operator+=(const vec & v) {                      // Vector compound assignment (add)
@@ -575,9 +567,6 @@ namespace EXAFMM_NAMESPACE {
     vec(const __m512 v) {                                       // Copy constructor SIMD register
       data = v;
     }
-    vec(const vec & v) {                                        // Copy constructor vector
-      data = v.data;
-    }
     vec(const float a, const float b, const float c, const float d,
 	const float e, const float f, const float g, const float h,
 	const float i, const float j, const float k, const float l,
@@ -587,10 +576,6 @@ namespace EXAFMM_NAMESPACE {
     ~vec(){}                                                    // Destructor
     const vec &operator=(const float v) {                       // Scalar assignment
       data = _mm512_set1_ps(v);
-      return *this;
-    }
-    const vec &operator=(const vec & v) {                       // Vector assignment
-      data = v.data;
       return *this;
     }
     const vec &operator+=(const vec & v) {                      // Vector compound assignment (add)
@@ -700,9 +685,6 @@ namespace EXAFMM_NAMESPACE {
     vec(const __m512d v) {                                      // Copy constructor SIMD register
       data = v;
     }
-    vec(const vec & v) {                                        // Copy constructor vector
-      data = v.data;
-    }
     vec(const double a, const double b, const double c, const double d,
 	const double e, const double f, const double g, const double h) {// Copy constructor (component-wise)
       data = _mm512_setr_pd(a,b,c,d,e,f,g,h);
@@ -710,10 +692,6 @@ namespace EXAFMM_NAMESPACE {
     ~vec(){}                                                    // Destructor
     const vec &operator=(const double v) {                      // Scalar assignment
       data = _mm512_set1_pd(v);
-      return *this;
-    }
-    const vec &operator=(const vec & v) {                       // Vector assignment
-      data = v.data;
       return *this;
     }
     const vec &operator+=(const vec & v) {                      // Vector compound assignment (add)
@@ -830,9 +808,6 @@ namespace EXAFMM_NAMESPACE {
     vec(const __m256 v) {                                       // Copy constructor SIMD register
       data = v;
     }
-    vec(const vec & v) {                                        // Copy constructor vector
-      data = v.data;
-    }
     vec(const float a, const float b, const float c, const float d,
         const float e, const float f, const float g, const float h) {// Copy constructor (component-wise)
       data = _mm256_setr_ps(a,b,c,d,e,f,g,h);
@@ -840,10 +815,6 @@ namespace EXAFMM_NAMESPACE {
     ~vec(){}                                                    // Destructor
     const vec &operator=(const float v) {                       // Scalar assignment
       data = _mm256_set1_ps(v);
-      return *this;
-    }
-    const vec &operator=(const vec & v) {                       // Vector assignment
-      data = v.data;
       return *this;
     }
     const vec &operator+=(const vec & v) {                      // Vector compound assignment (add)
@@ -965,19 +936,12 @@ namespace EXAFMM_NAMESPACE {
     vec(const __m256d v) {                                      // Copy constructor SIMD register
       data = v;
     }
-    vec(const vec & v) {                                        // Copy constructor vector
-      data = v.data;
-    }
     vec(const double a, const double b, const double c, const double d) {// Copy constructor (component-wise)
       data = _mm256_setr_pd(a,b,c,d);
     }
     ~vec(){}                                                    // Destructor
     const vec &operator=(const double v) {                      // Scalar assignment
       data = _mm256_set1_pd(v);
-      return *this;
-    }
-    const vec &operator=(const vec & v) {                       // Vector assignment
-      data = v.data;
       return *this;
     }
     const vec &operator+=(const vec & v) {                      // Vector compound assignment (add)
@@ -1101,9 +1065,6 @@ namespace EXAFMM_NAMESPACE {
     vec(const vector4double v) {                                // Copy constructor SIMD register
       data = v;
     }
-    vec(const vec & v) {                                        // Copy constructor vector
-      data = v.data;
-    }
     vec(const double a, const double b, const double c, const double d) {// Copy constructor (component-wise)
       vector4double temp = {a,b,c,d};
       data = temp;
@@ -1112,10 +1073,6 @@ namespace EXAFMM_NAMESPACE {
     const vec &operator=(double v) {                            // Scalar assignment
       vector4double temp = {v};
       data = temp;
-      return *this;
-    }
-    const vec &operator=(const vec & v) {                       // Vector assignment
-      data = v.data;
       return *this;
     }
     const vec &operator+=(const vec & v) {                      // Vector compound assignment (add)
@@ -1235,19 +1192,12 @@ namespace EXAFMM_NAMESPACE {
     vec(const __m128 v) {                                       // Copy constructor SIMD register
       data = v;
     }
-    vec(const vec & v) {                                        // Copy constructor vector
-      data = v.data;
-    }
     vec(const float a, const float b, const float c, const float d) {// Copy constructor (component-wise)
       data = _mm_setr_ps(a,b,c,d);
     }
     ~vec(){}                                                    // Destructor
     const vec &operator=(const float v) {                       // Scalar assignment
       data = _mm_set1_ps(v);
-      return *this;
-    }
-    const vec &operator=(const vec & v) {                       // Vector assignment
-      data = v.data;
       return *this;
     }
     const vec &operator+=(const vec & v) {                      // Vector compound assignment (add)
@@ -1365,19 +1315,12 @@ namespace EXAFMM_NAMESPACE {
     vec(const __m128d v) {                                      // Copy constructor SIMD register
       data = v;
     }
-    vec(const vec & v) {                                        // Copy constructor vector
-      data = v.data;
-    }
     vec(const double a, const double b) {                       // Copy constructor (component-wise)
       data = _mm_setr_pd(a,b);
     }
     ~vec(){}                                                    // Destructor
     const vec &operator=(const double v) {                      // Scalar assignment
       data = _mm_set1_pd(v);
-      return *this;
-    }
-    const vec &operator=(const vec & v) {                       // Vector assignment
-      data = v.data;
       return *this;
     }
     const vec &operator+=(const vec & v) {                      // Vector compound assignment (add)
@@ -1498,19 +1441,12 @@ namespace EXAFMM_NAMESPACE {
     vec(const __m128d v) {                                      // Copy constructor SIMD register
       data = v;
     }
-    vec(const vec & v) {                                        // Copy constructor vector
-      data = v.data;
-    }
     vec(const double a, const double b) {                       // Copy constructor (component-wise)
       data = _mm_set_pd(b,a);
     }
     ~vec(){}                                                    // Destructor
     const vec &operator=(const double v) {                      // Scalar assignment
       data = _mm_set_pd(v,v);
-      return *this;
-    }
-    const vec &operator=(const vec & v) {                       // Vector assignment
-      data = v.data;
       return *this;
     }
     const vec &operator+=(const vec & v) {                      // Vector compound assignment (add)
