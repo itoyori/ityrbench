@@ -32,7 +32,7 @@ default_params:
   cache_prof: disabled # disabled/stats
   debugger: 0
 
-default_name: anns
+default_name: anns_hnsw
 default_queue: node_${nodes}
 default_duplicates: 1
 
@@ -45,7 +45,7 @@ build:
 
     CC=$MPICC CXX=$MPICXX cmake -DCMAKE_CXX_FLAGS="$CXXFLAGS" $CMAKE_OPTIONS .
     make clean
-    make -j anns
+    make -j anns_hnsw
 
 run:
   depend_params: [nodes, cores, dataset, n_points, n_queries, serial, sched, cache_policy, cache_size, sub_block_size, max_dirty, noncoll_alloc_size, shared_mem, prof, debugger]
@@ -102,7 +102,7 @@ run:
     opts="$opts -w 0"
     opts="$opts -le 1"
 
-    commands="./anns_${config_name}.out $opts"
+    commands="./anns_hnsw_${config_name}.out $opts"
 
     n_nodes=$(echo $KOCHI_PARAM_NODES | cut -f 1 -d ":" | sed 's/x/*/g' | bc)
 

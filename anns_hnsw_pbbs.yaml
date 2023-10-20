@@ -13,7 +13,7 @@ default_params:
       machines: [local]
   dataset: msspacev-1M
 
-default_name: anns
+default_name: anns_hnsw_pbbs
 default_queue: node_${nodes}
 default_duplicates: 1
 
