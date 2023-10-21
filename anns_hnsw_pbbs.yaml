@@ -47,10 +47,30 @@ run:
         dataset_nb=1000000
         export scale=1
         ;;
+      10M)
+        dataset_nb=10000000
+        export scale=10
+        ;;
+      100M)
+        dataset_nb=100000000
+        export scale=100
+        ;;
       *) echo "Unknown dataset scale: $dataset_suffix"; exit 1 ;;
     esac
 
     case $dataset_prefix in
+      bigann)
+        export dataset=BIGANN
+        export dtype=uint8
+        export dist=L2
+        export m=32
+        export efc=128
+        export alpha=0.82
+        export file_in=${KOCHI_INSTALL_PREFIX_BIG_ANNS}/bigann/base.1B.u8bin.crop_nb_${dataset_nb}:u8bin
+        export file_q=${KOCHI_INSTALL_PREFIX_BIG_ANNS}/bigann/query.public.10K.u8bin:u8bin
+        export file_gt=${KOCHI_INSTALL_PREFIX_BIG_ANNS}/bigann/bigann-${dataset_suffix}:ubin
+        export th=0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,0.95,0.99,0.999
+        ;;
       msspacev)
         export dataset=MSSPACEV
         export dtype=int8
@@ -62,6 +82,22 @@ run:
         export file_q=${KOCHI_INSTALL_PREFIX_BIG_ANNS}/MSSPACEV1B/query.i8bin:i8bin
         export file_gt=${KOCHI_INSTALL_PREFIX_BIG_ANNS}/MSSPACEV1B/msspacev-gt-${dataset_suffix}:ubin
         export th=0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,0.95,0.99
+        ;;
+      text2image)
+        export dataset=YandexT2I
+        export dtype=float
+        export dist=ndot
+        export m=32
+        export efc=128
+        export alpha=1.1
+        export file_in=${KOCHI_INSTALL_PREFIX_BIG_ANNS}/text2image1B/base.1B.fbin.crop_nb_${dataset_nb}:fbin
+        export file_q=${KOCHI_INSTALL_PREFIX_BIG_ANNS}/text2image1B/query.public.100K.fbin:fbin
+        export file_gt=${KOCHI_INSTALL_PREFIX_BIG_ANNS}/text2image1B/text2image-${dataset_suffix}:ubin
+        case $dataset_suffix in
+          1M)   export th=0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,0.95,0.99,0.999 ;;
+          10M)  export th=0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,0.95,0.99 ;;
+          100M) export th=0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,0.95 ;;
+        esac
         ;;
       *) echo "Unknown dataset name: $dataset_prefix"; exit 1 ;;
     esac

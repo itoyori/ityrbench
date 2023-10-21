@@ -38,11 +38,28 @@ default_queue: node_${nodes}
 default_duplicates: 1
 
 build:
-  depend_params: [dist_policy, block_size, prof, dag_prof, cache_prof]
+  depend_params: [dataset, dist_policy, block_size, prof, dag_prof, cache_prof]
   script: |
     source build_common.bash
 
     CXXFLAGS="${CXXFLAGS:+$CXXFLAGS} -DITYR_ALLOCATOR_USE_DYNAMIC_WIN=false"
+
+    dataset_prefix=${KOCHI_PARAM_DATASET%-*}
+    case $dataset_prefix in
+      bigann)
+        CXXFLAGS="${CXXFLAGS:+$CXXFLAGS} -DHNSW_DATA_TYPE=uint8_t"
+        CXXFLAGS="${CXXFLAGS:+$CXXFLAGS} -DHNSW_DIST_FUNC=l2"
+        ;;
+      msspacev)
+        CXXFLAGS="${CXXFLAGS:+$CXXFLAGS} -DHNSW_DATA_TYPE=int8_t"
+        CXXFLAGS="${CXXFLAGS:+$CXXFLAGS} -DHNSW_DIST_FUNC=l2"
+        ;;
+      text2image)
+        CXXFLAGS="${CXXFLAGS:+$CXXFLAGS} -DHNSW_DATA_TYPE=float"
+        CXXFLAGS="${CXXFLAGS:+$CXXFLAGS} -DHNSW_DIST_FUNC=ndot"
+        ;;
+      *) echo "Unknown dataset name: $dataset_prefix"; exit 1 ;;
+    esac
 
     CC=$MPICC CXX=$MPICXX cmake -DCMAKE_CXX_FLAGS="$CXXFLAGS" $CMAKE_OPTIONS .
     make clean
@@ -68,8 +85,10 @@ run:
     dataset_suffix=${KOCHI_PARAM_DATASET#*-}
 
     case $dataset_suffix in
-      1M) dataset_nb=1000000 ;;
-      *)  echo "Unknown dataset scale: $dataset_suffix"; exit 1 ;;
+      1M)   dataset_nb=1000000 ;;
+      10M)  dataset_nb=10000000 ;;
+      100M) dataset_nb=100000000 ;;
+      *)    echo "Unknown dataset scale: $dataset_suffix"; exit 1 ;;
     esac
 
     if [[ $KOCHI_PARAM_N_POINTS == default ]]; then
@@ -83,6 +102,17 @@ run:
     fi
 
     case $dataset_prefix in
+      bigann)
+        opts="$opts -type uint8"
+        opts="$opts -dist L2"
+        opts="$opts -m 32"
+        opts="$opts -efc 128"
+        opts="$opts -alpha 0.82"
+        opts="$opts -in ${KOCHI_INSTALL_PREFIX_BIG_ANNS}/bigann/base.1B.u8bin.crop_nb_${dataset_nb}:u8bin"
+        opts="$opts -q ${KOCHI_INSTALL_PREFIX_BIG_ANNS}/bigann/query.public.10K.u8bin:u8bin"
+        opts="$opts -g ${KOCHI_INSTALL_PREFIX_BIG_ANNS}/bigann/bigann-${dataset_suffix}:ubin"
+        opts="$opts -th 0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,0.95,0.99,0.999"
+        ;;
       msspacev)
         opts="$opts -type int8"
         opts="$opts -dist L2"
@@ -93,6 +123,21 @@ run:
         opts="$opts -q ${KOCHI_INSTALL_PREFIX_BIG_ANNS}/MSSPACEV1B/query.i8bin:i8bin"
         opts="$opts -g ${KOCHI_INSTALL_PREFIX_BIG_ANNS}/MSSPACEV1B/msspacev-gt-${dataset_suffix}:ubin"
         opts="$opts -th 0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,0.95,0.99"
+        ;;
+      text2image)
+        opts="$opts -type float"
+        opts="$opts -dist ndot"
+        opts="$opts -m 32"
+        opts="$opts -efc 128"
+        opts="$opts -alpha 1.1"
+        opts="$opts -in ${KOCHI_INSTALL_PREFIX_BIG_ANNS}/text2image1B/base.1B.fbin.crop_nb_${dataset_nb}:fbin"
+        opts="$opts -q ${KOCHI_INSTALL_PREFIX_BIG_ANNS}/text2image1B/query.public.100K.fbin:fbin"
+        opts="$opts -g ${KOCHI_INSTALL_PREFIX_BIG_ANNS}/text2image1B/text2image-${dataset_suffix}:ubin"
+        case $dataset_suffix in
+          1M)   opts="$opts -th 0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,0.95,0.99,0.999" ;;
+          10M)  opts="$opts -th 0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,0.95,0.99" ;;
+          100M) opts="$opts -th 0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,0.95" ;;
+        esac
         ;;
       *) echo "Unknown dataset name: $dataset_prefix"; exit 1 ;;
     esac

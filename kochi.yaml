@@ -213,5 +213,32 @@ dependencies:
     recipes:
       - name: dataset
         script: |
+          # repeat downloading bigann to avoid an error:
+          # https://github.com/harsha-simhadri/big-ann-benchmarks/issues/127
+          python3 create_dataset.py --dataset bigann-10M
+          python3 create_dataset.py --dataset bigann-10M
+          python3 create_dataset.py --dataset bigann-10M
+          # python3 create_dataset.py --dataset bigann-100M
+          # python3 create_dataset.py --dataset bigann-100M
+          # python3 create_dataset.py --dataset bigann-100M
           python3 create_dataset.py --dataset msspacev-1M
+          python3 create_dataset.py --dataset msspacev-10M
+          # python3 create_dataset.py --dataset msspacev-100M
+          python3 create_dataset.py --dataset text2image-1M
+          python3 create_dataset.py --dataset text2image-10M
+          # python3 create_dataset.py --dataset text2image-100M
           mv data/* ${KOCHI_INSTALL_PREFIX}
+          # post-processing (benchmarks/ANN/scripts/prepare_datasets.sh)
+          git clone https://github.com/cmuparlay/pbbsbench-vldb2024.git
+          cd pbbsbench-vldb2024/
+          git checkout 41ca799915f6a716b6fce7793d17040ab0dfe6c4
+          git submodule update --init
+          cd benchmarks/ANN/vamana/
+          make -j compute_groundtruth crop_sift
+          # generate bigann-1M dataset and groundtruth
+          BP=${KOCHI_INSTALL_PREFIX}/bigann
+          ./crop_sift $BP/base.1B.u8bin.crop_nb_10000000 $BP/base.1B.u8bin.crop_nb_1000000
+          ./compute_groundtruth $BP/base.1B.u8bin.crop_nb_1000000 $BP/query.public.10K.u8bin "bin" "uint8" 100 0 $BP/bigann-1M
+          # generate text2image-1M groundtruth
+          TP=${KOCHI_INSTALL_PREFIX}/text2image1B
+          ./compute_groundtruth $TP/base.1B.fbin.crop_nb_1000000 $TP/query.public.100K.fbin "bin" "float" 100 1 $TP/text2image-1M

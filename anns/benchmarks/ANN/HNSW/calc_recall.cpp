@@ -12,6 +12,21 @@
 #include "dist.hpp"
 using ANN::HNSW;
 
+#ifndef HNSW_DATA_TYPE
+#define HNSW_DATA_TYPE uint8_t
+/* #define HNSW_DATA_TYPE int8_t */
+/* #define HNSW_DATA_TYPE float */
+#endif
+
+#ifndef HNSW_DIST_FUNC
+#define HNSW_DIST_FUNC l2
+/* #define HNSW_DIST_FUNC ang */
+/* #define HNSW_DIST_FUNC ndot */
+#endif
+
+#define HNSW_CONCAT_(x, y) x##y
+#define HNSW_CONCAT(x, y) HNSW_CONCAT_(x, y)
+
 ityr::global_vector<size_t> per_visited;
 ityr::global_vector<size_t> per_eval;
 ityr::global_vector<size_t> per_size_C;
@@ -466,28 +481,14 @@ int main(int argc, char **argv)
 		"-le <limit_num_eval> [-w <warmup>] [-rad radius (for range search)] [-mf <max_fraction>]"
 	);
 
-	const char *dist_func = parameter.getOptionValue("-dist");
+	/* const char *dist_func = parameter.getOptionValue("-dist"); */
 	auto run_test_helper = [&](auto type){ // emulate a generic lambda in C++20
 		using T = decltype(type);
-		if(!strcmp(dist_func,"L2"))
-			run_test<descr_l2<T>>(parameter);
-		/* else if(!strcmp(dist_func,"angular")) */
-		/* 	run_test<descr_ang<T>>(parameter); */
-		/* else if(!strcmp(dist_func,"ndot")) */
-		/* 	run_test<descr_ndot<T>>(parameter); */
-		else throw std::invalid_argument("Unsupported distance type");
+                run_test<HNSW_CONCAT(descr_, HNSW_DIST_FUNC)<T>>(parameter);
 	};
 
-	const char* type = parameter.getOptionValue("-type");
-	/* if(!strcmp(type,"uint8")) */
-	/* 	run_test_helper(uint8_t{}); */
-	/* else if(!strcmp(type,"int8")) */
-	/* 	run_test_helper(int8_t{}); */
-	/* else if(!strcmp(type,"float")) */
-	/* 	run_test_helper(float{}); */
-	if(!strcmp(type,"int8"))
-		run_test_helper(int8_t{});
-	else throw std::invalid_argument("Unsupported element type");
+	/* const char* type = parameter.getOptionValue("-type"); */
+        run_test_helper(HNSW_DATA_TYPE{});
 
   ityr::fini();
 
