@@ -258,6 +258,16 @@ public:
 	Allocator<node> allocator;
         ityr::global_vector<node> node_pool;
 
+        struct edge {
+          node_id src;
+          node_id dst;
+        };
+
+        ityr::global_vector<ityr::global_vector<node_id>> eps_batch;
+        ityr::global_vector<ityr::global_vector<edge>> edge_add_batch;
+        ityr::global_vector<std::size_t> edge_indices_batch;
+        ityr::global_vector<edge> edge_add_flatten;
+
         mutable std::size_t total_visited = 0;
         mutable std::size_t total_eval = 0;
         mutable std::size_t total_size_C = 0;
@@ -801,7 +811,11 @@ template<typename Iter>
 HNSW<U,Allocator>::HNSW(Iter begin, Iter end, uint32_t dim_, float m_l_, uint32_t m_, uint32_t ef_construction_, float alpha_, float batch_base, bool do_fixing [[maybe_unused]])
 	: entrance(ityr::global_vector_options(true, 1024)), // coll
           dim(dim_), m_l(m_l_), m(m_), ef_construction(ef_construction_), alpha(alpha_), n(std::distance(begin,end)),
-          node_pool(ityr::global_vector_options(true, 1024)) // coll
+          node_pool(ityr::global_vector_options(true, 1024)),
+          eps_batch(ityr::global_vector_options(true, 1024)),
+          edge_add_batch(ityr::global_vector_options(true, 1024)),
+          edge_indices_batch(ityr::global_vector_options(true, 1024)),
+          edge_add_flatten(ityr::global_vector_options(true, 1024))
 {
 	static_assert(std::is_same_v<typename std::iterator_traits<Iter>::value_type, T>);
 	static_assert(std::is_base_of_v<
@@ -864,6 +878,12 @@ HNSW<U,Allocator>::HNSW(Iter begin, Iter end, uint32_t dim_, float m_l_, uint32_
 
         ityr::profiler_end();
         ityr::profiler_flush();
+
+        // destroy
+        eps_batch = {};
+        edge_add_batch = {};
+        edge_indices_batch = {};
+        edge_add_flatten = {};
 #if 0
 	if(do_fixing) fix_edge();
 #endif
@@ -891,16 +911,17 @@ template<typename U, template<typename> class Allocator>
 template<typename Iter, typename Rng>
 void HNSW<U,Allocator>::insert(Iter begin, Iter end, bool from_blank, Rng&& rng)
 {
+  const auto size_batch = std::distance(begin,end);
+  eps_batch.resize(size_batch);
+  edge_add_batch.resize(size_batch);
+  edge_indices_batch.resize(size_batch + 1, 0);
+
       ityr::root_exec([=, rng = rng.split()]() mutable {
         timer t;
-
-        ityr::global_vector_options global_vec_coll_opts(true, 1024);
 
         auto e_cs = ityr::make_checkout(&node_pool[entrance[0].get()], 1, ityr::checkout_mode::read);
 	const auto level_ep = e_cs[0].level;
         e_cs.checkin();
-	const auto size_batch = std::distance(begin,end);
-        ityr::global_vector<ityr::global_vector<node_id>> eps(global_vec_coll_opts, size_batch);
 	//const float factor_m = from_blank? 0.5: 1;
 	const auto factor_m = 1;
 
@@ -935,24 +956,17 @@ void HNSW<U,Allocator>::insert(Iter begin, Iter end, bool from_blank, Rng&& rng)
 #endif
 	}
 
-        struct edge {
-          node_id src;
-          node_id dst;
-        };
-
-        ityr::global_vector<ityr::global_vector<edge>> edge_add(global_vec_coll_opts, size_batch);
-
-        ityr::global_vector<std::size_t> edge_indices(global_vec_coll_opts, size_batch + 1, 0);
-
 	debug_output("insert: prologue: %.4f\n", t.tick_s());
 	debug_output("Nodes are settled\n");
 	// TODO: merge ops
         ityr::transform(
             ityr::execution::par,
-            node_pool.begin() + offset, node_pool.end(), eps.begin(),
+            node_pool.begin() + offset, node_pool.end(), eps_batch.begin(),
             [=](const node& u) {
               const auto level_u = u.level;
-              ityr::global_vector<node_id> eps_u(entrance.begin(), entrance.end());
+              ityr::global_vector<node_id> eps_u(
+                  ityr::make_global_iterator(entrance.begin(), ityr::checkout_mode::read),
+                  ityr::make_global_iterator(entrance.end()  , ityr::checkout_mode::read));
               // eps_u.push_back(entrance);
               for(uint32_t l=level_ep; l>level_u; --l)
               {
@@ -977,10 +991,12 @@ void HNSW<U,Allocator>::insert(Iter begin, Iter end, bool from_blank, Rng&& rng)
                     ityr::execution::par,
                     ityr::make_global_iterator(node_pool.begin() + offset, ityr::checkout_mode::read),
                     ityr::make_global_iterator(node_pool.end()           , ityr::checkout_mode::read),
-                    ityr::make_global_iterator(eps.begin()               , ityr::checkout_mode::read_write),
-                    ityr::make_global_iterator(edge_add.begin()          , ityr::checkout_mode::read_write),
+                    ityr::make_global_iterator(eps_batch.begin()         , ityr::checkout_mode::read_write),
+                    ityr::make_global_iterator(edge_add_batch.begin()    , ityr::checkout_mode::read_write),
                     ityr::count_iterator<node_id>(offset),
                     [=](node& u, auto& eps_u, auto& edge_u, node_id pu) {
+                      edge_u.clear();
+
                       if((uint32_t)l_c>u.level) return;
 
 #if DEBUG_OUTPUT
@@ -992,7 +1008,6 @@ void HNSW<U,Allocator>::insert(Iter begin, Iter end, bool from_blank, Rng&& rng)
 #endif
                       auto neighbors_vec = select_neighbors(u.data, res, get_threshold_m(l_c)*factor_m, l_c);
                       // nbh_u.clear();
-                      edge_u.clear();
                       // nbh_u.reserve(neighbors_vec.size());
                       edge_u.resize(neighbors_vec.size());
                       /*
@@ -1038,26 +1053,24 @@ void HNSW<U,Allocator>::insert(Iter begin, Iter end, bool from_blank, Rng&& rng)
 		debug_output("Adding reverse edges\n");
 		// now we add edges in the other direction
 		/* auto edge_add_flatten = parlay::flatten(edge_add); */
-                ityr::global_vector<edge> edge_add_flatten(global_vec_coll_opts);
-
                 ityr::transform_inclusive_scan(
                     ityr::execution::parallel_policy(1024),
-                    edge_add.begin(), edge_add.end(), edge_indices.begin() + 1,
+                    edge_add_batch.begin(), edge_add_batch.end(), edge_indices_batch.begin() + 1,
                     ityr::reducer::plus<std::size_t>{},
                     [](const auto& edge_u) { return edge_u.size(); });
 
-                edge_add_flatten.resize(edge_indices.back().get());
-
-                ityr::global_span<edge> edge_add_flatten_ref(edge_add_flatten);
+                ityr::coll_exec([this, n_total_edges = edge_indices_batch.back().get()] {
+                  edge_add_flatten.resize(n_total_edges);
+                });
 
                 ityr::for_each(
                     ityr::execution::par,
-                    ityr::make_global_iterator(edge_add.begin()    , ityr::checkout_mode::read),
-                    ityr::make_global_iterator(edge_add.end()      , ityr::checkout_mode::read),
-                    ityr::make_global_iterator(edge_indices.begin(), ityr::checkout_mode::read),
+                    ityr::make_global_iterator(edge_add_batch.begin()    , ityr::checkout_mode::read),
+                    ityr::make_global_iterator(edge_add_batch.end()      , ityr::checkout_mode::read),
+                    ityr::make_global_iterator(edge_indices_batch.begin(), ityr::checkout_mode::read),
                     [=](auto& edge_u, std::size_t index_b) {
                       ityr::move(ityr::execution::sequenced_policy(1024),
-                                 edge_u.begin(), edge_u.end(), edge_add_flatten_ref.begin() + index_b);
+                                 edge_u.begin(), edge_u.end(), edge_add_flatten.begin() + index_b);
                     });
 
                 debug_output("insert: flatten (level %d): %.4f\n", l_c, t.tick_s());
@@ -1625,7 +1638,9 @@ ityr::global_vector<std::pair<uint32_t,float>> HNSW<U,Allocator>::search(const T
 
 	node u{0, {}, q}; // To optimize
 	// std::priority_queue<dist,parlay::sequence<dist>,farthest> W;
-        ityr::global_vector<node_id> eps(entrance.begin(), entrance.end());
+        ityr::global_vector<node_id> eps(
+            ityr::make_global_iterator(entrance.begin(), ityr::checkout_mode::read),
+            ityr::make_global_iterator(entrance.end()  , ityr::checkout_mode::read));
 	if(!ctrl.indicate_ep) {
           auto e_cs = ityr::make_checkout(&node_pool[entrance[0].get()], 1, ityr::checkout_mode::read);
 		for(int l_c=e_cs[0].level; l_c>0; --l_c) // TODO: fix the type
