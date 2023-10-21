@@ -186,7 +186,7 @@ public:
 		batch_base: 		growth rate of the batch size (discarded because of two passes)
 	*/
 	template<typename Iter>
-	HNSW(Iter begin, Iter end, uint32_t dim, float m_l=1, uint32_t m=100, uint32_t ef_construction=50, float alpha=5, float batch_base=2, bool do_fixing=false);
+	HNSW(Iter begin, Iter end, uint32_t dim, float m_l=1, uint32_t m=100, uint32_t ef_construction=50, float alpha=5, float batch_base=2, float max_fraction=0.02, bool do_fixing=false);
 
 #if 0
 	/*
@@ -808,7 +808,7 @@ HNSW<U,Allocator>::HNSW(const std::string &filename_model, G getter)
 
 template<typename U, template<typename> class Allocator>
 template<typename Iter>
-HNSW<U,Allocator>::HNSW(Iter begin, Iter end, uint32_t dim_, float m_l_, uint32_t m_, uint32_t ef_construction_, float alpha_, float batch_base, bool do_fixing [[maybe_unused]])
+HNSW<U,Allocator>::HNSW(Iter begin, Iter end, uint32_t dim_, float m_l_, uint32_t m_, uint32_t ef_construction_, float alpha_, float batch_base, float max_fraction, bool do_fixing [[maybe_unused]])
 	: entrance(ityr::global_vector_options(true, 1024)), // coll
           dim(dim_), m_l(m_l_), m(m_), ef_construction(ef_construction_), alpha(alpha_), n(std::distance(begin,end)),
           node_pool(ityr::global_vector_options(true, 1024)),
@@ -843,7 +843,7 @@ HNSW<U,Allocator>::HNSW(Iter begin, Iter end, uint32_t dim_, float m_l_, uint32_
 
         ityr::profiler_begin();
 
-	uint32_t batch_begin=0, batch_end=1, size_limit=n*0.02;
+	uint32_t batch_begin=0, batch_end=1, size_limit=n*max_fraction;
 	float progress = 0.0;
 	while(batch_end<n)
 	{

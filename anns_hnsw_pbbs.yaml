@@ -12,6 +12,7 @@ default_params:
     - value: 6
       machines: [local]
   dataset: msspacev-1M
+  max_fraction: 0.02
 
 default_name: anns_hnsw_pbbs
 default_queue: node_${nodes}
@@ -26,7 +27,7 @@ build:
     $CXX -O3 -g -std=c++17 -Wall -Wextra -Wl,--unresolved-symbols=ignore-all -I../bench ${CXXFLAGS:+$CXXFLAGS} -o calc_recall calc_recall.cpp -lpthread
 
 run:
-  depend_params: [nodes, cores, dataset]
+  depend_params: [max_fraction, nodes, cores, dataset]
   script: |
     source run_common.bash
 
@@ -73,5 +74,7 @@ run:
     export limit_eval=1
     export thread=$KOCHI_PARAM_CORES
     export RESULT_PREFIX=$(pwd)/results
+
+    export max_fraction=$KOCHI_PARAM_MAX_FRACTION
 
     bash run_HNSW_single.sh

@@ -16,6 +16,7 @@ default_params:
   dataset: msspacev-1M
   n_points: default
   n_queries: default
+  max_fraction: 0.02
   # common params
   serial: 0
   sched: randws # randws/adws
@@ -48,7 +49,7 @@ build:
     make -j anns_hnsw
 
 run:
-  depend_params: [nodes, cores, dataset, n_points, n_queries, serial, sched, cache_policy, cache_size, sub_block_size, max_dirty, noncoll_alloc_size, shared_mem, prof, debugger]
+  depend_params: [nodes, cores, dataset, n_points, n_queries, max_fraction, serial, sched, cache_policy, cache_size, sub_block_size, max_dirty, noncoll_alloc_size, shared_mem, prof, debugger]
   script: |
     source run_common.bash
 
@@ -101,6 +102,7 @@ run:
     opts="$opts -beta 1"
     opts="$opts -w 0"
     opts="$opts -le 1"
+    opts="$opts -mf $KOCHI_PARAM_MAX_FRACTION"
 
     commands="./anns_hnsw_${config_name}.out $opts"
 

@@ -370,6 +370,7 @@ void run_test(commandLine parameter) // intend to be pass-by-value manner
 	const uint32_t efc = parameter.getOptionIntValue("-efc", 60);
 	const float alpha = parameter.getOptionDoubleValue("-alpha", 1);
 	const float batch_base = parameter.getOptionDoubleValue("-b", 2);
+	const float max_fraction = parameter.getOptionDoubleValue("-mf", 0.02);
 	const bool do_fixing = !!parameter.getOptionIntValue("-f", 0);
 #if 0
 	const char *file_out = parameter.getOptionValue("-out");
@@ -395,7 +396,7 @@ void run_test(commandLine parameter) // intend to be pass-by-value manner
 	static std::optional<HNSW<U>> g;
         g.emplace(
 		ps.begin(), ps.end(), dim,
-		m_l, m, efc, alpha, batch_base, do_fixing
+		m_l, m, efc, alpha, batch_base, max_fraction, do_fixing
 	);
         my_printf("HNSW: Build index: %.4f\n", t.tick_s());
 
@@ -462,7 +463,7 @@ int main(int argc, char **argv)
 		"-efc <ef_construction> -alpha <alpha> -f <symmEdge> [-b <batchBase>] "
 		"-in <inFile> -out <outFile> -q <queryFile> -g <groundtruthFile> [-k <numQuery>=all] "
 		"-ef <ef_query>,... -r <recall@R>,... -th <threshold>,... [-beta <beta>,...] "
-		"-le <limit_num_eval> [-w <warmup>] [-rad radius (for range search)]"
+		"-le <limit_num_eval> [-w <warmup>] [-rad radius (for range search)] [-mf <max_fraction>]"
 	);
 
 	const char *dist_func = parameter.getOptionValue("-dist");

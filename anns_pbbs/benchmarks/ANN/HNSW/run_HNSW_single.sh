@@ -19,6 +19,7 @@
 # save_graph
 # thread
 # limit_eval
+# max_fraction
 algo="HNSW"
 RESULT_DIR=${RESULT_PREFIX}/${algo}/$dataset/m${m}_efc${efc}_a${alpha}_${dist}_${dtype}_le${limit_eval}_thread${thread}
 
@@ -31,7 +32,7 @@ echo "Running for the first ${scale} million points on ${dataset}"
 param_basic="-n $((scale*1000000)) -type ${dtype} -dist ${dist}"
 param_building="-ml 0.36 -m ${m} -efc ${efc} -alpha ${alpha} -b 2 -f 0 -in ${file_in}"
 param_query="-q ${file_q} -g ${file_gt} -ef ${ef} -r ${rr} -beta ${beta} -th ${th}"
-param_other="-w ${warmup} -le ${limit_eval}"
+param_other="-w ${warmup} -le ${limit_eval} -mf ${max_fraction}"
 if [ -n "$rad" ]; then
 	param_other="${param_other} -rad ${rad}"
 fi
