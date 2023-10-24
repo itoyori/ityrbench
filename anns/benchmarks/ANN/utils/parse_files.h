@@ -86,7 +86,9 @@ void add_null_graph(parlay::sequence<Tvec_point<T>> &points, int maxDeg){
 
 template<typename T>
 int add_saved_graph(parlay::sequence<Tvec_point<T>> &points, const char* gFile){
-    auto [graphptr, graphlength] = mmapStringFromFile(gFile);
+    /* auto [graphptr, graphlength] = mmapStringFromFile(gFile); */
+    auto graphptr_length = mmapStringFromFile(gFile);
+    auto& graphptr = std::get<0>(graphptr_length);
     int maxDeg = *((int*)(graphptr+4));
     int num_points = *((int*)graphptr);
     if(num_points != points.size()){
@@ -124,7 +126,9 @@ void write_graph(parlay::sequence<Tvec_point<T>*> &v, char* outFile, int maxDeg)
 // *************************************************************
 
 auto parse_uint8bin(const char* filename, const char* gFile, int maxDeg){
-    auto [fileptr, length] = mmapStringFromFile(filename);
+    /* auto [fileptr, length] = mmapStringFromFile(filename); */
+    auto fileptr_length = mmapStringFromFile(filename);
+    auto& fileptr = std::get<0>(fileptr_length);
 
     int num_vectors = *((int*) fileptr);
     int d = *((int*) (fileptr+4));
@@ -149,7 +153,9 @@ auto parse_uint8bin(const char* filename, const char* gFile, int maxDeg){
 }
 
 auto parse_int8bin(const char* filename, const char* gFile, int maxDeg){
-    auto [fileptr, length] = mmapStringFromFile(filename);
+    /* auto [fileptr, length] = mmapStringFromFile(filename); */
+    auto fileptr_length = mmapStringFromFile(filename);
+    auto& fileptr = std::get<0>(fileptr_length);
 
     int num_vectors = *((int*) fileptr);
     int d = *((int*) (fileptr+4));
@@ -174,7 +180,9 @@ auto parse_int8bin(const char* filename, const char* gFile, int maxDeg){
 }
 
 auto parse_fbin(const char* filename, const char* gFile, int maxDeg){
-    auto [fileptr, length] = mmapStringFromFile(filename);
+    /* auto [fileptr, length] = mmapStringFromFile(filename); */
+    auto fileptr_length = mmapStringFromFile(filename);
+    auto& fileptr = std::get<0>(fileptr_length);
 
     int num_vectors = *((int*) fileptr);
     int d = *((int*) (fileptr+4));
@@ -226,7 +234,9 @@ auto parse_fbin(const char* filename, const char* gFile, int maxDeg){
 // }
 
 auto parse_ibin(const char* filename){
-    auto [fileptr, length] = mmapStringFromFile(filename);
+    /* auto [fileptr, length] = mmapStringFromFile(filename); */
+    auto fileptr_length = mmapStringFromFile(filename);
+    auto& fileptr = std::get<0>(fileptr_length);
 
     int num_vectors = *((int*) fileptr);
     int d = *((int*) (fileptr+4));
@@ -253,7 +263,10 @@ auto parse_ibin(const char* filename){
 // *************************************************************
 
 auto parse_fvecs(const char* filename, const char* gFile, int maxDeg) {
-  auto [fileptr, length] = mmapStringFromFile(filename);
+  /* auto [fileptr, length] = mmapStringFromFile(filename); */
+  auto fileptr_length = mmapStringFromFile(filename);
+  auto& fileptr = std::get<0>(fileptr_length);
+  auto& length = std::get<1>(fileptr_length);
 
   // Each vector is 4 + 4*d bytes.
   // * first 4 bytes encode the dimension (as an integer)
@@ -286,7 +299,10 @@ auto parse_fvecs(const char* filename, const char* gFile, int maxDeg) {
 
 auto parse_bvecs(const char* filename, const char* gFile, int maxDeg) {
 
-  auto [fileptr, length] = mmapStringFromFile(filename);
+  /* auto [fileptr, length] = mmapStringFromFile(filename); */
+  auto fileptr_length = mmapStringFromFile(filename);
+  auto& fileptr = std::get<0>(fileptr_length);
+  auto& length = std::get<1>(fileptr_length);
   // Each vector is 4 + d bytes.
   // * first 4 bytes encode the dimension (as an integer)
   // * next d values are unsigned chars representing vector components
@@ -315,7 +331,10 @@ auto parse_bvecs(const char* filename, const char* gFile, int maxDeg) {
 }
 
 auto parse_ivecs(const char* filename) {
-  auto [fileptr, length] = mmapStringFromFile(filename);
+  /* auto [fileptr, length] = mmapStringFromFile(filename); */
+  auto fileptr_length = mmapStringFromFile(filename);
+  auto& fileptr = std::get<0>(fileptr_length);
+  auto& length = std::get<1>(fileptr_length);
 
   // Each vector is 4 + 4*d bytes.
   // * first 4 bytes encode the dimension (as an integer)
@@ -345,7 +364,9 @@ auto parse_ivecs(const char* filename) {
 // *************************************************************
 
 auto parse_rangeres(const char* filename){
-    auto [fileptr, length] = mmapStringFromFile(filename);
+    /* auto [fileptr, length] = mmapStringFromFile(filename); */
+    auto fileptr_length = mmapStringFromFile(filename);
+    auto& fileptr = std::get<0>(fileptr_length);
     int num_points = *((int*) fileptr);
     int num_matches = *((int*) (fileptr+4));
     
@@ -353,7 +374,10 @@ auto parse_rangeres(const char* filename){
     int* start = (int*)(fileptr+8);
     int* end = start + num_points;
     parlay::slice<int*, int*> num_results = parlay::make_slice(start, end);
-    auto [offsets, total] = parlay::scan(num_results);
+    /* auto [offsets, total] = parlay::scan(num_results); */
+    auto offsets_total = parlay::scan(num_results);
+    auto& offsets = std::get<0>(offsets_total);
+    auto& total = std::get<1>(offsets_total);
     offsets.push_back(total);
     parlay::sequence<ivec_point> points(num_points);
 
