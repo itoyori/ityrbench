@@ -1,0 +1,88 @@
+depends:
+  - name: big-anns
+    recipe: dataset
+
+default_params:
+  nodes: 1
+  cores:
+    - value: 48
+      machines: [wisteria-o]
+    - value: 76
+      machines: [squid-c]
+    - value: 6
+      machines: [local]
+  dataset: msspacev-1M
+  max_fraction: 0.02
+
+default_name: anns_hcnng_pbbs
+default_queue: node_${nodes}
+default_duplicates: 1
+
+build:
+  depend_params: []
+  script: |
+    source build_common.bash
+
+    cd anns_pbbs/benchmarks/ANN/HCNNG
+    $CXX -O3 -g -DNDEBUG -std=c++17 -I. -include ./neighbors.h -DHOMEGROWN ${CXXFLAGS:+$CXXFLAGS} -o neighbors ../bench/neighborsTime.C -lpthread -ldl
+
+run:
+  depend_params: [max_fraction, nodes, cores, dataset]
+  script: |
+    source run_common.bash
+
+    n_nodes=$(echo $KOCHI_PARAM_NODES | cut -f 1 -d ":" | sed 's/x/*/g' | bc)
+    if [[ $n_nodes != 1 ]]; then
+      echo "The number of nodes must be 1."
+      exit 1
+    fi
+
+    cd anns_pbbs/benchmarks/ANN/HCNNG
+
+    opts=""
+    opts="$opts -a 1000"
+    opts="$opts -R 3"
+    opts="$opts -b 1"
+
+    dataset_prefix=${KOCHI_PARAM_DATASET%-*}
+    dataset_suffix=${KOCHI_PARAM_DATASET#*-}
+
+    case $dataset_suffix in
+      1M)   dataset_nb=1000000 ;;
+      10M)  dataset_nb=10000000 ;;
+      100M) dataset_nb=100000000 ;;
+      *)    echo "Unknown dataset scale: $dataset_suffix"; exit 1 ;;
+    esac
+
+    case $dataset_prefix in
+      bigann)
+        opts="$opts -L 30"
+        opts="$opts -f bin"
+        opts="$opts -t uint8"
+        opts="$opts -q ${KOCHI_INSTALL_PREFIX_BIG_ANNS}/bigann/query.public.10K.u8bin"
+        opts="$opts -c ${KOCHI_INSTALL_PREFIX_BIG_ANNS}/bigann/bigann-${dataset_suffix}"
+        opts="$opts ${KOCHI_INSTALL_PREFIX_BIG_ANNS}/bigann/base.1B.u8bin.crop_nb_${dataset_nb}"
+        ;;
+      msspacev)
+        opts="$opts -L 50"
+        opts="$opts -f bin"
+        opts="$opts -t int8"
+        opts="$opts -q ${KOCHI_INSTALL_PREFIX_BIG_ANNS}/MSSPACEV1B/query.i8bin"
+        opts="$opts -c ${KOCHI_INSTALL_PREFIX_BIG_ANNS}/MSSPACEV1B/msspacev-gt-${dataset_suffix}"
+        opts="$opts ${KOCHI_INSTALL_PREFIX_BIG_ANNS}/MSSPACEV1B/spacev1b_base.i8bin.crop_nb_${dataset_nb}"
+        ;;
+      text2image)
+        opts="$opts -L 30"
+        opts="$opts -f bin"
+        opts="$opts -t float"
+        opts="$opts -D 1"
+        opts="$opts -q ${KOCHI_INSTALL_PREFIX_BIG_ANNS}/text2image1B/query.public.100K.fbin"
+        opts="$opts -c ${KOCHI_INSTALL_PREFIX_BIG_ANNS}/text2image1B/text2image-${dataset_suffix}"
+        opts="$opts ${KOCHI_INSTALL_PREFIX_BIG_ANNS}/text2image1B/base.1B.fbin.crop_nb_${dataset_nb}"
+        ;;
+      *) echo "Unknown dataset name: $dataset_prefix"; exit 1 ;;
+    esac
+
+    export PARLAY_NUM_THREADS=$KOCHI_PARAM_CORES
+
+    ./neighbors $opts
