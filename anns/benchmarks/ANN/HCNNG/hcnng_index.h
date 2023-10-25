@@ -21,10 +21,9 @@
 // WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include <algorithm>
-#include "parlay/parallel.h"
-#include "parlay/primitives.h"
-#include "parlay/random.h"
+#if 0
 #include "common/geometry.h"
+#endif
 #include "../utils/clusterEdge.h"
 #include <random>
 #include <set>
@@ -39,7 +38,9 @@ struct hcnng_index{
 	unsigned d;
 	bool mips;
 	using tvec_point = Tvec_point<T>;
+#if 0
 	using slice_tvec = decltype(make_slice(parlay::sequence<tvec_point*>()));
+#endif
 	using edge = std::pair<int, int>;
 	using labelled_edge = std::pair<edge, float>;
 	using pid = std::pair<int, float>;
@@ -51,24 +52,23 @@ struct hcnng_index{
 		else return distance(p, q, d);
 	}
 
-	void remove_edge_duplicates(tvec_point* p){
-		parlay::sequence<int> points;
-		for(int i=0; i<size_of(p->out_nbh); i++){
-			points.push_back(p->out_nbh[i]);
-		}
-		auto np = parlay::remove_duplicates(points);
-		add_out_nbh(np, p);
-	}
-
-	void remove_all_duplicates(parlay::sequence<tvec_point*> &v){
-		parlay::parallel_for(0, v.size(), [&] (size_t i){
-			remove_edge_duplicates(v[i]);
-		});
+	void remove_all_duplicates(ityr::global_span<tvec_point> v){
+          ityr::root_exec([=] {
+            ityr::for_each(
+              ityr::execution::parallel_policy(1024),
+              ityr::make_global_iterator(v.begin(), ityr::checkout_mode::read),
+              ityr::make_global_iterator(v.end(),   ityr::checkout_mode::read),
+              [=](tvec_point& p) {
+                cluster<T>::remove_edge_duplicates(p);
+              });
+          });
 	}
 
 
-	void build_index(parlay::sequence<tvec_point*> &v, int cluster_rounds, size_t cluster_size){ 
+	void build_index(ityr::global_span<tvec_point> v, int cluster_rounds, size_t cluster_size){ 
+          if (ityr::is_master()) {
 		std::cout << "Mips: " << mips << std::endl;
+          }
 		clear(v); 
 		cluster<T> C(d, mips);
 		C.multiple_clustertrees(v, cluster_size, cluster_rounds, d, maxDeg);

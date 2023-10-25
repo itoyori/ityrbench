@@ -21,21 +21,21 @@
 // WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include <algorithm>
-#include "parlay/parallel.h"
-#include "parlay/primitives.h"
+#if 0
 #include "common/geometry.h"
+#endif
 #include "indexTools.h"
 #include <set>
 #include "types.h"
-// #include "parse_results.h"
+#include "parse_results.h"
 #include "beamSearch.h"
 #include "csvfile.h"
 
 template<typename T>
 nn_result checkRecall(
-        parlay::sequence<Tvec_point<T>*> &v,
-        parlay::sequence<Tvec_point<T>*> &q,
-        parlay::sequence<ivec_point> groundTruth,
+        ityr::global_span<Tvec_point<T>> v,
+        ityr::global_span<Tvec_qpoint<T>> q,
+        ityr::global_span<ivec_point> groundTruth,
         int k,
         int beamQ,
         float cut,
@@ -44,23 +44,30 @@ nn_result checkRecall(
         int limit,
         int start_point,
         bool mips) {
-  parlay::internal::timer t;
+  timer t;
   int r = 10;
   float query_time;
   if(random){
     beamSearchRandom(q, v, beamQ, k, d, mips, cut, limit);
-    t.next_time();
+    t.tick_s();
     beamSearchRandom(q, v, beamQ, k, d, mips, cut, limit);
-    query_time = t.next_time();
+    query_time = t.tick_s();
   }else{
+#if 0
     searchAll(q, v, beamQ, k, d, v[start_point], mips, cut, limit);
     t.next_time();
     searchAll(q, v, beamQ, k, d, v[start_point], mips, cut, limit);
     query_time = t.next_time();
+#else
+    (void)start_point;
+    std::cout << "Error: only random search is supported" << std::endl;
+    abort();
+#endif
   }
   float recall = 0.0;
-  bool dists_present = (groundTruth[0].distances.size() != 0);
+  bool dists_present = (groundTruth[0].get().distances.size() != 0);
   if (groundTruth.size() > 0 && !dists_present) {
+#if 0
     size_t n = q.size();
     int numCorrect = 0;
     for(int i=0; i<n; i++){
@@ -73,28 +80,40 @@ nn_result checkRecall(
       }
     }
     recall = static_cast<float>(numCorrect)/static_cast<float>(r*n);
+#else
+    std::cout << "Error: distances should be available" << std::endl;
+    abort();
+#endif
   }else if(groundTruth.size() > 0 && dists_present){
-    size_t n = q.size();
-    int numCorrect = 0;
-    for(int i=0; i<n; i++){
-      parlay::sequence<int> results_with_ties;
-      for(int l=0; l<r; l++) results_with_ties.push_back(groundTruth[i].coordinates[l]);
-      float last_dist = groundTruth[i].distances[r-1];
-      for(int l=r; l<groundTruth[i].coordinates.size(); l++){
-        if(groundTruth[i].distances[l] == last_dist){ 
-          results_with_ties.push_back(groundTruth[i].coordinates[l]);
-        }
-      }
-      std::set<int> reported_nbhs;
-      for(int l=0; l<r; l++) reported_nbhs.insert((q[i]->ngh)[l]);
+    recall = ityr::root_exec([=] {
+      size_t n = q.size();
+      int numCorrectAll = ityr::transform_reduce(
+          ityr::execution::parallel_policy(1024),
+          q.begin(), q.end(), groundTruth.begin(),
+          ityr::reducer::plus<int>{},
+          [=](const Tvec_qpoint<T>& qp, const ivec_point& gt) {
+            std::vector<int> results_with_ties;
+            for(int l=0; l<r; l++) results_with_ties.push_back(gt.coordinates[l]);
+            float last_dist = gt.distances[r-1];
+            for(std::size_t l=r; l<gt.coordinates.size(); l++){
+              if(gt.distances[l] == last_dist){ 
+                results_with_ties.push_back(gt.coordinates[l]);
+              }
+            }
+            std::set<int> reported_nbhs;
+            auto ngh_cs = ityr::make_checkout(qp.ngh.data(), qp.ngh.size(), ityr::checkout_mode::read);
+            for(int l=0; l<r; l++) reported_nbhs.insert(ngh_cs[l]);
 
-      for(int l=0; l<results_with_ties.size(); l++){
-	      if (reported_nbhs.find(results_with_ties[l]) != reported_nbhs.end()){
-          numCorrect += 1;
-      }
-      }
-    }
-    recall = static_cast<float>(numCorrect)/static_cast<float>(r*n);
+            int numCorrect = 0;
+            for(std::size_t l=0; l<results_with_ties.size(); l++){
+                    if (reported_nbhs.find(results_with_ties[l]) != reported_nbhs.end()){
+                numCorrect += 1;
+              }
+            }
+            return numCorrect;
+          });
+      return static_cast<float>(numCorrectAll)/static_cast<float>(r*n);
+    });
   }
   float QPS = q.size()/query_time;
   auto stats = query_stats(q);
@@ -102,6 +121,7 @@ nn_result checkRecall(
   return N;
 }
 
+#if 0
 void write_to_csv(std::string csv_filename, parlay::sequence<float> buckets, 
   parlay::sequence<nn_result> results, Graph G){
   csvfile csv(csv_filename);
@@ -118,22 +138,26 @@ void write_to_csv(std::string csv_filename, parlay::sequence<float> buckets,
   csv << endrow;
   csv << endrow;
 }
+#endif
 
-parlay::sequence<int> calculate_limits(size_t avg_visited){
-  parlay::sequence<int> L(9);
+inline std::vector<int> calculate_limits(size_t avg_visited){
+  std::vector<int> L(9);
   for(float i=1; i<10; i++){
     L[i-1] = (int) (i *((float) avg_visited) * .1);
   }
-  auto limits = parlay::remove_duplicates(L);
-  return limits;
+  /* auto limits = parlay::remove_duplicates(L); */
+  /* return limits; */
+  std::stable_sort(L.begin(), L.end());
+  L.erase(std::unique(L.begin(), L.end()), L.end());
+  return L;
 }    
 
 template<typename T>
-void search_and_parse(Graph G, parlay::sequence<Tvec_point<T>*> &v, parlay::sequence<Tvec_point<T>*> &q, 
-    parlay::sequence<ivec_point> groundTruth, char* res_file, bool mips, bool random=true, int start_point=0){
-    unsigned d = v[0]->coordinates.size();
+void search_and_parse(Graph G, ityr::global_span<Tvec_point<T>> v, ityr::global_span<Tvec_qpoint<T>> q, 
+    ityr::global_span<ivec_point> groundTruth, char* res_file, bool mips, bool random=true, int start_point=0){
+    unsigned d = v[0].get().coordinates.size();
 
-    parlay::sequence<nn_result> results;
+    std::vector<nn_result> results;
     std::vector<int> beams = {15, 20, 30, 50, 75, 100, 125, 250, 500};
     std::vector<int> allk = {10, 15, 20, 30, 50, 100};
     std::vector<float> cuts = {1.1, 1.125, 1.15, 1.175, 1.2, 1.25};
@@ -146,7 +170,7 @@ void search_and_parse(Graph G, parlay::sequence<Tvec_point<T>*> &v, parlay::sequ
         results.push_back(checkRecall(v, q, groundTruth, kk, 500, cut, d, random, -1, start_point, mips));
 
     // check "limited accuracy"
-    parlay::sequence<int> limits = calculate_limits(results[0].avg_visited);
+    std::vector<int> limits = calculate_limits(results[0].avg_visited);
     for(int l : limits){
       results.push_back(checkRecall(v, q, groundTruth, 10, 15, 1.14, d, random, l, start_point, mips));
     }
@@ -154,8 +178,18 @@ void search_and_parse(Graph G, parlay::sequence<Tvec_point<T>*> &v, parlay::sequ
     // check "best accuracy"
     results.push_back(checkRecall(v, q, groundTruth, 100, 1000, 10.0, d, random, -1, start_point, mips));
 
-    parlay::sequence<float> buckets = {.1, .15, .2, .25, .3, .35, .4, .45, .5, .55, .6, .65, .7, .73, .75, .77, .8, .83, .85, .87, .9, .93, .95, .97, .99, .995, .999};
-    auto [res, ret_buckets] = parse_result(results, buckets);
-    if(res_file != NULL) write_to_csv(std::string(res_file), ret_buckets, res, G);
+    if (ityr::is_master()) {
+      std::vector<float> buckets = {.1, .15, .2, .25, .3, .35, .4, .45, .5, .55, .6, .65, .7, .73, .75, .77, .8, .83, .85, .87, .9, .93, .95, .97, .99, .995, .999};
+      auto [res, ret_buckets] = parse_result(results, buckets);
+      if(res_file != NULL) {
+#if 0
+        write_to_csv(std::string(res_file), ret_buckets, res, G);
+#else
+        (void)G;
+        std::cout << "Error: CSV output is not supported" << std::endl;
+        abort();
+#endif
+      }
+    }
 }
 

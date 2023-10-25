@@ -24,45 +24,48 @@
 #define INDEXTOOLS
 
 #include <algorithm>
-#include "parlay/parallel.h"
-#include "parlay/primitives.h"
-#include "parlay/random.h"
+#if 0
 #include "common/geometry.h"
 #include <random>
+#endif
+#include "../utils/types.h"
 
 //special size function
 template<typename T>
-int size_of(parlay::slice<T*, T*> nbh){
+int size_of(ityr::global_span<T> nbh){
+  auto nbh_cs = ityr::make_checkout(nbh, ityr::checkout_mode::read);
 	int size = 0;
-	int i=0;
-	while(i<nbh.size() && nbh[i] != -1) {size++; i++;}
+        std::size_t i=0;
+	while(i<nbh_cs.size() && nbh_cs[i] != -1) {size++; i++;}
 	return size;
 }
 
 //adding more neighbors
 template<typename T>
-void add_nbh(int nbh, Tvec_point<T> *p){
-	if(size_of(p->out_nbh) >= p->out_nbh.size()){
-		std::cout << "error: tried to exceed degree bound " << p->out_nbh.size() << std::endl;
+void add_nbh(int nbh, Tvec_point<T>& p){
+	if((size_t)size_of(p.out_nbh) >= p.out_nbh.size()){
+		std::cout << "error: tried to exceed degree bound " << p.out_nbh.size() << std::endl;
 		abort();
 	}
-	p->out_nbh[size_of(p->out_nbh)] = nbh;
+	p.out_nbh[size_of(p.out_nbh)].put(nbh);
 }
 
 template<typename T>
-void add_out_nbh(parlay::sequence<int> nbh, Tvec_point<T> *p){
-  if (nbh.size() > p->out_nbh.size()) {
+void add_out_nbh(const std::vector<int>& nbh, Tvec_point<T>& p){
+  if (nbh.size() > p.out_nbh.size()) {
     std::cout << "oversize" << std::endl;
     abort();
   }
-	for(int i=0; i<p->out_nbh.size(); i++){
-		p->out_nbh[i] = -1;
+  auto out_nbh_cs = ityr::make_checkout(p.out_nbh, ityr::checkout_mode::write);
+	for(std::size_t i=0; i<out_nbh_cs.size(); i++){
+		out_nbh_cs[i] = -1;
 	}
-	for(int i=0; i<nbh.size(); i++){
-		p->out_nbh[i] = nbh[i];
+	for(std::size_t i=0; i<nbh.size(); i++){
+		out_nbh_cs[i] = nbh[i];
 	}
 }
 
+#if 0
 template<typename T>
 void add_new_nbh(parlay::sequence<int> nbh, Tvec_point<T> *p){
   if (nbh.size() > p->new_nbh.size()) {
@@ -97,18 +100,25 @@ void synchronize(parlay::sequence<Tvec_point<T>*> &v){
 		synchronize(v[i]);
 	});
 }
+#endif
 
 template<typename T>
-void clear(Tvec_point<T>* p){
-	for(int j=0; j<p->out_nbh.size(); j++) p->out_nbh[j] = -1;
+void clear(Tvec_point<T>& p){
+  auto nbh_cs = ityr::make_checkout(p.out_nbh, ityr::checkout_mode::read);
+	for(std::size_t j=0; j<nbh_cs.size(); j++) nbh_cs[j] = -1;
 } 
 
 template<typename T>
-void clear(parlay::sequence<Tvec_point<T>*> &v){
-	size_t n = v.size();
-	parlay::parallel_for(0, n, [&] (size_t i){
-		for(int j=0; j<v[i]->out_nbh.size(); j++) v[i]->out_nbh[j] = -1;
-	});
+void clear(ityr::global_span<Tvec_point<T>> v){
+  ityr::root_exec([=] {
+        ityr::for_each(
+            ityr::execution::parallel_policy(1024),
+            ityr::make_global_iterator(v.begin(), ityr::checkout_mode::read),
+            ityr::make_global_iterator(v.end()  , ityr::checkout_mode::read),
+            [=](Tvec_point<T>& p) {
+              clear(p);
+            });
+  });
 } 
 
 #endif  

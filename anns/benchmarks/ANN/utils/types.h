@@ -24,40 +24,83 @@
 #define TYPES
 
 #include <algorithm>
-#if 0
-#include "parlay/parallel.h"
-#include "parlay/primitives.h"
+#include "../../../../common.hpp"
 
+template <typename T>
+using raw_span = ityr::common::span<T>;
 
 //for a file in .fvecs or .bvecs format, but extendible to other types
 template<typename T>
 struct Tvec_point {
+  using value_type = T;
+  int id;
+  raw_span<T> coordinates;
+  ityr::global_span<int> out_nbh; 
+  Tvec_point() = default;
+  Tvec_point(const Tvec_point&) = default;
+};
+
+// query points
+template<typename T>
+struct Tvec_qpoint {
+  using value_type = T;
   int id;
   size_t visited;
   size_t dist_calls;  
   int rounds;
-  parlay::slice<T*, T*> coordinates;
-  parlay::slice<int*, int*> out_nbh; 
-  parlay::slice<int*, int*> new_nbh; 
-  Tvec_point() :
-    coordinates(parlay::make_slice<T*, T*>(nullptr, nullptr)),
-    out_nbh(parlay::make_slice<int*, int*>(nullptr, nullptr)),
-    new_nbh(parlay::make_slice<int*, int*>(nullptr, nullptr)) {}
-  parlay::sequence<int> ngh = parlay::sequence<int>();
+  raw_span<T> coordinates;
+  ityr::global_span<int> out_nbh; 
+  ityr::global_span<int> new_nbh; 
+  ityr::global_vector<int> ngh;
 };
-
 
 
 
 //for an ivec file, which contains the ground truth
 //only info needed is the coordinates of the nearest neighbors of each point
 struct ivec_point {
+  using value_type = int;
   int id;
-  parlay::slice<int*, int*> coordinates;
-  parlay::slice<float*, float*> distances;
-  ivec_point() :
-    coordinates(parlay::make_slice<int*, int*>(nullptr, nullptr)), distances(parlay::make_slice<float*, float*>(nullptr, nullptr)) {}
+  raw_span<int> coordinates;
+  raw_span<float> distances;
 };
-#endif
+
+
+struct timer {
+public:
+  timer() {
+    reset();
+  }
+
+  ityr::wallclock_t tick_ns() {
+    auto t = ityr::gettime_ns();
+    auto duration = t - prev_time_;
+    prev_time_ = t;
+    return duration;
+  }
+
+  double tick_s() {
+    return tick_ns() / 1000000000.0;
+  }
+
+  ityr::wallclock_t total_duration_ns() const {
+    return ityr::gettime_ns() - init_time_;
+  }
+
+  double total_duration_s() const {
+    return total_duration_ns() / 1000000000.0;
+  }
+
+  void reset() {
+    auto t = ityr::gettime_ns();
+    prev_time_ = t;
+    init_time_ = t;
+  }
+
+private:
+  ityr::wallclock_t prev_time_;
+  ityr::wallclock_t init_time_;
+};
+
 
 #endif

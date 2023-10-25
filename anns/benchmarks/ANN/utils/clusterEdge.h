@@ -21,10 +21,9 @@
 // WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include <algorithm>
-#include "parlay/parallel.h"
-#include "parlay/primitives.h"
-#include "parlay/random.h"
+#if 0
 #include "common/geometry.h"
+#endif
 #include "indexTools.h"
 #include <random>
 #include <set>
@@ -32,6 +31,7 @@
 #include <functional>
 #include <queue>
 
+#if 0
 std::pair<size_t, size_t> select_two_random(parlay::sequence<size_t>& active_indices,
 	parlay::random& rnd) {
 	size_t first_index = rnd.ith_rand(0) % active_indices.size(); 
@@ -41,20 +41,19 @@ std::pair<size_t, size_t> select_two_random(parlay::sequence<size_t>& active_ind
 
 	return {active_indices[first_index], active_indices[second_index]};
 }
+#endif
 
 struct DisjointSet{
-	parlay::sequence<int> parent;
-	parlay::sequence<int> rank;
+        std::vector<int> parent;
+	std::vector<int> rank;
 	size_t N; 
 
-	DisjointSet(size_t size){
-		N = size;
-		parent = parlay::sequence<int>(N);
-		rank = parlay::sequence<int>(N);
-		parlay::parallel_for(0, N, [&] (size_t i) {
-			parent[i]=i;
-			rank[i] = 0;
-		});		
+	DisjointSet(size_t size) : parent(size), rank(size), N(size) {
+          // TODO: parallelize?
+          for (std::size_t i = 0; i < N; i++) {
+            parent[i] = i;
+            rank[i] = i;
+          }
 	}
 
 	void _union(int x, int y){
@@ -80,11 +79,12 @@ struct DisjointSet{
 	}
 
 	void flatten(){
-		for(int i=0; i<N; i++) find(i);
+		for(std::size_t i=0; i<N; i++) find(i);
 	}
 
 	bool is_full(){
 		flatten();
+#if 0
 		parlay::sequence<bool> truthvals(N);
 		parlay::parallel_for(0, N, [&] (size_t i){
 			truthvals[i] = (parent[i]==parent[0]);
@@ -93,6 +93,15 @@ struct DisjointSet{
 		auto filtered = parlay::filter(truthvals, ff);
 		if(filtered.size()==0) return true;
 		return false;
+#else
+          // TODO: parallelize?
+          for (std::size_t i = 0; i < N; i++) {
+            if (parent[i] != parent[0]) {
+              return false;
+            }
+          }
+          return true;
+#endif
 	}
 
 };
@@ -107,14 +116,14 @@ struct cluster{
 
 	cluster(unsigned dim, bool m): d(dim), mips(m) {}
 
-	float Distance(T* p, T* q, unsigned d){
+	float Distance(T* p, T* q, unsigned d) const {
 		if(mips) return mips_distance(p, q, d);
 		else return distance(p, q, d);
 	}
 
 	//inserts each edge after checking for duplicates
-	void process_edges(parlay::sequence<tvec_point*> &v, parlay::sequence<edge> edges){
-		int maxDeg = v[1]->out_nbh.begin() - v[0]->out_nbh.begin();
+	void process_edges(ityr::global_span<tvec_point> v, std::vector<edge> edges) const {
+#if 0
 		auto grouped = parlay::group_by_key(edges);
 		for(auto pair : grouped){
 			auto [index, candidates] = pair;
@@ -127,29 +136,51 @@ struct cluster{
 				}
 			}
 		}
+#endif
+                // TODO: parallelize?
+                std::stable_sort(edges.begin(), edges.end());
+                auto v_cs = ityr::make_checkout(v.data(), v.size(), ityr::checkout_mode::read);
+		int maxDeg = v_cs[0].out_nbh.size();
+                for (auto [i, c] : edges) {
+                  if(size_of(v_cs[i].out_nbh) < maxDeg){
+                    add_nbh(c, v_cs[i]);
+                  }else{
+                    // TODO: why does this never overflow?
+                    remove_edge_duplicates(v_cs[i]);
+                    add_nbh(c, v_cs[i]);
+                  }
+                }
 	}
 
-	void remove_edge_duplicates(tvec_point* p){
-		parlay::sequence<int> points;
-		for(int i=0; i<size_of(p->out_nbh); i++){
-			points.push_back(p->out_nbh[i]);
+	static void remove_edge_duplicates(tvec_point& p){
+          std::vector<int> points;
+          {
+            auto out_nbh_cs = ityr::make_checkout(p.out_nbh, ityr::checkout_mode::read);
+		for(std::size_t i=0; i<out_nbh_cs.size(); i++){
+                  if (out_nbh_cs[i] == -1) break;
+                  points.push_back(out_nbh_cs[i]);
 		}
-		auto np = parlay::remove_duplicates(points);
-		add_out_nbh(np, p);
+          }
+		/* auto np = parlay::remove_duplicates(points); */
+                // TODO: parallelize?
+                std::stable_sort(points.begin(), points.end());
+                points.erase(std::unique(points.begin(), points.end()), points.end());
+		add_out_nbh(points, p);
 	}
 
-	int generate_index(int N, int i){
+	int generate_index(int N, int i) const {
 		return (N*(N-1) - (N-i)*(N-i-1))/2;
 	}
 	
 	//parameters dim and K are just to interface with the cluster tree code
-	void MSTk(parlay::sequence<tvec_point*> &v, parlay::sequence<size_t> &active_indices, 
-		unsigned dim, int K){
+	void MSTk(ityr::global_span<tvec_point> v,
+		unsigned dim, int K) const {
 		//preprocessing for Kruskal's
-		int N = active_indices.size();
+		int N = v.size();
 		DisjointSet *disjset = new DisjointSet(N);
 		size_t m = 10;
 		auto less = [&] (labelled_edge a, labelled_edge b) {return a.second < b.second;};
+#if 0
 		parlay::sequence<parlay::sequence<labelled_edge>> pre_labelled(N);
 		parlay::parallel_for(0, N, [&] (size_t i){
 			std::priority_queue<labelled_edge, std::vector<labelled_edge>, decltype(less)> Q(less);
@@ -178,6 +209,37 @@ struct cluster{
 			pre_labelled[i] = edges;
 		});
 		auto flat_edges = parlay::flatten(pre_labelled);
+#endif
+                // temporarily serial
+                // TODO: parallelize?
+                std::vector<labelled_edge> flat_edges;
+                auto v_cs = ityr::make_checkout(v.data(), v.size(), ityr::checkout_mode::read);
+                for (int i = 0; i < N; i++) {
+			std::priority_queue<labelled_edge, std::vector<labelled_edge>, decltype(less)> Q(less);
+			for(int j=0; j<N; j++){
+				if(j!=i){
+					float dist_ij = Distance(v_cs[i].coordinates.begin(), v_cs[j].coordinates.begin(), dim);
+					if(Q.size() >= m){
+						float topdist = Q.top().second;
+						if(dist_ij < topdist){
+							labelled_edge e;
+							if(i<j) e = std::make_pair(std::make_pair(i,j), dist_ij);
+							else e = std::make_pair(std::make_pair(j, i), dist_ij);
+							Q.pop();
+							Q.push(e);
+						}
+					}else{
+						labelled_edge e;
+						if(i<j) e = std::make_pair(std::make_pair(i,j), dist_ij);
+						else e = std::make_pair(std::make_pair(j, i), dist_ij);
+						Q.push(e);
+					}
+				}
+			}
+                        flat_edges.reserve(flat_edges.size() + m);
+			for(std::size_t j=0; j<m; j++){flat_edges.emplace_back(Q.top()); Q.pop();}
+		}
+
 		// std::cout << flat_edges.size() << std::endl;
 		auto less_dup = [&] (labelled_edge a, labelled_edge b){
 			auto dist_a = a.second;
@@ -188,24 +250,27 @@ struct cluster{
 				int i_b = b.first.first;
 				int j_b = b.first.second;
 				if((i_a==i_b) && (j_a==j_b)){
-					return true;
+					return true; // TODO: really? I think this should return false...
 				} else{
 					if(i_a != i_b) return i_a < i_b;
 					else return j_a < j_b;
 				}
 			}else return (dist_a < dist_b);
 		};
-		auto labelled_edges = parlay::remove_duplicates_ordered(flat_edges, less_dup);
+		/* auto labelled_edges = parlay::remove_duplicates_ordered(flat_edges, less_dup); */
+                // TODO: parallelize?
+                std::stable_sort(flat_edges.begin(), flat_edges.end(), less_dup);
+                flat_edges.erase(std::unique(flat_edges.begin(), flat_edges.end()), flat_edges.end());
 		// parlay::sort_inplace(labelled_edges, less);
-		auto degrees = parlay::tabulate(active_indices.size(), [&] (size_t i) {return 0;});
-		parlay::sequence<edge> MST_edges = parlay::sequence<edge>();
+                std::vector<int> degrees(N, 0);
+                std::vector<edge> MST_edges;
 		//modified Kruskal's algorithm
-		for(int i=0; i<labelled_edges.size(); i++){
-			labelled_edge e_l = labelled_edges[i];
+		for(std::size_t i=0; i<flat_edges.size(); i++){
+			labelled_edge e_l = flat_edges[i];
 			edge e = e_l.first;
 			if((disjset->find(e.first) != disjset->find(e.second)) && (degrees[e.first]<K) && (degrees[e.second]<K)){
-				MST_edges.push_back(std::make_pair(active_indices[e.first], active_indices[e.second]));
-				MST_edges.push_back(std::make_pair(active_indices[e.second], active_indices[e.first]));
+				MST_edges.push_back(std::make_pair(e.first, v_cs[e.second].id));
+				MST_edges.push_back(std::make_pair(e.second, v_cs[e.first].id));
 				degrees[e.first] += 1;
 				degrees[e.second] += 1;
 				disjset->_union(e.first, e.second);
@@ -220,60 +285,62 @@ struct cluster{
 		process_edges(v, MST_edges);
 	}
 
-	bool tvec_equal(tvec_point* a, tvec_point* b, unsigned d){
+	bool tvec_equal(tvec_point a, tvec_point b, unsigned d) const {
 		for(int i=0; i<d; i++){
-			if(a->coordinates[i] != b->coordinates[i]){
+			if(a.coordinates[i] != b.coordinates[i]){
 				return false;
 			}
 		}
 		return true;
 	}
 
-	void recurse(parlay::sequence<tvec_point*> &v, parlay::sequence<size_t> &active_indices,
-		parlay::random& rnd, size_t cluster_size, 
-		unsigned dim, int K, tvec_point* first, tvec_point* second){
-		// Split points based on which of the two points are closer.
-		auto closer_first = parlay::filter(parlay::make_slice(active_indices), [&] (size_t ind) {
-			tvec_point* p = v[ind];
-			float dist_first = distance(p->coordinates.begin(), first->coordinates.begin(), d);
-			float dist_second = distance(p->coordinates.begin(), second->coordinates.begin(), d);
-			return dist_first <= dist_second;
+        template <typename Rng>
+	void recurse(ityr::global_span<tvec_point> v,
+		Rng& rng, size_t cluster_size, 
+		unsigned dim, int K, const tvec_point& first, const tvec_point& second) const {
 
-		});
+          auto v_mid = ityr::partition(
+              ityr::execution::parallel_policy(1024),
+              v.begin(), v.end(), [=, *this](const tvec_point& p) {
+                float dist_first = distance(p.coordinates.begin(), first.coordinates.begin(), d);
+                float dist_second = distance(p.coordinates.begin(), second.coordinates.begin(), d);
+                return dist_first <= dist_second;
+              });
 
-		auto closer_second = parlay::filter(parlay::make_slice(active_indices), [&] (size_t ind) {
-			tvec_point* p = v[ind];
-			float dist_first = distance(p->coordinates.begin(), first->coordinates.begin(), d);
-			float dist_second = distance(p->coordinates.begin(), second->coordinates.begin(), d);
-			return dist_second < dist_first;
-		});
+          auto v_left = v.subspan(0, v_mid - v.begin());
+          auto v_right = v.subspan(v_mid - v.begin(), v.end() - v_mid);
 
-		auto left_rnd = rnd.fork(0);
-		auto right_rnd = rnd.fork(1);
+          auto left_rng = rng.split();
+          auto right_rng = rng.split();
 
-		if(closer_first.size() == 1) {
-			random_clustering(v, active_indices, right_rnd, cluster_size, dim, K);
+		if(v_left.size() == 1) {
+			random_clustering(v, right_rng, cluster_size, dim, K);
 		}
-		else if(closer_second.size() == 1){
-			random_clustering(v, active_indices, left_rnd, cluster_size, dim, K);
+		else if(v_right.size() == 1){
+			random_clustering(v, left_rng, cluster_size, dim, K);
 		}
 		else{
-			parlay::par_do(
-				[&] () {random_clustering(v, closer_first, left_rnd, cluster_size, dim, K);}, 
-				[&] () {random_clustering(v, closer_second, right_rnd, cluster_size, dim, K);}
+                  ityr::parallel_invoke(
+				[=, *this]() mutable {random_clustering(v_left, left_rng, cluster_size, dim, K);}, 
+				[=, *this]() mutable {random_clustering(v_right, right_rng, cluster_size, dim, K);}
 			);
 		}
 	}
 
-	void random_clustering(parlay::sequence<tvec_point*> &v, parlay::sequence<size_t> &active_indices,
-		parlay::random& rnd, size_t cluster_size, unsigned dim, int K){
-		if(active_indices.size() < cluster_size) MSTk(v, active_indices, dim, K);
+        template <typename Rng>
+	void random_clustering(ityr::global_span<tvec_point> v,
+		Rng& rng, size_t cluster_size, unsigned dim, int K) const {
+		if(v.size() < cluster_size) MSTk(v, dim, K);
 		else{
-			auto [f, s] = select_two_random(active_indices, rnd);
-    		tvec_point* first = v[f];
-    		tvec_point* second = v[s];
+                        std::uniform_int_distribution<int> uni(0,v.size()-1);
+                        int f = uni(rng);
+                        int s = uni(rng);
+
+    		tvec_point first = v[f].get();
+    		tvec_point second = v[s].get();
 
 			if(tvec_equal(first, second, dim)){
+#if 0
 				// std::cout << "Equal points selected, splitting evenly" << std::endl;
 				parlay::sequence<size_t> closer_first;
 				parlay::sequence<size_t> closer_second;
@@ -281,32 +348,43 @@ struct cluster{
 					if(i<active_indices.size()/2) closer_first.push_back(active_indices[i]);
 					else closer_second.push_back(active_indices[i]);
 				}
-				auto left_rnd = rnd.fork(0);
-				auto right_rnd = rnd.fork(1);
-				parlay::par_do(
-					[&] () {random_clustering(v, closer_first, left_rnd, cluster_size, dim, K);}, 
-					[&] () {random_clustering(v, closer_second, right_rnd, cluster_size, dim, K);}
+#endif
+                                auto left_rng = rng.split();
+                                auto right_rng = rng.split();
+
+                                std::size_t mid = v.size() / 2;
+				ityr::parallel_invoke(
+					[=, *this]() mutable {random_clustering(v.subspan(0, mid), left_rng, cluster_size, dim, K);}, 
+					[=, *this]() mutable {random_clustering(v.subspan(mid, v.size() - mid), right_rng, cluster_size, dim, K);}
 				);
 			} else{
-				recurse(v, active_indices, rnd, cluster_size, dim, K, first, second);
+				recurse(v, rng, cluster_size, dim, K, first, second);
 			}
 		}
 	}
 
-	void random_clustering_wrapper(parlay::sequence<tvec_point*> &v, size_t cluster_size, 
-		unsigned dim, int K){
+        template <typename Rng>
+	void random_clustering_wrapper(ityr::global_span<tvec_point> v, size_t cluster_size, 
+		unsigned dim, int K, Rng& rng) const {
+#if 0
 		std::random_device rd;    
   		std::mt19937 rng(rd());   
   		std::uniform_int_distribution<int> uni(0,v.size()); 
     	parlay::random rnd(uni(rng));
     	auto active_indices = parlay::tabulate(v.size(), [&] (size_t i) { return i; });
-    	random_clustering(v, active_indices, rnd, cluster_size, dim, K);
+#endif
+            random_clustering(v, rng, cluster_size, dim, K);
 	}
 
-	void multiple_clustertrees(parlay::sequence<tvec_point*> &v, size_t cluster_size, int num_clusters,
-		unsigned dim, int K, int bound = 0){
+	void multiple_clustertrees(ityr::global_span<tvec_point> v, size_t cluster_size, int num_clusters,
+		unsigned dim, int K, int bound = 0) const {
+          (void)bound;
+          ityr::root_exec([=, *this] {
+            uint64_t seed = 42;
+            ityr::default_random_engine rng(seed);
 		for(int i=0; i<num_clusters; i++){
-			random_clustering_wrapper(v, cluster_size, dim, K);
+			random_clustering_wrapper(v, cluster_size, dim, K, rng);
 		}
+          });
 	}
 };

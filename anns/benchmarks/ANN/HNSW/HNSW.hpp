@@ -22,6 +22,7 @@
 #include <type_traits>
 #include <limits>
 #include <thread>
+#include "../utils/types.h"
 #include "../../../../common.hpp"
 // #include "parallelize.h"
 #include "debug.hpp"
@@ -44,42 +45,6 @@ inline void my_printf(const char* format, ...) {
   va_end(args);
   fflush(stdout);
 }
-
-struct timer {
-public:
-  timer() {
-    reset();
-  }
-
-  ityr::wallclock_t tick_ns() {
-    auto t = ityr::gettime_ns();
-    auto duration = t - prev_time_;
-    prev_time_ = t;
-    return duration;
-  }
-
-  double tick_s() {
-    return tick_ns() / 1000000000.0;
-  }
-
-  ityr::wallclock_t total_duration_ns() const {
-    return ityr::gettime_ns() - init_time_;
-  }
-
-  double total_duration_s() const {
-    return total_duration_ns() / 1000000000.0;
-  }
-
-  void reset() {
-    auto t = ityr::gettime_ns();
-    prev_time_ = t;
-    init_time_ = t;
-  }
-
-private:
-  ityr::wallclock_t prev_time_;
-  ityr::wallclock_t init_time_;
-};
 
 namespace ANN{
 

@@ -22,10 +22,10 @@
 
 #include <iostream>
 #include <algorithm>
-#include "parlay/parallel.h"
-#include "parlay/primitives.h"
+#if 0
 #include "common/geometry.h"
 #include "common/geometryIO.h"
+#endif
 #include "common/parse_command_line.h"
 #include "types.h"
 // #include "common/time_loop.h"
@@ -35,6 +35,8 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
+
+#if 0
 
 using namespace benchIO;
 // *************************************************************
@@ -70,20 +72,32 @@ std::pair<char*, size_t> mmapStringFromFile(const char* filename) {
   size_t n = sb.st_size;
   return std::make_pair(p, n);
 }
+#endif
 
 // *************************************************************
 //  GRAPH TOOLS
 // *************************************************************
 
-template<typename T>
-void add_null_graph(parlay::sequence<Tvec_point<T>> &points, int maxDeg){
-    parlay::sequence<int> &out_nbh = *new parlay::sequence<int>(maxDeg*points.size());
-    parlay::parallel_for(0, maxDeg*points.size(), [&] (size_t i){out_nbh[i] = -1; });
-    parlay::parallel_for(0, points.size(), [&] (size_t i){
-        points[i].out_nbh = parlay::make_slice(out_nbh.begin()+maxDeg*i, out_nbh.begin()+maxDeg*(i+1));
-    });
+template<typename TvecPoint>
+inline auto add_null_graph(ityr::global_span<TvecPoint> points, int maxDeg){
+  ityr::global_vector_options global_vec_coll_opts(true, 1024);
+
+  ityr::global_vector<int> out_nbh(global_vec_coll_opts, maxDeg*points.size(), -1);
+  ityr::global_span<int> out_nbh_ref(out_nbh);
+  ityr::root_exec([=] {
+    ityr::for_each(
+        ityr::execution::parallel_policy(1024),
+        ityr::make_global_iterator(points.begin(), ityr::checkout_mode::read_write),
+        ityr::make_global_iterator(points.end()  , ityr::checkout_mode::read_write),
+        ityr::count_iterator<std::size_t>(0),
+        [=](TvecPoint& p, std::size_t i) {
+          p.out_nbh = out_nbh_ref.subspan(maxDeg*i, maxDeg);
+        });
+  });
+  return out_nbh;
 }
 
+#if 0
 template<typename T>
 int add_saved_graph(parlay::sequence<Tvec_point<T>> &points, const char* gFile){
     /* auto [graphptr, graphlength] = mmapStringFromFile(gFile); */
@@ -120,90 +134,65 @@ void write_graph(parlay::sequence<Tvec_point<T>*> &v, char* outFile, int maxDeg)
   writer.write((char *) graph_data, v.size()*maxDeg*sizeof(int));
   writer.close();
 }
+#endif
 
 // *************************************************************
 //  BINARY TOOLS: uint8, int8, float32, int32
 // *************************************************************
 
-auto parse_uint8bin(const char* filename, const char* gFile, int maxDeg){
-    /* auto [fileptr, length] = mmapStringFromFile(filename); */
-    auto fileptr_length = mmapStringFromFile(filename);
-    auto& fileptr = std::get<0>(fileptr_length);
+template <typename TvecPoint>
+inline auto parse_bin(const char* filename, const char* gFile, int maxDeg){
+  using T = typename TvecPoint::value_type;
+
+  auto ufp = ityr::make_unique_file<char>(filename);
+  char* fileptr = ufp.get();
 
     int num_vectors = *((int*) fileptr);
     int d = *((int*) (fileptr+4));
 
-    std::cout << "Detected " << num_vectors << " points with dimension " << d << std::endl;
-    parlay::sequence<Tvec_point<uint8_t>> points(num_vectors);
+    if (ityr::is_master()) {
+      std::cout << "Detected " << num_vectors << " points with dimension " << d << std::endl;
+    }
 
-    parlay::parallel_for(0, num_vectors, [&] (size_t i) {
-        points[i].id = i; 
+    ityr::global_vector_options global_vec_coll_opts(true, 1024);
 
-        uint8_t* start = (uint8_t*)(fileptr + 8 + i*d); //8 bytes at the start for size + dimension
-        uint8_t* end = start + d;
-        points[i].coordinates = parlay::make_slice(start, end);
+    ityr::global_vector<TvecPoint> points(global_vec_coll_opts, num_vectors);
+    ityr::global_span<TvecPoint> points_ref(points);
+
+    ityr::root_exec([=] {
+      ityr::transform(
+          ityr::execution::parallel_policy(1024),
+          ityr::count_iterator<int>(0),
+          ityr::count_iterator<int>(num_vectors),
+          points_ref.begin(),
+          [=](int i) {
+            TvecPoint p;
+            p.id = i;
+
+            T* start = (T*)(fileptr + 8 + i*d*sizeof(T)); //8 bytes at the start for size + dimension
+            T* end = start + d;
+            p.coordinates = {start, end};
+            return p;
+          });
     });
 
+#if 0
     if(maxDeg != 0){
         if(gFile != NULL){int md = add_saved_graph(points, gFile); maxDeg = md;}
         else{add_null_graph(points, maxDeg);}
     }
-
-    return std::make_pair(maxDeg, points);
-}
-
-auto parse_int8bin(const char* filename, const char* gFile, int maxDeg){
-    /* auto [fileptr, length] = mmapStringFromFile(filename); */
-    auto fileptr_length = mmapStringFromFile(filename);
-    auto& fileptr = std::get<0>(fileptr_length);
-
-    int num_vectors = *((int*) fileptr);
-    int d = *((int*) (fileptr+4));
-
-    std::cout << "Detected " << num_vectors << " points with dimension " << d << std::endl;
-    parlay::sequence<Tvec_point<int8_t>> points(num_vectors);
-
-    parlay::parallel_for(0, num_vectors, [&] (size_t i) {
-        points[i].id = i; 
-
-        int8_t* start = (int8_t*)(fileptr + 8 + i*d); //8 bytes at the start for size + dimension
-        int8_t* end = start + d;
-        points[i].coordinates = parlay::make_slice(start, end);
-    });
-
+#else
     if(maxDeg != 0){
-        if(gFile != NULL){int md = add_saved_graph(points, gFile); maxDeg = md;}
-        else{add_null_graph(points, maxDeg);}
+      if(gFile != NULL){
+        std::cout << "Error: gFile not supported" << std::endl;
+        abort();
+      }
+      ityr::global_vector<int> out_nbh = add_null_graph<TvecPoint>(points, maxDeg);
+      return std::make_tuple(std::move(ufp), std::move(out_nbh), maxDeg, std::move(points));
+    } else {
+      return std::make_tuple(std::move(ufp), ityr::global_vector<int>{}, maxDeg, std::move(points));
     }
-
-    return std::make_pair(maxDeg, points);
-}
-
-auto parse_fbin(const char* filename, const char* gFile, int maxDeg){
-    /* auto [fileptr, length] = mmapStringFromFile(filename); */
-    auto fileptr_length = mmapStringFromFile(filename);
-    auto& fileptr = std::get<0>(fileptr_length);
-
-    int num_vectors = *((int*) fileptr);
-    int d = *((int*) (fileptr+4));
-
-    std::cout << "Detected " << num_vectors << " points with dimension " << d << std::endl;
-    parlay::sequence<Tvec_point<float>> points(num_vectors);
-
-    parlay::parallel_for(0, num_vectors, [&] (size_t i) {
-        points[i].id = i; 
-
-        float* start = (float*)(fileptr + 8 + 4*i*d); //8 bytes at the start for size + dimension
-        float* end = start + d;
-        points[i].coordinates = parlay::make_slice(start, end);
-    });
-
-    if(maxDeg != 0){
-        if(gFile != NULL){int md = add_saved_graph(points, gFile); maxDeg = md;}
-        else{add_null_graph(points, maxDeg);}
-    }
-
-    return std::make_pair(maxDeg, points);
+#endif
 }
 
 // //this is a hack that does some copying, but the sequences are short so it's ok
@@ -233,30 +222,46 @@ auto parse_fbin(const char* filename, const char* gFile, int maxDeg){
 //     return points;
 // }
 
-auto parse_ibin(const char* filename){
-    /* auto [fileptr, length] = mmapStringFromFile(filename); */
-    auto fileptr_length = mmapStringFromFile(filename);
-    auto& fileptr = std::get<0>(fileptr_length);
+inline auto parse_ibin(const char* filename){
+  auto ufp = ityr::make_unique_file<char>(filename);
+  char* fileptr = ufp.get();
 
     int num_vectors = *((int*) fileptr);
     int d = *((int*) (fileptr+4));
 
-    std::cout << "Detected " << num_vectors << " points with number of results " << d << std::endl;
-    parlay::sequence<ivec_point> points(num_vectors);
+    if (ityr::is_master()) {
+      std::cout << "Detected " << num_vectors << " points with number of results " << d << std::endl;
+    }
 
-    parlay::parallel_for(0, num_vectors, [&] (size_t i) {
-        points[i].id = i; 
+    ityr::global_vector_options global_vec_coll_opts(true, 1024);
 
-        int* start = (int*)(fileptr + 8 + 4*i*d); //8 bytes at the start for size + dimension
-        int* end = start + d;
-        float* dist_start = (float*)(fileptr+ 8 + num_vectors*4*d + 4*i*d);
-        float* dist_end = dist_start+d; 
-        points[i].coordinates = parlay::make_slice(start, end);
-        points[i].distances = parlay::make_slice(dist_start, dist_end);
+    ityr::global_vector<ivec_point> points(global_vec_coll_opts, num_vectors);
+    ityr::global_span<ivec_point> points_ref(points);
+
+    ityr::root_exec([=] {
+      ityr::transform(
+          ityr::execution::parallel_policy(1024),
+          ityr::count_iterator<int>(0),
+          ityr::count_iterator<int>(num_vectors),
+          points_ref.begin(),
+          [=](int i) {
+            ivec_point p;
+            p.id = i;
+
+            int* start = (int*)(fileptr + 8 + 4*i*d); //8 bytes at the start for size + dimension
+            int* end = start + d;
+            float* dist_start = (float*)(fileptr+ 8 + num_vectors*4*d + 4*i*d);
+            float* dist_end = dist_start+d; 
+            p.coordinates = {start, end};
+            p.distances = {dist_start, dist_end};
+            return p;
+          });
     });
 
-    return points;
+    return std::make_tuple(std::move(ufp), std::move(points));
 }
+
+#if 0
 
 // *************************************************************
 //  XVECS TOOLS: uint8, float32, int32
@@ -391,3 +396,5 @@ auto parse_rangeres(const char* filename){
     });
     return points;
 }
+
+#endif

@@ -20,10 +20,13 @@
 // OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 // WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+#ifndef PARSE_RESULTS
+#define PARSE_RESULTS
+
 #include <algorithm>
-#include "parlay/parallel.h"
-#include "parlay/primitives.h"
+#if 0
 #include "common/geometry.h"
+#endif
 #include "indexTools.h"
 #include <set>
 
@@ -45,6 +48,7 @@ struct Graph{
   }
 };
 
+#if 0
 struct LSH{
   std::string name;
   std::string params;
@@ -59,7 +63,9 @@ struct LSH{
     std::cout << "Tables built in " << time << " seconds" << std::endl;
   }
 };
+#endif
 
+#if 0
 struct range_result{
   int num_queries;
   int num_nonzero_queries;
@@ -102,6 +108,7 @@ struct range_result{
   	std::cout << "Average num visited: " << avg_visited << ", 99th percentile num visited: " << tail_visited << std::endl;
   }
 };
+#endif
 
 struct nn_result{
   double recall;
@@ -120,25 +127,24 @@ struct nn_result{
 
   long num_queries;
 
-  nn_result(double r, parlay::sequence<size_t> stats, float qps, int K, int Q, float c, long q) : recall(r), 
+  nn_result(double r, std::tuple<size_t, size_t, size_t, size_t> stats, float qps, int K, int Q, float c, long q) : recall(r), 
     QPS(qps), k(K), beamQ(Q), cut(c), num_queries(q) {
 
-    if(stats.size() != 4) abort();
-
-    avg_cmps = stats[0]; tail_cmps = stats[1];
-    avg_visited = stats[2]; tail_visited = stats[3];
+    avg_cmps = std::get<0>(stats); tail_cmps = std::get<1>(stats);
+    avg_visited = std::get<2>(stats); tail_visited = std::get<3>(stats);
   }
 
   void print(){
     std::cout << "Over " << num_queries << " queries" << std::endl;
     std::cout << "k = " << k << ", Q = " << beamQ << ", cut = " << cut 
-	    << ", throughput = " << QPS << "/second" << std::endl;
+            << ", throughput = " << QPS << "/second" << std::endl;
     std::cout << "Recall: " << recall << std::endl; 
-  	std::cout << "Average dist cmps: " << avg_cmps << ", 99th percentile dist cmps: " << tail_cmps << std::endl;
-  	std::cout << "Average num visited: " << avg_visited << ", 99th percentile num visited: " << tail_visited << std::endl;
+        std::cout << "Average dist cmps: " << avg_cmps << ", 99th percentile dist cmps: " << tail_cmps << std::endl;
+        std::cout << "Average num visited: " << avg_visited << ", 99th percentile num visited: " << tail_visited << std::endl;
   }
 };
 
+#if 0
 struct lsh_result{
   double recall;
 
@@ -166,26 +172,28 @@ struct lsh_result{
   	std::cout << "Average dist cmps: " << avg_cmps << ", 99th percentile dist cmps: " << tail_cmps << std::endl;
   }
 };
+#endif
 
 template<typename res>
-auto parse_result(parlay::sequence<res> results, parlay::sequence<float> buckets){
-  parlay::sequence<float> ret_buckets;
-  parlay::sequence<res> retval;
-  for(int i=0; i<buckets.size(); i++){
+auto parse_result(std::vector<res> results, std::vector<float> buckets){
+  std::vector<float> ret_buckets;
+  std::vector<res> retval;
+  for(std::size_t i=0; i<buckets.size(); i++){
     float b = buckets[i];
     auto pred = [&] (res R) {return R.recall >= b;};
-    parlay::sequence<res> candidates;
-    auto temp_candidates = parlay::filter(results, pred);
+    std::vector<res> candidates;
+    std::vector<res> temp_candidates;
+    std::copy_if(results.begin(), results.end(), std::back_inserter(temp_candidates), pred);
     if((i == buckets.size()-1) || (temp_candidates.size() == 0)){
-      candidates = temp_candidates;
+      candidates = std::move(temp_candidates);
     }else{
       float c = buckets[i+1];
       auto pred2 = [&] (res R) {return R.recall <= c;};
-      candidates = parlay::filter(temp_candidates, pred2);
+      std::copy_if(temp_candidates.begin(), temp_candidates.end(), std::back_inserter(candidates), pred2);
     }
     if(candidates.size() != 0){
       auto less = [&] (res R, res S) {return R.QPS < S.QPS;};
-      res M = *(parlay::max_element(candidates, less));
+      res M = *(std::max_element(candidates.begin(), candidates.end(), less));
       std::cout << "For recall above: " << b << std::endl;
       M.print();
       retval.push_back(M);
@@ -194,5 +202,7 @@ auto parse_result(parlay::sequence<res> results, parlay::sequence<float> buckets
       std::cout << std::endl;
     }
   }
-  return std::make_pair(retval, ret_buckets);
+  return std::make_pair(std::move(retval), std::move(ret_buckets));
 }
+
+#endif

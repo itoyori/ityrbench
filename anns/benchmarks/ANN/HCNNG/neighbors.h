@@ -22,10 +22,9 @@
 
 #include <algorithm>
 #include <cmath>
-#include "parlay/parallel.h"
-#include "parlay/primitives.h"
-#include "parlay/random.h"
+#if 0
 #include "common/geometry.h"
+#endif
 #include "../utils/NSGDist.h"  
 #include "../utils/types.h"
 #include "../utils/beamSearch.h"
@@ -35,34 +34,45 @@
 #include "../utils/check_nn_recall.h"
 #include "hcnng_index.h"
 
+#ifndef ANNS_DATA_TYPE
+#define ANNS_DATA_TYPE uint8_t
+/* #define ANNS_DATA_TYPE int8_t */
+/* #define ANNS_DATA_TYPE float */
+#endif
+
 extern bool report_stats;
 template<typename T>
-void ANN(parlay::sequence<Tvec_point<T>*> &v, int k, int mstDeg,
+void ANN(ityr::global_vector<Tvec_point<T>> &v, int k, int mstDeg,
 	 int num_clusters, int beamSizeQ, double cluster_size, double dummy,
-	 parlay::sequence<Tvec_point<T>*> &q, parlay::sequence<ivec_point> groundTruth, char* res_file, bool graph_built, bool mips) {
+	 ityr::global_vector<Tvec_qpoint<T>> &q, ityr::global_vector<ivec_point>& groundTruth, char* res_file, bool graph_built, bool mips) {
 
-  parlay::internal::timer t("ANN",report_stats); 
+  timer t;
   using findex = hcnng_index<T>;
-  unsigned d = (v[0]->coordinates).size();
+  unsigned d = (v[0].get().coordinates).size();
   double idx_time;
   if(!graph_built){
+    auto v_copy = v;
     findex I(mstDeg, d, mips);
+#if 0
      parlay::sequence<int> inserts = parlay::tabulate(v.size(), [&] (size_t i){
 					    return static_cast<int>(i);});
-    I.build_index(v, num_clusters, cluster_size);
-    idx_time = t.next_time();
+#endif
+    I.build_index(v_copy, num_clusters, cluster_size);
+    idx_time = t.tick_s();
   } else{idx_time=0;}
   std::string name = "HCNNG";
   std::string params = "Trees = " + std::to_string(num_clusters);
-  auto [avg_deg, max_deg] = graph_stats(v);
+  auto [avg_deg, max_deg] = graph_stats<T>(v);
   Graph G(name, params, v.size(), avg_deg, max_deg, idx_time);
-  G.print();
-  search_and_parse(G, v, q, groundTruth, res_file, mips);
+  if (ityr::is_master()) {
+    G.print();
+  }
+  search_and_parse<T>(G, v, q, groundTruth, res_file, mips);
 
 }
 
 
-
+#if 0
 template<typename T>
 void ANN(parlay::sequence<Tvec_point<T>*> v, int MSTdeg, int num_clusters, double cluster_size, double dummy2, bool graph_built, bool mips) {
   parlay::internal::timer t("ANN",report_stats); 
@@ -80,3 +90,4 @@ void ANN(parlay::sequence<Tvec_point<T>*> v, int MSTdeg, int num_clusters, doubl
     }
   };
 }
+#endif

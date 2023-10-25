@@ -20,16 +20,19 @@
 // OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 // WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+#include "neighbors.h"
+
 #include <iostream>
 #include <algorithm>
-#include "parlay/parallel.h"
-#include "parlay/primitives.h"
+#if 0
 #include "common/geometry.h"
 #include "common/geometryIO.h"
+#endif
 #include "common/parse_command_line.h"
+#if 0
 #include "common/time_loop.h"
+#endif
 #include "../utils/parse_files.h"
-
 
 
 #include <fcntl.h>
@@ -38,7 +41,9 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#if 0
 using namespace benchIO;
+#endif
 
 bool report_stats = true;
 
@@ -47,8 +52,9 @@ bool report_stats = true;
 //  TIMING
 // *************************************************************
 
+#if 0
 template<typename T>
-void timeNeighbors(parlay::sequence<Tvec_point<T>> &pts,
+void timeNeighbors(ityr::global_vector<Tvec_point<T>> &pts,
   int rounds, int R, int beamSize, double delta, double alpha, char* outFile, int maxDeg, bool graph_built = false, bool df=false)
 {
   size_t n = pts.size();
@@ -70,14 +76,16 @@ void timeNeighbors(parlay::sequence<Tvec_point<T>> &pts,
 
 
 }
+#endif
 
 template<typename T>
-void timeNeighbors(parlay::sequence<Tvec_point<T>> &pts,
-		   parlay::sequence<Tvec_point<T>> &qpoints,
+void timeNeighbors(ityr::global_vector<Tvec_point<T>> &pts,
+		   ityr::global_vector<Tvec_qpoint<T>> &qpoints,
 		   int k, int rounds, int R, int beamSize,
 		   int beamSizeQ, double delta, double alpha, char* outFile,
-		   parlay::sequence<ivec_point>& groundTruth, int maxDeg, char* res_file, bool graph_built = false, bool df=false)
+		   ityr::global_vector<ivec_point>& groundTruth, int maxDeg, char* res_file, bool graph_built = false, bool df=false)
 {
+#if 0
   size_t n = pts.size();
   auto v = parlay::tabulate(n, [&] (size_t i) -> Tvec_point<T>* {
       return &pts[i];});
@@ -85,18 +93,22 @@ void timeNeighbors(parlay::sequence<Tvec_point<T>> &pts,
   size_t q = qpoints.size();
   auto qpts =  parlay::tabulate(q, [&] (size_t i) -> Tvec_point<T>* {
       return &qpoints[i];});
+#endif
 
-    time_loop(rounds, 0,
-      [&] () {},
-      [&] () {
-        ANN<T>(v, k, R, beamSize, beamSizeQ, alpha, delta, qpts, groundTruth, res_file, graph_built, df);
-      },
-      [&] () {});
+  for (int r = 0; r < rounds; r++) {
+    ANN<T>(pts, k, R, beamSize, beamSizeQ, alpha, delta, qpoints, groundTruth, res_file, graph_built, df);
+  }
 
     if(outFile != NULL) {
+#if 0
       std::cout << "Writing graph..."; 
       write_graph(v, outFile, maxDeg); 
       std::cout << " done" << std::endl;
+#else
+      (void)maxDeg;
+      std::cout << "Error: write graph not supported" << std::endl;
+      abort();
+#endif
     }
 
 
@@ -104,6 +116,29 @@ void timeNeighbors(parlay::sequence<Tvec_point<T>> &pts,
 
 // Infile is a file in .fvecs format
 int main(int argc, char* argv[]) {
+  ityr::init();
+
+  set_signal_handlers();
+
+  if (ityr::is_master()) {
+    printf("=============================================================\n");
+
+	for(int i=0; i<argc; ++i)
+		printf("%s ", argv[i]);
+	putchar('\n');
+
+    printf("-------------------------------------------------------------\n");
+    printf("[Compile Options]\n");
+    ityr::print_compile_options();
+    printf("-------------------------------------------------------------\n");
+    printf("[Runtime Options]\n");
+    ityr::print_runtime_options();
+    printf("=============================================================\n");
+    printf("PID of the main worker: %d\n", getpid());
+    printf("\n");
+    fflush(stdout);
+  }
+
     commandLine P(argc,argv,
     "[-a <alpha>] [-d <delta>] [-R <deg>]"
         "[-L <bm>] [-k <k> ] [-Q <bmq>] [-q <qF>]"
@@ -130,7 +165,7 @@ int main(int argc, char* argv[]) {
   double delta = P.getOptionDoubleValue("-d", .01);
   int algoOpt = P.getOptionIntValue("-b", 0);
   int dfc = P.getOptionIntValue("-D", 0);
-  if(dfc < 0 | dfc > 1) P.badArgument();
+  if(dfc < 0 || dfc > 1) P.badArgument();
 
   bool df = (dfc == 1);
 
@@ -152,8 +187,6 @@ int main(int argc, char* argv[]) {
     abort();
   }
 
-  parlay::sequence<ivec_point> groundTruth;
-
   int maxDeg;
   if(algoOpt == 1) maxDeg = L*R;
   else if(algoOpt == 2) maxDeg = 2*R;
@@ -162,6 +195,7 @@ int main(int argc, char* argv[]) {
   bool graph_built = (gFile != NULL);
 
   if(ft == "vec"){
+#if 0
     if(cFile != NULL) groundTruth = parse_ivecs(cFile);
     if(tp == "float"){
       auto [md, points] = parse_fvecs(iFile, gFile, maxDeg);
@@ -183,37 +217,28 @@ int main(int argc, char* argv[]) {
       }
       else timeNeighbors<uint8_t>(points, rounds, R, L, delta, alpha, oFile, maxDeg, graph_built, df);
     }
+#else
+    std::cout << "Error: vec file type not supported" << std::endl;
+    abort();
+#endif
   }else if(ft == "bin"){
-    if(cFile != NULL) groundTruth = parse_ibin(cFile);
-    if(tp == "float"){
-      auto [md, points] = parse_fbin(iFile, gFile, maxDeg);
-      maxDeg = md;
-      if(qFile != NULL){
-        auto [fd, qpoints] = parse_fbin(qFile, NULL, 0);
-        timeNeighbors<float>(points, qpoints, k, rounds, R, L, Q,
-          delta, alpha, oFile, groundTruth, maxDeg, rFile, graph_built, df);
-      }
-      else timeNeighbors<float>(points, rounds, R, L, delta, alpha, oFile, maxDeg, graph_built, df);
-    } else if(tp == "uint8"){
-      auto [md, points] = parse_uint8bin(iFile, gFile, maxDeg);
-      maxDeg = md;
-      if(qFile != NULL){
-        auto [fd, qpoints] = parse_uint8bin(qFile, NULL, 0);
-        timeNeighbors<uint8_t>(points, qpoints, k, rounds, R, L, Q,
-          delta, alpha, oFile, groundTruth, maxDeg, rFile, graph_built, df);
-      }
-      else timeNeighbors<uint8_t>(points, rounds, R, L, delta, alpha, oFile, maxDeg, graph_built, df);
-    } else if(tp == "int8"){
-      auto [md, points] = parse_int8bin(iFile, gFile, maxDeg);
-      maxDeg = md;
-      if(qFile != NULL){
-        auto [fd, qpoints] = parse_int8bin(qFile, NULL, 0);
-        timeNeighbors<int8_t>(points, qpoints, k, rounds, R, L, Q,
-          delta, alpha, oFile, groundTruth, maxDeg, rFile, graph_built, df);
-      }
-      else timeNeighbors<int8_t>(points, rounds, R, L, delta, alpha, oFile, maxDeg, graph_built, df);
+    if (cFile == NULL) {
+      std::cout << "Error: cFile must be provided" << std::endl;
+      abort();
     }
+    auto [ufp_gt, groundTruth] = parse_ibin(cFile);
+    auto [ufp_pts, out_nbh, md, points] = parse_bin<Tvec_point<ANNS_DATA_TYPE>>(iFile, gFile, maxDeg);
+    maxDeg = md;
+    if(qFile == NULL){
+      std::cout << "Error: qFile must be provided" << std::endl;
+      abort();
+    }
+    auto [ufp_q, _, fd, qpoints] = parse_bin<Tvec_qpoint<ANNS_DATA_TYPE>>(qFile, NULL, 0);
+    timeNeighbors<ANNS_DATA_TYPE>(points, qpoints, k, rounds, R, L, Q,
+      delta, alpha, oFile, groundTruth, maxDeg, rFile, graph_built, df);
   }
+
+  ityr::fini();
 }
 
 

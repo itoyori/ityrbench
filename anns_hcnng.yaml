@@ -1,4 +1,6 @@
 depends:
+  - name: itoyori
+    recipe: release
   - name: big-anns
     recipe: dataset
 
@@ -12,31 +14,61 @@ default_params:
     - value: 6
       machines: [local]
   dataset: msspacev-1M
+  # common params
+  serial: 0
+  sched: randws # randws/adws
+  cache_policy: writeback_lazy # nocache/writethrough/writeback/writeback_lazy/getput
+  dist_policy: default # default/block/cyclic/block_adws
+  cache_size: 128 # MB
+  block_size: 65536 # bytes
+  sub_block_size: 512 # bytes
+  max_dirty: $cache_size # MB
+  noncoll_alloc_size: 64 # MB
+  shared_mem: 1
+  prof: disabled # disabled/stats/trace
+  dag_prof: disabled # disabled/workspan
+  cache_prof: disabled # disabled/stats
+  debugger: 0
 
-default_name: anns_hcnng_pbbs
+default_name: anns_hcnng
 default_queue: node_${nodes}
 default_duplicates: 1
 
 build:
-  depend_params: []
+  depend_params: [dataset, dist_policy, block_size, prof, dag_prof, cache_prof]
   script: |
     source build_common.bash
 
-    cd anns_pbbs/benchmarks/ANN/HCNNG
-    $CXX -O3 -g -DNDEBUG -std=c++17 -I. -include ./neighbors.h -DHOMEGROWN ${CXXFLAGS:+$CXXFLAGS} -o neighbors ../bench/neighborsTime.C -lpthread -ldl
+    CXXFLAGS="${CXXFLAGS:+$CXXFLAGS} -DITYR_ALLOCATOR_USE_DYNAMIC_WIN=false"
+
+    dataset_prefix=${KOCHI_PARAM_DATASET%-*}
+    case $dataset_prefix in
+      bigann)
+        CXXFLAGS="${CXXFLAGS:+$CXXFLAGS} -DANNS_DATA_TYPE=uint8_t"
+        ;;
+      msspacev)
+        CXXFLAGS="${CXXFLAGS:+$CXXFLAGS} -DANNS_DATA_TYPE=int8_t"
+        ;;
+      text2image)
+        CXXFLAGS="${CXXFLAGS:+$CXXFLAGS} -DANNS_DATA_TYPE=float"
+        ;;
+      *) echo "Unknown dataset name: $dataset_prefix"; exit 1 ;;
+    esac
+
+    CC=$MPICC CXX=$MPICXX cmake -DCMAKE_CXX_FLAGS="$CXXFLAGS" $CMAKE_OPTIONS .
+    make clean
+    make -j anns_hcnng
 
 run:
-  depend_params: [nodes, cores, dataset]
+  depend_params: [nodes, cores, dataset, n_points, n_queries, max_fraction, serial, sched, cache_policy, cache_size, sub_block_size, max_dirty, noncoll_alloc_size, shared_mem, prof, debugger]
   script: |
     source run_common.bash
 
-    n_nodes=$(echo $KOCHI_PARAM_NODES | cut -f 1 -d ":" | sed 's/x/*/g' | bc)
-    if [[ $n_nodes != 1 ]]; then
-      echo "The number of nodes must be 1."
-      exit 1
+    if [[ $KOCHI_PARAM_SERIAL == 1 ]]; then
+      config_name=serial
+    else
+      config_name=${KOCHI_PARAM_SCHED}_${KOCHI_PARAM_CACHE_POLICY}
     fi
-
-    cd anns_pbbs/benchmarks/ANN/HCNNG
 
     opts=""
     opts="$opts -a 1000"
@@ -82,6 +114,14 @@ run:
       *) echo "Unknown dataset name: $dataset_prefix"; exit 1 ;;
     esac
 
-    export PARLAY_NUM_THREADS=$KOCHI_PARAM_CORES
+    commands="./anns_hcnng_${config_name}.out $opts"
 
-    ./neighbors $opts
+    n_nodes=$(echo $KOCHI_PARAM_NODES | cut -f 1 -d ":" | sed 's/x/*/g' | bc)
+
+    if [[ $KOCHI_PARAM_DEBUGGER == 0 ]]; then
+      ityr_mpirun $((n_nodes * KOCHI_PARAM_CORES)) $KOCHI_PARAM_CORES core $commands
+    else
+      MPIEXEC=mpitx ityr_mpirun $((n_nodes * KOCHI_PARAM_CORES)) $KOCHI_PARAM_CORES core gdb --args $commands
+    fi
+
+    if [[ $KOCHI_PARAM_PROF == trace ]]; then run_trace_viewer; fi
