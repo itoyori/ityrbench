@@ -154,9 +154,22 @@ inline std::vector<int> calculate_limits(size_t avg_visited){
 
 template<typename T>
 void search_and_parse(Graph G, ityr::global_span<Tvec_point<T>> v, ityr::global_span<Tvec_qpoint<T>> q, 
-    ityr::global_span<ivec_point> groundTruth, char* res_file, bool mips, bool random=true, int start_point=0){
-    unsigned d = v[0].get().coordinates.size();
+    ityr::global_span<ivec_point> groundTruth, char* res_file, bool mips, bool fast_check, bool random=true, int start_point=0){
+  unsigned d = v[0].get().coordinates.size();
 
+  if (fast_check) {
+    nn_result result1 = checkRecall(v, q, groundTruth, 100, 500, 1.25, d, random, -1, start_point, mips);
+    if (ityr::is_master()) {
+      result1.print();
+    }
+
+    int limit = (int) ((float) result1.avg_visited * 0.05);
+    nn_result result2 = checkRecall(v, q, groundTruth, 10, 15, 1.14, d, random, limit, start_point, mips);
+    if (ityr::is_master()) {
+      result2.print();
+    }
+
+  } else {
     std::vector<nn_result> results;
     std::vector<int> beams = {15, 20, 30, 50, 75, 100, 125, 250, 500};
     std::vector<int> allk = {10, 15, 20, 30, 50, 100};
@@ -191,5 +204,6 @@ void search_and_parse(Graph G, ityr::global_span<Tvec_point<T>> v, ityr::global_
 #endif
       }
     }
+  }
 }
 

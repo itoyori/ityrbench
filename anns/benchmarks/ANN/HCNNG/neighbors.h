@@ -44,7 +44,7 @@ extern bool report_stats;
 template<typename T>
 void ANN(ityr::global_vector<Tvec_point<T>> &v, int k, int mstDeg,
 	 int num_clusters, int beamSizeQ, double cluster_size, double dummy,
-	 ityr::global_vector<Tvec_qpoint<T>> &q, ityr::global_vector<ivec_point>& groundTruth, char* res_file, bool graph_built, bool mips) {
+	 ityr::global_vector<Tvec_qpoint<T>> &q, ityr::global_vector<ivec_point>& groundTruth, char* res_file, bool graph_built, bool mips, bool fast_check) {
 
   ityr::profiler_begin();
 
@@ -74,7 +74,7 @@ void ANN(ityr::global_vector<Tvec_point<T>> &v, int k, int mstDeg,
   if (ityr::is_master()) {
     G.print();
   }
-  search_and_parse<T>(G, v, q, groundTruth, res_file, mips);
+  search_and_parse<T>(G, v, q, groundTruth, res_file, mips, fast_check);
 
 }
 

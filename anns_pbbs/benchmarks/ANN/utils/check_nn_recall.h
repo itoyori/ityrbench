@@ -130,8 +130,18 @@ parlay::sequence<int> calculate_limits(size_t avg_visited){
 
 template<typename T>
 void search_and_parse(Graph G, parlay::sequence<Tvec_point<T>*> &v, parlay::sequence<Tvec_point<T>*> &q, 
-    parlay::sequence<ivec_point> groundTruth, char* res_file, bool mips, bool random=true, int start_point=0){
-    unsigned d = v[0]->coordinates.size();
+    parlay::sequence<ivec_point> groundTruth, char* res_file, bool mips, bool fast_check, bool random=true, int start_point=0){
+  unsigned d = v[0]->coordinates.size();
+
+  if (fast_check) {
+    nn_result result1 = checkRecall(v, q, groundTruth, 100, 500, 1.25, d, random, -1, start_point, mips);
+    result1.print();
+
+    int limit = (int) ((float) result1.avg_visited * 0.05);
+    nn_result result2 = checkRecall(v, q, groundTruth, 10, 15, 1.14, d, random, limit, start_point, mips);
+    result2.print();
+
+  } else {
 
     parlay::sequence<nn_result> results;
     std::vector<int> beams = {15, 20, 30, 50, 75, 100, 125, 250, 500};
@@ -157,5 +167,6 @@ void search_and_parse(Graph G, parlay::sequence<Tvec_point<T>*> &v, parlay::sequ
     parlay::sequence<float> buckets = {.1, .15, .2, .25, .3, .35, .4, .45, .5, .55, .6, .65, .7, .73, .75, .77, .8, .83, .85, .87, .9, .93, .95, .97, .99, .995, .999};
     auto [res, ret_buckets] = parse_result(results, buckets);
     if(res_file != NULL) write_to_csv(std::string(res_file), ret_buckets, res, G);
+  }
 }
 

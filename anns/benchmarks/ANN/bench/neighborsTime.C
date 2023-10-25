@@ -83,7 +83,7 @@ void timeNeighbors(ityr::global_vector<Tvec_point<T>> &pts,
 		   ityr::global_vector<Tvec_qpoint<T>> &qpoints,
 		   int k, int rounds, int R, int beamSize,
 		   int beamSizeQ, double delta, double alpha, char* outFile,
-		   ityr::global_vector<ivec_point>& groundTruth, int maxDeg, char* res_file, bool graph_built = false, bool df=false)
+		   ityr::global_vector<ivec_point>& groundTruth, int maxDeg, char* res_file, bool graph_built = false, bool df=false, bool fast_check=false)
 {
 #if 0
   size_t n = pts.size();
@@ -96,7 +96,7 @@ void timeNeighbors(ityr::global_vector<Tvec_point<T>> &pts,
 #endif
 
   for (int r = 0; r < rounds; r++) {
-    ANN<T>(pts, k, R, beamSize, beamSizeQ, alpha, delta, qpoints, groundTruth, res_file, graph_built, df);
+    ANN<T>(pts, k, R, beamSize, beamSizeQ, alpha, delta, qpoints, groundTruth, res_file, graph_built, df, fast_check);
   }
 
     if(outFile != NULL) {
@@ -142,7 +142,7 @@ int main(int argc, char* argv[]) {
     commandLine P(argc,argv,
     "[-a <alpha>] [-d <delta>] [-R <deg>]"
         "[-L <bm>] [-k <k> ] [-Q <bmq>] [-q <qF>]"
-        "[-g <gF>] [-o <oF>] [-res <rF>] [-r <rnds>] [-b <algoOpt>] [-f <ft>] [-t <tp>] [-D <df>] <inFile>");
+        "[-g <gF>] [-o <oF>] [-res <rF>] [-r <rnds>] [-b <algoOpt>] [-f <ft>] [-t <tp>] [-D <df>] [-fc <fast_check>] <inFile>");
 
   char* iFile = P.getArgument(0);
   char* oFile = P.getOptionValue("-o");
@@ -166,6 +166,7 @@ int main(int argc, char* argv[]) {
   int algoOpt = P.getOptionIntValue("-b", 0);
   int dfc = P.getOptionIntValue("-D", 0);
   if(dfc < 0 || dfc > 1) P.badArgument();
+  int fast_check = P.getOptionIntValue("-fc", 0);
 
   bool df = (dfc == 1);
 
@@ -235,7 +236,7 @@ int main(int argc, char* argv[]) {
     }
     auto [ufp_q, _, fd, qpoints] = parse_bin<Tvec_qpoint<ANNS_DATA_TYPE>>(qFile, NULL, 0);
     timeNeighbors<ANNS_DATA_TYPE>(points, qpoints, k, rounds, R, L, Q,
-      delta, alpha, oFile, groundTruth, maxDeg, rFile, graph_built, df);
+      delta, alpha, oFile, groundTruth, maxDeg, rFile, graph_built, df, fast_check);
   }
 
   ityr::fini();

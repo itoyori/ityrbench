@@ -39,7 +39,7 @@ extern bool report_stats;
 template<typename T>
 void ANN(parlay::sequence<Tvec_point<T>*> &v, int k, int mstDeg,
 	 int num_clusters, int beamSizeQ, double cluster_size, double dummy,
-	 parlay::sequence<Tvec_point<T>*> &q, parlay::sequence<ivec_point> groundTruth, char* res_file, bool graph_built, bool mips) {
+	 parlay::sequence<Tvec_point<T>*> &q, parlay::sequence<ivec_point> groundTruth, char* res_file, bool graph_built, bool mips, bool fast_check) {
 
   parlay::internal::timer t("ANN",report_stats); 
   using findex = hcnng_index<T>;
@@ -57,14 +57,14 @@ void ANN(parlay::sequence<Tvec_point<T>*> &v, int k, int mstDeg,
   auto [avg_deg, max_deg] = graph_stats(v);
   Graph G(name, params, v.size(), avg_deg, max_deg, idx_time);
   G.print();
-  search_and_parse(G, v, q, groundTruth, res_file, mips);
+  search_and_parse(G, v, q, groundTruth, res_file, mips, fast_check);
 
 }
 
 
 
 template<typename T>
-void ANN(parlay::sequence<Tvec_point<T>*> v, int MSTdeg, int num_clusters, double cluster_size, double dummy2, bool graph_built, bool mips) {
+void ANN(parlay::sequence<Tvec_point<T>*> v, int MSTdeg, int num_clusters, double cluster_size, double dummy2, bool graph_built, bool mips, bool fast_check) {
   parlay::internal::timer t("ANN",report_stats); 
   { 
     unsigned d = (v[0]->coordinates).size();

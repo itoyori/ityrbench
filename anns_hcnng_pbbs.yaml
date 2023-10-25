@@ -12,6 +12,7 @@ default_params:
     - value: 6
       machines: [local]
   dataset: msspacev-1M
+  fast_check: 1
 
 default_name: anns_hcnng_pbbs
 default_queue: node_${nodes}
@@ -26,7 +27,7 @@ build:
     $CXX -O3 -g -DNDEBUG -std=c++17 -I. -include ./neighbors.h -DHOMEGROWN ${CXXFLAGS:+$CXXFLAGS} -o neighbors ../bench/neighborsTime.C -lpthread -ldl
 
 run:
-  depend_params: [nodes, cores, dataset]
+  depend_params: [fast_check, nodes, cores, dataset]
   script: |
     source run_common.bash
 
@@ -42,6 +43,7 @@ run:
     opts="$opts -a 1000"
     opts="$opts -R 3"
     opts="$opts -b 1"
+    opts="$opts -fc $KOCHI_PARAM_FAST_CHECK"
 
     dataset_prefix=${KOCHI_PARAM_DATASET%-*}
     dataset_suffix=${KOCHI_PARAM_DATASET#*-}
