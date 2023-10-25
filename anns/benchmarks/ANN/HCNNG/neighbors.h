@@ -46,10 +46,13 @@ void ANN(ityr::global_vector<Tvec_point<T>> &v, int k, int mstDeg,
 	 int num_clusters, int beamSizeQ, double cluster_size, double dummy,
 	 ityr::global_vector<Tvec_qpoint<T>> &q, ityr::global_vector<ivec_point>& groundTruth, char* res_file, bool graph_built, bool mips) {
 
+  ityr::profiler_begin();
+
   timer t;
   using findex = hcnng_index<T>;
   unsigned d = (v[0].get().coordinates).size();
   double idx_time;
+
   if(!graph_built){
     auto v_copy = v;
     findex I(mstDeg, d, mips);
@@ -60,6 +63,10 @@ void ANN(ityr::global_vector<Tvec_point<T>> &v, int k, int mstDeg,
     I.build_index(v_copy, num_clusters, cluster_size);
     idx_time = t.tick_s();
   } else{idx_time=0;}
+
+  ityr::profiler_end();
+  ityr::profiler_flush();
+
   std::string name = "HCNNG";
   std::string params = "Trees = " + std::to_string(num_clusters);
   auto [avg_deg, max_deg] = graph_stats<T>(v);
