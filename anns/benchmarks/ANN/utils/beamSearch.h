@@ -150,7 +150,7 @@ std::pair<std::pair<std::vector<pid>, std::vector<pid>>, size_t> beam_search(
 		- new_frontier.begin());
       }
       else{f_size = (std::upper_bound(new_frontier.begin(), new_frontier.begin() + f_size,
-				std::pair{0, cut * new_frontier[k].second}, less)
+				std::pair{0, cut * std::max(0.000001f, new_frontier[k].second)}, less)
 		- new_frontier.begin());}
     }
     frontier.clear();
@@ -204,10 +204,12 @@ void beamSearchRandom(ityr::global_span<Tvec_qpoint<T>> q,
       auto [pairElts, dist_cmps] = beam_search(qp, v, start, beamSizeQ, d, mips, k, cut, limit);
       beamElts = pairElts.first;
       visitedElts = pairElts.second;
-      qp.ngh.resize(k);
+      auto ngh_size = std::min<std::size_t>(k, beamElts.size());
+      qp.ngh.resize(ngh_size);
+      assert(ngh_size > 0);
       ityr::transform(
-          ityr::execution::sequenced_policy(k),
-          beamElts.begin(), beamElts.begin() + k, qp.ngh.begin(),
+          ityr::execution::sequenced_policy(ngh_size),
+          beamElts.begin(), beamElts.begin() + ngh_size, qp.ngh.begin(),
           [](const auto& e) { return e.first; });
       if (report_stats) {qp.visited = visitedElts.size(); qp.dist_calls = dist_cmps; }
     });

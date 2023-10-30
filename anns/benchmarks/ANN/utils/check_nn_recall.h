@@ -102,7 +102,7 @@ nn_result checkRecall(
             }
             std::set<int> reported_nbhs;
             auto ngh_cs = ityr::make_checkout(qp.ngh.data(), qp.ngh.size(), ityr::checkout_mode::read);
-            for(int l=0; l<r; l++) reported_nbhs.insert(ngh_cs[l]);
+            for(int l=0; l<ngh_cs.size(); l++) reported_nbhs.insert(ngh_cs[l]);
 
             int numCorrect = 0;
             for(std::size_t l=0; l<results_with_ties.size(); l++){
