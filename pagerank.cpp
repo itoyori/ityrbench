@@ -125,15 +125,6 @@ exec_t      exec_type        = exec_t::Naive;
 long        bin_width        = 16 * 1024;
 long        bin_offset_bits  = log2_pow2(bin_width);
 
-ityr::global_vector_options global_vec_coll_opts(std::size_t cutoff_count) {
-  return {
-    .collective         = true,
-    .parallel_construct = true,
-    .parallel_destruct  = true,
-    .cutoff_count       = cutoff_count,
-  };
-}
-
 graph load_dataset(const char* filename) {
   auto t0 = ityr::gettime_ns();
 
@@ -181,11 +172,11 @@ graph load_dataset(const char* filename) {
   static uintE* in_edges = reinterpret_cast<uintE*>(data + skip);
   skip += m * sizeof(uintE);
 
-  ityr::global_vector<vertex_data> v_in_data(global_vec_coll_opts(cutoff_v), n);
-  ityr::global_vector<vertex_data> v_out_data(global_vec_coll_opts(cutoff_v), n);
+  ityr::global_vector<vertex_data> v_in_data(ityr::global_vector_options(true, cutoff_v), n);
+  ityr::global_vector<vertex_data> v_out_data(ityr::global_vector_options(true, cutoff_v), n);
 
-  ityr::global_vector<uintE> in_edges_vec(global_vec_coll_opts(cutoff_e), m);
-  ityr::global_vector<uintE> out_edges_vec(global_vec_coll_opts(cutoff_e), m);
+  ityr::global_vector<uintE> in_edges_vec(ityr::global_vector_options(true, cutoff_e), m);
+  ityr::global_vector<uintE> out_edges_vec(ityr::global_vector_options(true, cutoff_e), m);
 
   auto v_in_data_begin  = v_in_data.begin();
   auto v_out_data_begin = v_out_data.begin();
@@ -299,7 +290,7 @@ void partition(long n_parts, graph& g) {
 
   g.n_parts = n_parts;
 
-  ityr::global_vector<part> parts(global_vec_coll_opts(1), n_parts);
+  ityr::global_vector<part> parts(ityr::global_vector_options(true, 1), n_parts);
   ityr::global_span<part> parts_ref(parts);
 
   auto n = g.n;
@@ -367,7 +358,7 @@ void partition(long n_parts, graph& g) {
   });
 
   /* Allocate bin edges */
-  ityr::global_vector<std::size_t> bin_edges_offsets(global_vec_coll_opts(1), n_parts + 1);
+  ityr::global_vector<std::size_t> bin_edges_offsets(ityr::global_vector_options(true, 1), n_parts + 1);
   ityr::global_span<std::size_t> bin_edges_offsets_ref(bin_edges_offsets);
 
   ityr::root_exec([=] {
@@ -390,7 +381,7 @@ void partition(long n_parts, graph& g) {
     fflush(stdout);
   }
 
-  ityr::global_vector<bin_edge_elem_t> bin_edges(global_vec_coll_opts(cutoff_e), bin_edges_size_total);
+  ityr::global_vector<bin_edge_elem_t> bin_edges(ityr::global_vector_options(true, cutoff_e), bin_edges_size_total);
   ityr::global_span<bin_edge_elem_t> bin_edges_ref(bin_edges);
 
   ityr::root_exec([=] {
@@ -444,7 +435,7 @@ void partition(long n_parts, graph& g) {
   });
 
   /* Allocate dest bins */
-  ityr::global_vector<std::size_t> dest_bin_offsets(global_vec_coll_opts(1), n_parts + 1);
+  ityr::global_vector<std::size_t> dest_bin_offsets(ityr::global_vector_options(true, 1), n_parts + 1);
   ityr::global_span<std::size_t> dest_bin_offsets_ref(dest_bin_offsets);
 
   ityr::root_exec([=] {
@@ -472,11 +463,11 @@ void partition(long n_parts, graph& g) {
     fflush(stdout);
   }
 
-  ityr::global_vector<dest_bin_elem_t> dest_bin_elems(global_vec_coll_opts(cutoff_e), dest_bin_size_total);
+  ityr::global_vector<dest_bin_elem_t> dest_bin_elems(ityr::global_vector_options(true, cutoff_e), dest_bin_size_total);
   ityr::global_span<dest_bin_elem_t> dest_bin_elems_ref(dest_bin_elems);
 
   /* Allocate update bins */
-  ityr::global_vector<std::size_t> update_bin_offsets(global_vec_coll_opts(1), n_parts + 1);
+  ityr::global_vector<std::size_t> update_bin_offsets(ityr::global_vector_options(true, 1), n_parts + 1);
   ityr::global_span<std::size_t> update_bin_offsets_ref(update_bin_offsets);
 
   ityr::root_exec([=] {
@@ -504,7 +495,7 @@ void partition(long n_parts, graph& g) {
     fflush(stdout);
   }
 
-  ityr::global_vector<real_t> update_bin_elems(global_vec_coll_opts(cutoff_e), update_bin_size_total);
+  ityr::global_vector<real_t> update_bin_elems(ityr::global_vector_options(true, cutoff_e), update_bin_size_total);
   ityr::global_span<real_t> update_bin_elems_ref(update_bin_elems);
 
   /* Distribute bins to parts */
@@ -1066,10 +1057,10 @@ void run() {
     init_gpop(*g);
   }
 
-  ityr::global_vector<real_t> p_curr_vec    (global_vec_coll_opts(cutoff_v), g->n);
-  ityr::global_vector<real_t> p_next_vec    (global_vec_coll_opts(cutoff_v), g->n);
-  ityr::global_vector<real_t> p_div_vec     (global_vec_coll_opts(cutoff_v), g->n);
-  ityr::global_vector<real_t> p_div_next_vec(global_vec_coll_opts(cutoff_v), g->n);
+  ityr::global_vector<real_t> p_curr_vec    (ityr::global_vector_options(true, cutoff_v), g->n);
+  ityr::global_vector<real_t> p_next_vec    (ityr::global_vector_options(true, cutoff_v), g->n);
+  ityr::global_vector<real_t> p_div_vec     (ityr::global_vector_options(true, cutoff_v), g->n);
+  ityr::global_vector<real_t> p_div_next_vec(ityr::global_vector_options(true, cutoff_v), g->n);
 
   ityr::global_span<real_t> p_curr    (p_curr_vec);
   ityr::global_span<real_t> p_next    (p_next_vec);

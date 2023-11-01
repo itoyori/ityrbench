@@ -24,12 +24,7 @@ namespace EXAFMM_NAMESPACE {
   inline constexpr std::size_t cutoff_body = 1024;
   inline constexpr std::size_t cutoff_cell = 128;
 
-  inline constexpr ityr::global_vector_options global_vec_coll_opts {
-    .collective         = true,
-    .parallel_construct = true,
-    .parallel_destruct  = true,
-    .cutoff_count       = cutoff_body,
-  };
+  inline constexpr ityr::global_vector_options global_vec_coll_opts(true, cutoff_body);
 
   inline constexpr ityr::execution::sequenced_policy body_seq_policy(cutoff_body);
   inline constexpr ityr::execution::sequenced_policy cell_seq_policy(cutoff_cell);
