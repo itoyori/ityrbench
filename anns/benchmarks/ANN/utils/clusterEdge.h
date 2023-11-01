@@ -190,11 +190,13 @@ struct cluster{
 		size_t m = 10;
 		auto less = [&] (labelled_edge a, labelled_edge b) {return a.second < b.second;};
 
-                ityr::global_vector<labelled_edge> flat_edges = ityr::transform_reduce(
+                ityr::global_vector<labelled_edge> flat_edges(N * m);
+                ityr::global_span<labelled_edge> flat_edges_ref(flat_edges);
+
+                ityr::for_each(
                     ityr::execution::par,
                     ityr::count_iterator<int>(0),
                     ityr::count_iterator<int>(N),
-                    ityr::reducer::vec_concat<labelled_edge>{},
                     [=](int i) {
                       ITYR_PROFILER_RECORD(prof_event_user_mst_pre);
 
@@ -220,9 +222,8 @@ struct cluster{
                                       }
                               }
                       }
-                      ityr::global_vector<labelled_edge> edges(m);
-                      for(std::size_t j=0; j<m; j++){edges[j] = Q.top(); Q.pop();}
-                      return edges;
+                      auto edges_cs = ityr::make_checkout(flat_edges_ref.subspan(i * m, m), ityr::checkout_mode::write);
+                      for(std::size_t j=0; j<m; j++){edges_cs[j] = Q.top(); Q.pop();}
                     });
 
                 ITYR_PROFILER_RECORD(prof_event_user_mst_post);
