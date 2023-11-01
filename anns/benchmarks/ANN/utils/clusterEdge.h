@@ -31,6 +31,11 @@
 #include <functional>
 #include <queue>
 
+struct prof_event_user_mst : public ityr::common::profiler::event {
+  using event::event;
+  std::string str() const override { return "user_MST"; }
+};
+
 #if 0
 std::pair<size_t, size_t> select_two_random(parlay::sequence<size_t>& active_indices,
 	parlay::random& rnd) {
@@ -175,6 +180,8 @@ struct cluster{
 	//parameters dim and K are just to interface with the cluster tree code
 	void MSTk(ityr::global_span<tvec_point> v,
 		unsigned dim, int K) const {
+          ITYR_PROFILER_RECORD(prof_event_user_mst);
+
 		//preprocessing for Kruskal's
 		int N = v.size();
 		DisjointSet *disjset = new DisjointSet(N);

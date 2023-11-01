@@ -118,6 +118,8 @@ void timeNeighbors(ityr::global_vector<Tvec_point<T>> &pts,
 int main(int argc, char* argv[]) {
   ityr::init();
 
+  ityr::common::profiler::event_initializer<prof_event_user_mst> ITYR_ANON_VAR;
+
   set_signal_handlers();
 
   if (ityr::is_master()) {
