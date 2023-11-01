@@ -119,6 +119,7 @@ int main(int argc, char* argv[]) {
   ityr::init();
 
   ityr::common::profiler::event_initializer<prof_event_user_mst_pre>  ITYR_ANON_VAR;
+  ityr::common::profiler::event_initializer<prof_event_user_mst_mid>  ITYR_ANON_VAR;
   ityr::common::profiler::event_initializer<prof_event_user_mst_post> ITYR_ANON_VAR;
 
   set_signal_handlers();

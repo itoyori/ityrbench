@@ -36,6 +36,11 @@ struct prof_event_user_mst_pre : public ityr::common::profiler::event {
   std::string str() const override { return "user_MST_pre"; }
 };
 
+struct prof_event_user_mst_mid : public ityr::common::profiler::event {
+  using event::event;
+  std::string str() const override { return "user_MST_mid"; }
+};
+
 struct prof_event_user_mst_post : public ityr::common::profiler::event {
   using event::event;
   std::string str() const override { return "user_MST_post"; }
@@ -121,7 +126,16 @@ struct cluster{
 	unsigned d; 
 	bool mips;
 	using tvec_point = Tvec_point<T>;
-	using edge = std::pair<int, int>;
+        struct edge {
+          int first;
+          int second;
+          friend bool operator==(edge a, edge b) {
+            return a.first == b.first && a.first == b.first;
+          }
+          friend bool operator!=(edge a, edge b) {
+            return !(a == b);
+          }
+        };
 	using labelled_edge = std::pair<edge, float>;
 
 	cluster(unsigned dim, bool m): d(dim), mips(m) {}
@@ -132,7 +146,7 @@ struct cluster{
 	}
 
 	//inserts each edge after checking for duplicates
-	void process_edges(ityr::global_span<tvec_point> v, std::vector<edge> edges) const {
+	void process_edges(ityr::global_span<tvec_point> v, ityr::global_vector<edge>& edges) const {
 #if 0
 		auto grouped = parlay::group_by_key(edges);
 		for(auto pair : grouped){
@@ -147,19 +161,26 @@ struct cluster{
 			}
 		}
 #endif
-                // TODO: parallelize?
-                std::stable_sort(edges.begin(), edges.end());
-                auto v_cs = ityr::make_checkout(v.data(), v.size(), ityr::checkout_mode::read);
-		int maxDeg = v_cs[0].out_nbh.size();
-                for (auto [i, c] : edges) {
-                  if(size_of(v_cs[i].out_nbh) < maxDeg){
-                    add_nbh(c, v_cs[i]);
-                  }else{
-                    // TODO: why does this never overflow?
-                    remove_edge_duplicates(v_cs[i]);
-                    add_nbh(c, v_cs[i]);
-                  }
-                }
+                int maxDeg = v[0].get().out_nbh.size();
+                groupby(
+                    ityr::make_global_iterator(edges.begin(), ityr::checkout_mode::read_write),
+                    ityr::make_global_iterator(edges.end()  , ityr::checkout_mode::read_write),
+                    [](const edge& a, const edge& b) { return a.first < b.first; },
+                    [=](auto first, auto last) {
+                      ITYR_PROFILER_RECORD(prof_event_user_mst_post);
+
+                      auto edges_cs = ityr::make_checkout(first, last - first, ityr::checkout_mode::read);
+                      auto v_cs = ityr::make_checkout(v.data(), v.size(), ityr::checkout_mode::read);
+                      for (auto [i, c] : edges_cs) {
+                        if(size_of(v_cs[i].out_nbh) < maxDeg){
+                          add_nbh(c, v_cs[i]);
+                        }else{
+                          // TODO: why does this never overflow?
+                          remove_edge_duplicates(v_cs[i]);
+                          add_nbh(c, v_cs[i]);
+                        }
+                      }
+                    });
 	}
 
 	static void remove_edge_duplicates(tvec_point& p){
@@ -209,15 +230,15 @@ struct cluster{
                                               float topdist = Q.top().second;
                                               if(dist_ij < topdist){
                                                       labelled_edge e;
-                                                      if(i<j) e = std::make_pair(std::make_pair(i,j), dist_ij);
-                                                      else e = std::make_pair(std::make_pair(j, i), dist_ij);
+                                                      if(i<j) e = std::make_pair(edge{i,j}, dist_ij);
+                                                      else e = std::make_pair(edge{j, i}, dist_ij);
                                                       Q.pop();
                                                       Q.push(e);
                                               }
                                       }else{
                                               labelled_edge e;
-                                              if(i<j) e = std::make_pair(std::make_pair(i,j), dist_ij);
-                                              else e = std::make_pair(std::make_pair(j, i), dist_ij);
+                                              if(i<j) e = std::make_pair(edge{i,j}, dist_ij);
+                                              else e = std::make_pair(edge{j, i}, dist_ij);
                                               Q.push(e);
                                       }
                               }
@@ -226,53 +247,57 @@ struct cluster{
                       for(std::size_t j=0; j<m; j++){edges_cs[j] = Q.top(); Q.pop();}
                     });
 
-                ITYR_PROFILER_RECORD(prof_event_user_mst_post);
+                ityr::global_vector<edge> MST_edges;
+                {
+                  ITYR_PROFILER_RECORD(prof_event_user_mst_mid);
 
-		// std::cout << flat_edges.size() << std::endl;
-		auto less_dup = [&] (labelled_edge a, labelled_edge b){
-			auto dist_a = a.second;
-			auto dist_b = b.second;
-			if(dist_a == dist_b){
-				int i_a = a.first.first;
-				int j_a = a.first.second;
-				int i_b = b.first.first;
-				int j_b = b.first.second;
-				if((i_a==i_b) && (j_a==j_b)){
-					return true; // TODO: really? I think this should return false...
-				} else{
-					if(i_a != i_b) return i_a < i_b;
-					else return j_a < j_b;
-				}
-			}else return (dist_a < dist_b);
-		};
-		/* auto labelled_edges = parlay::remove_duplicates_ordered(flat_edges, less_dup); */
-                // TODO: parallelize?
-                auto flat_edges_cs = ityr::make_checkout(flat_edges.data(), flat_edges.size(), ityr::checkout_mode::read_write);
-                std::stable_sort(flat_edges_cs.begin(), flat_edges_cs.end(), less_dup);
-                auto flat_edges_end = std::unique(flat_edges_cs.begin(), flat_edges_cs.end());
-		// parlay::sort_inplace(labelled_edges, less);
-                std::vector<int> degrees(N, 0);
-                std::vector<edge> MST_edges;
-		//modified Kruskal's algorithm
-		DisjointSet *disjset = new DisjointSet(N);
-                auto v_cs = ityr::make_checkout(v.data(), v.size(), ityr::checkout_mode::read);
-		for(long i=0; i<flat_edges_end - flat_edges_cs.begin(); i++){
-			labelled_edge e_l = flat_edges_cs[i];
-			edge e = e_l.first;
-			if((disjset->find(e.first) != disjset->find(e.second)) && (degrees[e.first]<K) && (degrees[e.second]<K)){
-				MST_edges.push_back(std::make_pair(e.first, v_cs[e.second].id));
-				MST_edges.push_back(std::make_pair(e.second, v_cs[e.first].id));
-				degrees[e.first] += 1;
-				degrees[e.second] += 1;
-				disjset->_union(e.first, e.second);
-			}
-			if(i%N==0){
-				if(disjset->is_full()){
-					break;
-				}
-			}
-		}
-		delete disjset;
+                  // std::cout << flat_edges.size() << std::endl;
+                  auto less_dup = [&] (labelled_edge a, labelled_edge b){
+                          auto dist_a = a.second;
+                          auto dist_b = b.second;
+                          if(dist_a == dist_b){
+                                  int i_a = a.first.first;
+                                  int j_a = a.first.second;
+                                  int i_b = b.first.first;
+                                  int j_b = b.first.second;
+                                  if((i_a==i_b) && (j_a==j_b)){
+                                          return true; // TODO: really? I think this should return false...
+                                  } else{
+                                          if(i_a != i_b) return i_a < i_b;
+                                          else return j_a < j_b;
+                                  }
+                          }else return (dist_a < dist_b);
+                  };
+                  /* auto labelled_edges = parlay::remove_duplicates_ordered(flat_edges, less_dup); */
+                  auto flat_edges_cs = ityr::make_checkout(flat_edges.data(), flat_edges.size(), ityr::checkout_mode::read_write);
+                  std::stable_sort(flat_edges_cs.begin(), flat_edges_cs.end(), less_dup);
+                  auto flat_edges_end = std::unique(flat_edges_cs.begin(), flat_edges_cs.end());
+                  // parlay::sort_inplace(labelled_edges, less);
+                  std::vector<int> degrees(N, 0);
+                  //modified Kruskal's algorithm
+                  DisjointSet *disjset = new DisjointSet(N);
+                  auto v_cs = ityr::make_checkout(v.data(), v.size(), ityr::checkout_mode::read);
+                  for(long i=0; i<flat_edges_end - flat_edges_cs.begin(); i++){
+                          labelled_edge e_l = flat_edges_cs[i];
+                          edge e = e_l.first;
+                          if((disjset->find(e.first) != disjset->find(e.second)) && (degrees[e.first]<K) && (degrees[e.second]<K)){
+                                  MST_edges.push_back({e.first, v_cs[e.second].id});
+                                  MST_edges.push_back({e.second, v_cs[e.first].id});
+                                  degrees[e.first] += 1;
+                                  degrees[e.second] += 1;
+                                  disjset->_union(e.first, e.second);
+                          }
+                          if(i%N==0){
+                                  if(disjset->is_full()){
+                                          break;
+                                  }
+                          }
+                  }
+                  delete disjset;
+                }
+
+                flat_edges = {};
+
 		process_edges(v, MST_edges);
 	}
 
