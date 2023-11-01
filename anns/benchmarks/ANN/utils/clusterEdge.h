@@ -31,9 +31,14 @@
 #include <functional>
 #include <queue>
 
-struct prof_event_user_mst : public ityr::common::profiler::event {
+struct prof_event_user_mst_pre : public ityr::common::profiler::event {
   using event::event;
-  std::string str() const override { return "user_MST"; }
+  std::string str() const override { return "user_MST_pre"; }
+};
+
+struct prof_event_user_mst_post : public ityr::common::profiler::event {
+  using event::event;
+  std::string str() const override { return "user_MST_post"; }
 };
 
 #if 0
@@ -180,72 +185,47 @@ struct cluster{
 	//parameters dim and K are just to interface with the cluster tree code
 	void MSTk(ityr::global_span<tvec_point> v,
 		unsigned dim, int K) const {
-          ITYR_PROFILER_RECORD(prof_event_user_mst);
-
 		//preprocessing for Kruskal's
 		int N = v.size();
-		DisjointSet *disjset = new DisjointSet(N);
 		size_t m = 10;
 		auto less = [&] (labelled_edge a, labelled_edge b) {return a.second < b.second;};
-#if 0
-		parlay::sequence<parlay::sequence<labelled_edge>> pre_labelled(N);
-		parlay::parallel_for(0, N, [&] (size_t i){
-			std::priority_queue<labelled_edge, std::vector<labelled_edge>, decltype(less)> Q(less);
-			for(int j=0; j<N; j++){
-				if(j!=i){
-					float dist_ij = Distance(v[active_indices[i]]->coordinates.begin(), v[active_indices[j]]->coordinates.begin(), dim);
-					if(Q.size() >= m){
-						float topdist = Q.top().second;
-						if(dist_ij < topdist){
-							labelled_edge e;
-							if(i<j) e = std::make_pair(std::make_pair(i,j), dist_ij);
-							else e = std::make_pair(std::make_pair(j, i), dist_ij);
-							Q.pop();
-							Q.push(e);
-						}
-					}else{
-						labelled_edge e;
-						if(i<j) e = std::make_pair(std::make_pair(i,j), dist_ij);
-						else e = std::make_pair(std::make_pair(j, i), dist_ij);
-						Q.push(e);
-					}
-				}
-			}
-			parlay::sequence<labelled_edge> edges(m);
-			for(int j=0; j<m; j++){edges[j] = Q.top(); Q.pop();}
-			pre_labelled[i] = edges;
-		});
-		auto flat_edges = parlay::flatten(pre_labelled);
-#endif
-                // temporarily serial
-                // TODO: parallelize?
-                std::vector<labelled_edge> flat_edges;
-                auto v_cs = ityr::make_checkout(v.data(), v.size(), ityr::checkout_mode::read);
-                for (int i = 0; i < N; i++) {
-			std::priority_queue<labelled_edge, std::vector<labelled_edge>, decltype(less)> Q(less);
-			for(int j=0; j<N; j++){
-				if(j!=i){
-					float dist_ij = Distance(v_cs[i].coordinates.begin(), v_cs[j].coordinates.begin(), dim);
-					if(Q.size() >= m){
-						float topdist = Q.top().second;
-						if(dist_ij < topdist){
-							labelled_edge e;
-							if(i<j) e = std::make_pair(std::make_pair(i,j), dist_ij);
-							else e = std::make_pair(std::make_pair(j, i), dist_ij);
-							Q.pop();
-							Q.push(e);
-						}
-					}else{
-						labelled_edge e;
-						if(i<j) e = std::make_pair(std::make_pair(i,j), dist_ij);
-						else e = std::make_pair(std::make_pair(j, i), dist_ij);
-						Q.push(e);
-					}
-				}
-			}
-                        flat_edges.reserve(flat_edges.size() + m);
-			for(std::size_t j=0; j<m; j++){flat_edges.emplace_back(Q.top()); Q.pop();}
-		}
+
+                ityr::global_vector<labelled_edge> flat_edges = ityr::transform_reduce(
+                    ityr::execution::par,
+                    ityr::count_iterator<int>(0),
+                    ityr::count_iterator<int>(N),
+                    ityr::reducer::vec_concat<labelled_edge>{},
+                    [=](int i) {
+                      ITYR_PROFILER_RECORD(prof_event_user_mst_pre);
+
+                      std::priority_queue<labelled_edge, std::vector<labelled_edge>, decltype(less)> Q(less);
+                      auto v_cs = ityr::make_checkout(v.data(), v.size(), ityr::checkout_mode::read);
+                      for(int j=0; j<N; j++){
+                              if(j!=i){
+                                      float dist_ij = Distance(v_cs[i].coordinates.begin(), v_cs[j].coordinates.begin(), dim);
+                                      if(Q.size() >= m){
+                                              float topdist = Q.top().second;
+                                              if(dist_ij < topdist){
+                                                      labelled_edge e;
+                                                      if(i<j) e = std::make_pair(std::make_pair(i,j), dist_ij);
+                                                      else e = std::make_pair(std::make_pair(j, i), dist_ij);
+                                                      Q.pop();
+                                                      Q.push(e);
+                                              }
+                                      }else{
+                                              labelled_edge e;
+                                              if(i<j) e = std::make_pair(std::make_pair(i,j), dist_ij);
+                                              else e = std::make_pair(std::make_pair(j, i), dist_ij);
+                                              Q.push(e);
+                                      }
+                              }
+                      }
+                      ityr::global_vector<labelled_edge> edges(m);
+                      for(std::size_t j=0; j<m; j++){edges[j] = Q.top(); Q.pop();}
+                      return edges;
+                    });
+
+                ITYR_PROFILER_RECORD(prof_event_user_mst_post);
 
 		// std::cout << flat_edges.size() << std::endl;
 		auto less_dup = [&] (labelled_edge a, labelled_edge b){
@@ -266,14 +246,17 @@ struct cluster{
 		};
 		/* auto labelled_edges = parlay::remove_duplicates_ordered(flat_edges, less_dup); */
                 // TODO: parallelize?
-                std::stable_sort(flat_edges.begin(), flat_edges.end(), less_dup);
-                flat_edges.erase(std::unique(flat_edges.begin(), flat_edges.end()), flat_edges.end());
+                auto flat_edges_cs = ityr::make_checkout(flat_edges.data(), flat_edges.size(), ityr::checkout_mode::read_write);
+                std::stable_sort(flat_edges_cs.begin(), flat_edges_cs.end(), less_dup);
+                auto flat_edges_end = std::unique(flat_edges_cs.begin(), flat_edges_cs.end());
 		// parlay::sort_inplace(labelled_edges, less);
                 std::vector<int> degrees(N, 0);
                 std::vector<edge> MST_edges;
 		//modified Kruskal's algorithm
-		for(std::size_t i=0; i<flat_edges.size(); i++){
-			labelled_edge e_l = flat_edges[i];
+		DisjointSet *disjset = new DisjointSet(N);
+                auto v_cs = ityr::make_checkout(v.data(), v.size(), ityr::checkout_mode::read);
+		for(long i=0; i<flat_edges_end - flat_edges_cs.begin(); i++){
+			labelled_edge e_l = flat_edges_cs[i];
 			edge e = e_l.first;
 			if((disjset->find(e.first) != disjset->find(e.second)) && (degrees[e.first]<K) && (degrees[e.second]<K)){
 				MST_edges.push_back(std::make_pair(e.first, v_cs[e.second].id));
