@@ -2,7 +2,7 @@ depends:
   - name: gbbs
     recipe: dataset
   - name: openmpi
-    recipe: v5.0.0rc11-mt
+    recipe: v5.0.0-mt
     machines: [local, squid-c]
 
 default_params:

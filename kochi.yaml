@@ -49,12 +49,10 @@ machines:
 dependencies:
   ucx:
     recipes:
-      - name: v1.14.0
-        before_script: UCX_VERSION=1.14.0 CONFIGURE_OPTS="--disable-logging --disable-debug --disable-assertions --disable-params-check --without-go"
-      - name: v1.14.0-mt
-        before_script: UCX_VERSION=1.14.0 CONFIGURE_OPTS="--disable-logging --disable-debug --disable-assertions --disable-params-check --without-go --enable-mt"
-      - name: v1.11.2
-        before_script: UCX_VERSION=1.11.2 CONFIGURE_OPTS="--disable-logging --disable-debug --disable-assertions --disable-params-check"
+      - name: v1.15.0
+        before_script: UCX_VERSION=1.15.0 CONFIGURE_OPTS="--disable-logging --disable-debug --disable-assertions --disable-params-check --without-go"
+      - name: v1.15.0-mt
+        before_script: UCX_VERSION=1.15.0 CONFIGURE_OPTS="--disable-logging --disable-debug --disable-assertions --disable-params-check --without-go --enable-mt"
     script:
       - wget -q https://github.com/openucx/ucx/releases/download/v${UCX_VERSION}/ucx-${UCX_VERSION}.tar.gz
       - tar xvf ucx-${UCX_VERSION}.tar.gz
@@ -67,17 +65,15 @@ dependencies:
     git: https://github.com/open-mpi/ompi.git
     depends:
       - name: ucx
-        recipe: v1.14.0
+        recipe: v1.15.0
     recipes:
-      - name:   main
-        branch: main
-      - name:   v5.0.0rc11
-        branch: v5.0.0rc11
-      - name:   v5.0.0rc11-mt
-        branch: v5.0.0rc11
+      - name:   v5.0.0
+        branch: v5.0.0
+      - name:   v5.0.0-mt
+        branch: v5.0.0
         depends:
           - name: ucx
-            recipe: v1.14.0-mt
+            recipe: v1.15.0-mt
     script:
       - ./autogen.pl
       - mkdir build
@@ -114,7 +110,7 @@ dependencies:
     git: git@gitlab.eidos.ic.i.u-tokyo.ac.jp:shiina/itoyori.git
     depends:
       - name: openmpi
-        recipe: v5.0.0rc11
+        recipe: v5.0.0
         machines: [local, squid-c]
       - name: boost
         recipe: v1.80.0

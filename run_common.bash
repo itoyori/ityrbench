@@ -91,6 +91,13 @@ case $KOCHI_MACHINE in
 
       trap "compgen -G ${STDOUT_FILE}.* && tail -n +1 \$(ls ${STDOUT_FILE}.* -v) > $STDOUT_FILE && rm ${STDOUT_FILE}.*" EXIT
 
+      # Workaround for the issue: https://github.com/openpmix/openpmix/issues/2980
+      if [[ $MPIEXEC == mpitx ]]; then
+        double_hyphen=--
+      else
+        double_hyphen=
+      fi
+
       $MPIEXEC -n $n_processes -N $n_processes_per_node \
         --bind-to $bind_to \
         --output file=$STDOUT_FILE \
@@ -100,7 +107,7 @@ case $KOCHI_MACHINE in
         --hostfile $NQSII_MPINODES \
         --mca btl ^ofi \
         --mca osc_ucx_acc_single_intrinsic true \
-        -- setarch $(uname -m) --addr-no-randomize "${@:4}"
+        $double_hyphen setarch $(uname -m) --addr-no-randomize "${@:4}"
     }
     ;;
   *)
