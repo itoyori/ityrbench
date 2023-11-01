@@ -48,6 +48,84 @@ inline void my_printf(const char* format, ...) {
 
 namespace ANN{
 
+template <typename Iterator, typename Compare, typename T>
+inline std::pair<Iterator, Iterator>
+partition_three(Iterator first,
+                Iterator last,
+                Compare  comp,
+                const T& pivot) {
+  auto d = std::distance(first, last);
+
+  if (d <= 1024 * 16) {
+    auto [css, its] = ityr::internal::checkout_global_iterators(d, first);
+    auto first_ = std::get<0>(its);
+
+    auto l = first_;
+    auto m = first_;
+    auto r = std::next(first_, d);
+
+    while (m < r) {
+      if (comp(*m, pivot)) {
+        std::swap(*l, *m);
+        l++;
+        m++;
+      } else if (comp(pivot, *m)) {
+        r--;
+        std::swap(*m, *r);
+      } else {
+        m++;
+      }
+    }
+
+    return std::make_pair(std::next(first, std::distance(first_, l)),
+                          std::next(first, std::distance(first_, m)));
+  }
+
+  auto mid = std::next(first, d / 2);
+
+  auto [mm1, mm2] = ityr::parallel_invoke(
+      [=]() { return partition_three(first, mid , comp, pivot); },
+      [=]() { return partition_three(mid  , last, comp, pivot); });
+
+  auto [m11, m12] = mm1;
+  auto [m21, m22] = mm2;
+
+  auto me = ityr::rotate(
+      ityr::execution::parallel_policy(1024 * 16),
+      m11, mid, m22);
+
+  return std::make_pair(m11 + (m21 - mid), me + (m12 - m11));
+}
+
+template <typename Iterator, typename Compare, typename GroupOp>
+inline void groupby(Iterator first,
+                    Iterator last,
+                    Compare  comp,
+                    GroupOp  group_op) {
+  if (first == last) return;
+
+  auto d = std::distance(first, last);
+
+  if (d == 1) {
+    group_op(first, last);
+    return;
+  }
+
+  // FIXME: assumes global_ref
+  auto pivot = (*first).get();
+
+  auto mm = partition_three(first, last, comp, pivot);
+  auto m1 = mm.first;
+  auto m2 = mm.second;
+
+  assert(m1 < m2);
+
+  ityr::parallel_invoke(
+      [=] { groupby(first, m1, comp, group_op); },
+      [=] { group_op(m1, m2); },
+      [=] { groupby(m2, last, comp, group_op); });
+}
+
 enum class type_metric{
 	L2, ANGULAR, DOT
 };
