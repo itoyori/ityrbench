@@ -149,7 +149,7 @@ struct cluster{
 #endif
                 // TODO: parallelize?
                 std::stable_sort(edges.begin(), edges.end());
-                auto v_cs = ityr::make_checkout(v.data(), v.size(), ityr::checkout_mode::read);
+                auto v_cs = ityr::make_checkout(v, ityr::checkout_mode::read);
 		int maxDeg = v_cs[0].out_nbh.size();
                 for (auto [i, c] : edges) {
                   if(size_of(v_cs[i].out_nbh) < maxDeg){
@@ -188,7 +188,7 @@ struct cluster{
 		//preprocessing for Kruskal's
 		int N = v.size();
 		size_t m = 10;
-		auto less = [&] (labelled_edge a, labelled_edge b) {return a.second < b.second;};
+		auto less = [] (labelled_edge a, labelled_edge b) {return a.second < b.second;};
 
                 ityr::global_vector<labelled_edge> flat_edges(N * m);
                 ityr::global_span<labelled_edge> flat_edges_ref(flat_edges);
@@ -197,11 +197,11 @@ struct cluster{
                     ityr::execution::par,
                     ityr::count_iterator<int>(0),
                     ityr::count_iterator<int>(N),
-                    [=](int i) {
+                    [=, *this](int i) {
                       ITYR_PROFILER_RECORD(prof_event_user_mst_pre);
 
                       std::priority_queue<labelled_edge, std::vector<labelled_edge>, decltype(less)> Q(less);
-                      auto v_cs = ityr::make_checkout(v.data(), v.size(), ityr::checkout_mode::read);
+                      auto v_cs = ityr::make_checkout(v, ityr::checkout_mode::read);
                       for(int j=0; j<N; j++){
                               if(j!=i){
                                       float dist_ij = Distance(v_cs[i].coordinates.begin(), v_cs[j].coordinates.begin(), dim);
@@ -229,7 +229,7 @@ struct cluster{
                 ITYR_PROFILER_RECORD(prof_event_user_mst_post);
 
 		// std::cout << flat_edges.size() << std::endl;
-		auto less_dup = [&] (labelled_edge a, labelled_edge b){
+		auto less_dup = [] (labelled_edge a, labelled_edge b){
 			auto dist_a = a.second;
 			auto dist_b = b.second;
 			if(dist_a == dist_b){
@@ -247,7 +247,7 @@ struct cluster{
 		};
 		/* auto labelled_edges = parlay::remove_duplicates_ordered(flat_edges, less_dup); */
                 // TODO: parallelize?
-                auto flat_edges_cs = ityr::make_checkout(flat_edges.data(), flat_edges.size(), ityr::checkout_mode::read_write);
+                auto flat_edges_cs = ityr::make_checkout(flat_edges_ref, ityr::checkout_mode::read_write);
                 std::stable_sort(flat_edges_cs.begin(), flat_edges_cs.end(), less_dup);
                 auto flat_edges_end = std::unique(flat_edges_cs.begin(), flat_edges_cs.end());
 		// parlay::sort_inplace(labelled_edges, less);
@@ -255,7 +255,7 @@ struct cluster{
                 std::vector<edge> MST_edges;
 		//modified Kruskal's algorithm
 		DisjointSet *disjset = new DisjointSet(N);
-                auto v_cs = ityr::make_checkout(v.data(), v.size(), ityr::checkout_mode::read);
+                auto v_cs = ityr::make_checkout(v, ityr::checkout_mode::read);
 		for(long i=0; i<flat_edges_end - flat_edges_cs.begin(); i++){
 			labelled_edge e_l = flat_edges_cs[i];
 			edge e = e_l.first;
