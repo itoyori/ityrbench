@@ -14,6 +14,7 @@ default_params:
     - value: 6
       machines: [local]
   dataset: msspacev-1M
+  repeats: 1
   fast_check: 1
   # common params
   serial: 0
@@ -61,7 +62,7 @@ build:
     make -j anns_hcnng
 
 run:
-  depend_params: [fast_check, nodes, cores, dataset, n_points, n_queries, max_fraction, serial, sched, cache_policy, cache_size, sub_block_size, max_dirty, noncoll_alloc_size, shared_mem, prof, debugger]
+  depend_params: [nodes, cores, dataset, repeats, fast_check, serial, sched, cache_policy, cache_size, sub_block_size, max_dirty, noncoll_alloc_size, shared_mem, prof, debugger]
   script: |
     source run_common.bash
 
@@ -75,6 +76,7 @@ run:
     opts="$opts -a 1000"
     opts="$opts -R 3"
     opts="$opts -b 1"
+    opts="$opts -r $KOCHI_PARAM_REPEATS"
     opts="$opts -fc $KOCHI_PARAM_FAST_CHECK"
 
     dataset_prefix=${KOCHI_PARAM_DATASET%-*}

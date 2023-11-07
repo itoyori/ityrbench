@@ -104,7 +104,7 @@ void synchronize(parlay::sequence<Tvec_point<T>*> &v){
 
 template<typename T>
 void clear(Tvec_point<T>& p){
-  auto nbh_cs = ityr::make_checkout(p.out_nbh, ityr::checkout_mode::read);
+  auto nbh_cs = ityr::make_checkout(p.out_nbh, ityr::checkout_mode::write);
 	for(std::size_t j=0; j<nbh_cs.size(); j++) nbh_cs[j] = -1;
 } 
 

@@ -3,4 +3,5 @@
 *testInputs_small
 *Check
 *.pyc
-calc_recall
+/benchmarks/ANN/HNSW/calc_recall
+/benchmarks/ANN/HCNNG/neighbors

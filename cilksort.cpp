@@ -183,6 +183,9 @@ void cilkmerge(ityr::global_span<T> s1,
   ityr::parallel_invoke(
       cilkmerge<T>, std::make_tuple(s11, s21, dest1),
       cilkmerge<T>, std::make_tuple(s12, s22, dest2));
+  /* ityr::parallel_invoke( */
+  /*     cilkmerge<T>, std::make_tuple(s11, s21, dest1), ityr::workhint(dest1.size()), */
+  /*     cilkmerge<T>, std::make_tuple(s12, s22, dest2), ityr::workhint(dest2.size())); */
 }
 
 template <typename T>

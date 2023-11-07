@@ -124,7 +124,10 @@ int main(int argc, char* argv[]) {
   set_signal_handlers();
 
   if (ityr::is_master()) {
-    printf("=============================================================\n");
+    printf("=============================================================\n"
+           "[ANNS HCNNG]\n"
+           "# of processes:               %d\n",
+           ityr::n_ranks());
 
 	for(int i=0; i<argc; ++i)
 		printf("%s ", argv[i]);

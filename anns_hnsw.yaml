@@ -14,9 +14,11 @@ default_params:
     - value: 6
       machines: [local]
   dataset: msspacev-1M
+  repeats: 1
   n_points: default
   n_queries: default
   max_fraction: 0.02
+  fast_check: 1
   # common params
   serial: 0
   sched: randws # randws/adws
@@ -66,7 +68,7 @@ build:
     make -j anns_hnsw
 
 run:
-  depend_params: [nodes, cores, dataset, n_points, n_queries, max_fraction, serial, sched, cache_policy, cache_size, sub_block_size, max_dirty, noncoll_alloc_size, shared_mem, prof, debugger]
+  depend_params: [nodes, cores, dataset, repeats, n_points, n_queries, max_fraction, fast_check, serial, sched, cache_policy, cache_size, sub_block_size, max_dirty, noncoll_alloc_size, shared_mem, prof, debugger]
   script: |
     source run_common.bash
 
@@ -75,11 +77,6 @@ run:
     else
       config_name=${KOCHI_PARAM_SCHED}_${KOCHI_PARAM_CACHE_POLICY}
     fi
-
-    opts=""
-    opts="$opts -ml 0.36"
-    opts="$opts -b 2"
-    opts="$opts -f 0"
 
     dataset_prefix=${KOCHI_PARAM_DATASET%-*}
     dataset_suffix=${KOCHI_PARAM_DATASET#*-}
@@ -91,48 +88,46 @@ run:
       *)    echo "Unknown dataset scale: $dataset_suffix"; exit 1 ;;
     esac
 
+    opts=""
+
     if [[ $KOCHI_PARAM_N_POINTS == default ]]; then
       opts="$opts -n $dataset_nb"
     else
       opts="$opts -n $KOCHI_PARAM_N_POINTS"
     fi
 
-    if [[ $KOCHI_PARAM_N_QUERIES != default ]]; then
-      opts="$opts -k $KOCHI_PARAM_N_QUERIES"
-    fi
-
     case $dataset_prefix in
       bigann)
-        opts="$opts -type uint8"
-        opts="$opts -dist L2"
         opts="$opts -m 32"
         opts="$opts -efc 128"
         opts="$opts -alpha 0.82"
+        opts="$opts -type uint8"
+        opts="$opts -dist L2"
         opts="$opts -in ${KOCHI_INSTALL_PREFIX_BIG_ANNS}/bigann/base.1B.u8bin.crop_nb_${dataset_nb}:u8bin"
         opts="$opts -q ${KOCHI_INSTALL_PREFIX_BIG_ANNS}/bigann/query.public.10K.u8bin:u8bin"
         opts="$opts -g ${KOCHI_INSTALL_PREFIX_BIG_ANNS}/bigann/bigann-${dataset_suffix}:ubin"
         opts="$opts -th 0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,0.95,0.99,0.999"
         ;;
       msspacev)
-        opts="$opts -type int8"
-        opts="$opts -dist L2"
         opts="$opts -m 32"
         opts="$opts -efc 128"
         opts="$opts -alpha 0.83"
+        opts="$opts -type int8"
+        opts="$opts -dist L2"
         opts="$opts -in ${KOCHI_INSTALL_PREFIX_BIG_ANNS}/MSSPACEV1B/spacev1b_base.i8bin.crop_nb_${dataset_nb}:i8bin"
         opts="$opts -q ${KOCHI_INSTALL_PREFIX_BIG_ANNS}/MSSPACEV1B/query.i8bin:i8bin"
         opts="$opts -g ${KOCHI_INSTALL_PREFIX_BIG_ANNS}/MSSPACEV1B/msspacev-gt-${dataset_suffix}:ubin"
         opts="$opts -th 0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,0.95,0.99"
         ;;
       text2image)
-        opts="$opts -type float"
-        opts="$opts -dist ndot"
         opts="$opts -m 32"
         opts="$opts -efc 128"
         opts="$opts -alpha 1.1"
         opts="$opts -in ${KOCHI_INSTALL_PREFIX_BIG_ANNS}/text2image1B/base.1B.fbin.crop_nb_${dataset_nb}:fbin"
         opts="$opts -q ${KOCHI_INSTALL_PREFIX_BIG_ANNS}/text2image1B/query.public.100K.fbin:fbin"
         opts="$opts -g ${KOCHI_INSTALL_PREFIX_BIG_ANNS}/text2image1B/text2image-${dataset_suffix}:ubin"
+        opts="$opts -type float"
+        opts="$opts -dist ndot"
         case $dataset_suffix in
           1M)   opts="$opts -th 0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,0.95,0.99,0.999" ;;
           10M)  opts="$opts -th 0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,0.95,0.99" ;;
@@ -142,12 +137,21 @@ run:
       *) echo "Unknown dataset name: $dataset_prefix"; exit 1 ;;
     esac
 
+    if [[ $KOCHI_PARAM_N_QUERIES != default ]]; then
+      opts="$opts -k $KOCHI_PARAM_N_QUERIES"
+    fi
+
+    opts="$opts -ml 0.36"
+    opts="$opts -b 2"
+    opts="$opts -f 0"
     opts="$opts -ef 15,20,30,50,75,100,125,250,500"
     opts="$opts -r 10"
     opts="$opts -beta 1"
     opts="$opts -w 0"
     opts="$opts -le 1"
+    opts="$opts -i $KOCHI_PARAM_REPEATS"
     opts="$opts -mf $KOCHI_PARAM_MAX_FRACTION"
+    opts="$opts -fc $KOCHI_PARAM_FAST_CHECK"
 
     commands="./anns_hnsw_${config_name}.out $opts"
 
@@ -159,6 +163,8 @@ run:
       MPIEXEC=mpitx ityr_mpirun $((n_nodes * KOCHI_PARAM_CORES)) $KOCHI_PARAM_CORES core gdb --args $commands
     fi
 
-    python3 ./anns/benchmarks/ANN/HNSW/parse_kNN.py $STDOUT_FILE 0 log.csv
+    if [[ $KOCHI_PARAM_FAST_CHECK == 0 ]]; then
+      python3 ./anns/benchmarks/ANN/HNSW/parse_kNN.py $STDOUT_FILE 0 log.csv
+    fi
 
     if [[ $KOCHI_PARAM_PROF == trace ]]; then run_trace_viewer; fi

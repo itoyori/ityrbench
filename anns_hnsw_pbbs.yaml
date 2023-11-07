@@ -12,7 +12,11 @@ default_params:
     - value: 6
       machines: [local]
   dataset: msspacev-1M
+  repeats: 1
+  n_points: default
+  n_queries: default
   max_fraction: 0.02
+  fast_check: 1
 
 default_name: anns_hnsw_pbbs
 default_queue: node_${nodes}
@@ -27,7 +31,7 @@ build:
     $CXX -O3 -g -std=c++17 -Wall -Wextra -Wl,--unresolved-symbols=ignore-all -I../bench ${CXXFLAGS:+$CXXFLAGS} -o calc_recall calc_recall.cpp -lpthread
 
 run:
-  depend_params: [max_fraction, nodes, cores, dataset]
+  depend_params: [nodes, cores, dataset, repeats, n_points, n_queries, max_fraction, fast_check]
   script: |
     source run_common.bash
 
@@ -43,74 +47,81 @@ run:
     dataset_suffix=${KOCHI_PARAM_DATASET#*-}
 
     case $dataset_suffix in
-      1M)
-        dataset_nb=1000000
-        export scale=1
-        ;;
-      10M)
-        dataset_nb=10000000
-        export scale=10
-        ;;
-      100M)
-        dataset_nb=100000000
-        export scale=100
-        ;;
-      *) echo "Unknown dataset scale: $dataset_suffix"; exit 1 ;;
+      1M)   dataset_nb=1000000 ;;
+      10M)  dataset_nb=10000000 ;;
+      100M) dataset_nb=100000000 ;;
+      *)    echo "Unknown dataset scale: $dataset_suffix"; exit 1 ;;
     esac
+
+    opts=""
+
+    if [[ $KOCHI_PARAM_N_POINTS == default ]]; then
+      opts="$opts -n $dataset_nb"
+    else
+      opts="$opts -n $KOCHI_PARAM_N_POINTS"
+    fi
 
     case $dataset_prefix in
       bigann)
-        export dataset=BIGANN
-        export dtype=uint8
-        export dist=L2
-        export m=32
-        export efc=128
-        export alpha=0.82
-        export file_in=${KOCHI_INSTALL_PREFIX_BIG_ANNS}/bigann/base.1B.u8bin.crop_nb_${dataset_nb}:u8bin
-        export file_q=${KOCHI_INSTALL_PREFIX_BIG_ANNS}/bigann/query.public.10K.u8bin:u8bin
-        export file_gt=${KOCHI_INSTALL_PREFIX_BIG_ANNS}/bigann/bigann-${dataset_suffix}:ubin
-        export th=0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,0.95,0.99,0.999
+        opts="$opts -m 32"
+        opts="$opts -efc 128"
+        opts="$opts -alpha 0.82"
+        opts="$opts -type uint8"
+        opts="$opts -dist L2"
+        opts="$opts -in ${KOCHI_INSTALL_PREFIX_BIG_ANNS}/bigann/base.1B.u8bin.crop_nb_${dataset_nb}:u8bin"
+        opts="$opts -q ${KOCHI_INSTALL_PREFIX_BIG_ANNS}/bigann/query.public.10K.u8bin:u8bin"
+        opts="$opts -g ${KOCHI_INSTALL_PREFIX_BIG_ANNS}/bigann/bigann-${dataset_suffix}:ubin"
+        opts="$opts -th 0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,0.95,0.99,0.999"
         ;;
       msspacev)
-        export dataset=MSSPACEV
-        export dtype=int8
-        export dist=L2
-        export m=32
-        export efc=128
-        export alpha=0.83
-        export file_in=${KOCHI_INSTALL_PREFIX_BIG_ANNS}/MSSPACEV1B/spacev1b_base.i8bin.crop_nb_${dataset_nb}:i8bin
-        export file_q=${KOCHI_INSTALL_PREFIX_BIG_ANNS}/MSSPACEV1B/query.i8bin:i8bin
-        export file_gt=${KOCHI_INSTALL_PREFIX_BIG_ANNS}/MSSPACEV1B/msspacev-gt-${dataset_suffix}:ubin
-        export th=0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,0.95,0.99
+        opts="$opts -m 32"
+        opts="$opts -efc 128"
+        opts="$opts -alpha 0.83"
+        opts="$opts -type int8"
+        opts="$opts -dist L2"
+        opts="$opts -in ${KOCHI_INSTALL_PREFIX_BIG_ANNS}/MSSPACEV1B/spacev1b_base.i8bin.crop_nb_${dataset_nb}:i8bin"
+        opts="$opts -q ${KOCHI_INSTALL_PREFIX_BIG_ANNS}/MSSPACEV1B/query.i8bin:i8bin"
+        opts="$opts -g ${KOCHI_INSTALL_PREFIX_BIG_ANNS}/MSSPACEV1B/msspacev-gt-${dataset_suffix}:ubin"
+        opts="$opts -th 0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,0.95,0.99"
         ;;
       text2image)
-        export dataset=YandexT2I
-        export dtype=float
-        export dist=ndot
-        export m=32
-        export efc=128
-        export alpha=1.1
-        export file_in=${KOCHI_INSTALL_PREFIX_BIG_ANNS}/text2image1B/base.1B.fbin.crop_nb_${dataset_nb}:fbin
-        export file_q=${KOCHI_INSTALL_PREFIX_BIG_ANNS}/text2image1B/query.public.100K.fbin:fbin
-        export file_gt=${KOCHI_INSTALL_PREFIX_BIG_ANNS}/text2image1B/text2image-${dataset_suffix}:ubin
+        opts="$opts -m 32"
+        opts="$opts -efc 128"
+        opts="$opts -alpha 1.1"
+        opts="$opts -type float"
+        opts="$opts -dist ndot"
+        opts="$opts -in ${KOCHI_INSTALL_PREFIX_BIG_ANNS}/text2image1B/base.1B.fbin.crop_nb_${dataset_nb}:fbin"
+        opts="$opts -q ${KOCHI_INSTALL_PREFIX_BIG_ANNS}/text2image1B/query.public.100K.fbin:fbin"
+        opts="$opts -g ${KOCHI_INSTALL_PREFIX_BIG_ANNS}/text2image1B/text2image-${dataset_suffix}:ubin"
         case $dataset_suffix in
-          1M)   export th=0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,0.95,0.99,0.999 ;;
-          10M)  export th=0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,0.95,0.99 ;;
-          100M) export th=0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,0.95 ;;
+          1M)   opts="$opts -th 0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,0.95,0.99,0.999" ;;
+          10M)  opts="$opts -th 0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,0.95,0.99" ;;
+          100M) opts="$opts -th 0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,0.95" ;;
         esac
         ;;
       *) echo "Unknown dataset name: $dataset_prefix"; exit 1 ;;
     esac
 
-    export rr=10
-    export ef=15,20,30,50,75,100,125,250,500
-    export beta=1
-    export warmup=0
-    export save_graph=1
-    export limit_eval=1
-    export thread=$KOCHI_PARAM_CORES
-    export RESULT_PREFIX=$(pwd)/results
+    if [[ $KOCHI_PARAM_N_QUERIES != default ]]; then
+      opts="$opts -k $KOCHI_PARAM_N_QUERIES"
+    fi
 
-    export max_fraction=$KOCHI_PARAM_MAX_FRACTION
+    opts="$opts -ml 0.36"
+    opts="$opts -b 2"
+    opts="$opts -f 0"
+    opts="$opts -ef 15,20,30,50,75,100,125,250,500"
+    opts="$opts -r 10"
+    opts="$opts -beta 1"
+    opts="$opts -w 0"
+    opts="$opts -le 1"
+    opts="$opts -i $KOCHI_PARAM_REPEATS"
+    opts="$opts -mf $KOCHI_PARAM_MAX_FRACTION"
+    opts="$opts -fc $KOCHI_PARAM_FAST_CHECK"
 
-    bash run_HNSW_single.sh
+    export PARLAY_NUM_THREADS=$KOCHI_PARAM_CORES
+
+    ./calc_recall $opts 2>&1 | tee $STDOUT_FILE
+
+    if [[ $KOCHI_PARAM_FAST_CHECK == 0 ]]; then
+      python3 parse_kNN.py $STDOUT_FILE 0 log.csv
+    fi

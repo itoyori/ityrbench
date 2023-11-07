@@ -79,6 +79,9 @@ double output_recall(HNSW<U> &g, uint32_t ef, uint32_t k,
 	uint32_t cnt_query, ityr::global_span<typename U::type_point> q, ityr::global_span<ityr::global_vector<uint32_t>> gt, 
 	uint32_t rank_max, float beta, bool warmup, std::optional<float> radius, std::optional<uint32_t> limit_eval)
 {
+  per_visited.clear();
+  per_eval.clear();
+  per_size_C.clear();
   per_visited.resize(cnt_query);
   per_eval.resize(cnt_query);
   per_size_C.resize(cnt_query);
@@ -86,7 +89,7 @@ double output_recall(HNSW<U> &g, uint32_t ef, uint32_t k,
   return ityr::root_exec([=, &g]() mutable {
         timer t;
 
-        ityr::global_vector_options global_vec_coll_opts {true, true, true, 1024};
+        ityr::global_vector_options global_vec_coll_opts(true, 1024);
 
 	//std::vector<std::vector<std::pair<uint32_t,float>>> res(cnt_query);
         ityr::global_vector<ityr::global_vector<std::pair<uint32_t,float>>> res(global_vec_coll_opts, cnt_query);
@@ -277,6 +280,7 @@ void output_recall(HNSW<U> &g, commandLine param)
 	const uint32_t cnt_query = param.getOptionIntValue("-k", q.size());
 	const bool enable_warmup = !!param.getOptionIntValue("-w", 1);
 	const bool limit_eval = !!param.getOptionIntValue("-le", 0);
+	const bool fast_check = !!param.getOptionIntValue("-fc", 0);
 	auto radius = [](const char *s) -> std::optional<float>{
 			return s? std::optional<float>{atof(s)}: std::optional<float>{};
 		}(param.getOptionValue("-rad"));
@@ -297,82 +301,89 @@ void output_recall(HNSW<U> &g, commandLine param)
 		// return std::make_pair(best_recall, best_beta);
 		return best_recall;
 	};
-        my_printf("pattern: (k,ef_max,beta)\n");
-	const auto ef_max = *ef.rbegin();
-	for(auto k : cnt_rank_cmp)
-		get_best(k, ef_max);
 
-        my_printf("pattern: (k_min,ef,beta)\n");
-	const auto k_min = *cnt_rank_cmp.begin();
-	for(auto efq : ef)
-		get_best(k_min, efq);
+        if (fast_check) {
+          get_best(cnt_rank_cmp.front(), ef.back());
+          get_best(cnt_rank_cmp.back(), ef.front());
 
-        my_printf("pattern: (k,threshold)\n");
-	for(auto k : cnt_rank_cmp)
-	{
-		uint32_t l_last = k;
-		for(auto t : threshold)
-		{
-			my_printf("searching for k=%u, th=%f\n", k, t);
-			const double target = t;
-			// const size_t target = t*cnt_query*k;
-			uint32_t l=l_last, r_limit=std::max(k*100, ef_max);
-			uint32_t r = l;
-			bool found = false;
-			while(true)
-			{
-				// auto [best_shot, best_beta] = get_best(k, r);
-				if(get_best(k,r)>=target)
-				{
-					found = true;
-					break;
-				}
-				if(r==r_limit) break;
-				r = std::min(r*2, r_limit);
-			}
-			if(!found) break;
-			while(r-l>l*0.05+1) // save work based on an empirical value
-			{
-				const auto mid = (l+r)/2;
-				const auto best_shot = get_best(k,mid);
-				if(best_shot>=target)
-					r = mid;
-				else
-					l = mid;
-			}
-			l_last = l;
-		}
-	}
+        } else {
+          my_printf("pattern: (k,ef_max,beta)\n");
+          const auto ef_max = *ef.rbegin();
+          for(auto k : cnt_rank_cmp)
+                  get_best(k, ef_max);
 
-	if(limit_eval)
-	{
-		my_printf("pattern: (ef_min,k,le,threshold(low numbers))\n");
-		const auto ef_min = *ef.begin();
-		for(auto k : cnt_rank_cmp)
-		{
-			const auto base_shot = get_best(k,ef_min);
-                        auto sum_eval = ityr::root_exec([] {
-                          return ityr::reduce(ityr::execution::parallel_policy(1024), per_eval.begin(), per_eval.end());
-                        });
-			const auto base_eval = sum_eval/cnt_query+1;
-			auto base_it = std::lower_bound(threshold.begin(), threshold.end(), base_shot);
-			uint32_t l_last = 0; // limit #eval to 0 must keep the recall below the threshold
-			for(auto it=threshold.begin(); it!=base_it; ++it)
-			{
-				uint32_t l=l_last, r=base_eval;
-				while(r-l>l*0.05+1)
-				{
-					const auto mid = (l+r)/2;
-					const auto best_shot = get_best(k,ef_min,mid); // limit #eval here
-					if(best_shot>=*it)
-						r = mid;
-					else
-						l = mid;
-				}
-				l_last = l;
-			}
-		}
-	}
+          my_printf("pattern: (k_min,ef,beta)\n");
+          const auto k_min = *cnt_rank_cmp.begin();
+          for(auto efq : ef)
+                  get_best(k_min, efq);
+
+          my_printf("pattern: (k,threshold)\n");
+          for(auto k : cnt_rank_cmp)
+          {
+                  uint32_t l_last = k;
+                  for(auto t : threshold)
+                  {
+                          my_printf("searching for k=%u, th=%f\n", k, t);
+                          const double target = t;
+                          // const size_t target = t*cnt_query*k;
+                          uint32_t l=l_last, r_limit=std::max(k*100, ef_max);
+                          uint32_t r = l;
+                          bool found = false;
+                          while(true)
+                          {
+                                  // auto [best_shot, best_beta] = get_best(k, r);
+                                  if(get_best(k,r)>=target)
+                                  {
+                                          found = true;
+                                          break;
+                                  }
+                                  if(r==r_limit) break;
+                                  r = std::min(r*2, r_limit);
+                          }
+                          if(!found) break;
+                          while(r-l>l*0.05+1) // save work based on an empirical value
+                          {
+                                  const auto mid = (l+r)/2;
+                                  const auto best_shot = get_best(k,mid);
+                                  if(best_shot>=target)
+                                          r = mid;
+                                  else
+                                          l = mid;
+                          }
+                          l_last = l;
+                  }
+          }
+
+          if(limit_eval)
+          {
+                  my_printf("pattern: (ef_min,k,le,threshold(low numbers))\n");
+                  const auto ef_min = *ef.begin();
+                  for(auto k : cnt_rank_cmp)
+                  {
+                          const auto base_shot = get_best(k,ef_min);
+                          auto sum_eval = ityr::root_exec([] {
+                            return ityr::reduce(ityr::execution::parallel_policy(1024), per_eval.begin(), per_eval.end());
+                          });
+                          const auto base_eval = sum_eval/cnt_query+1;
+                          auto base_it = std::lower_bound(threshold.begin(), threshold.end(), base_shot);
+                          uint32_t l_last = 0; // limit #eval to 0 must keep the recall below the threshold
+                          for(auto it=threshold.begin(); it!=base_it; ++it)
+                          {
+                                  uint32_t l=l_last, r=base_eval;
+                                  while(r-l>l*0.05+1)
+                                  {
+                                          const auto mid = (l+r)/2;
+                                          const auto best_shot = get_best(k,ef_min,mid); // limit #eval here
+                                          if(best_shot>=*it)
+                                                  r = mid;
+                                          else
+                                                  l = mid;
+                                  }
+                                  l_last = l;
+                          }
+                  }
+          }
+        }
 }
 
 template<typename U>
@@ -387,11 +398,12 @@ void run_test(commandLine parameter) // intend to be pass-by-value manner
 	const float batch_base = parameter.getOptionDoubleValue("-b", 2);
 	const float max_fraction = parameter.getOptionDoubleValue("-mf", 0.02);
 	const bool do_fixing = !!parameter.getOptionIntValue("-f", 0);
+	const int repeats = parameter.getOptionIntValue("-i", 1);
 #if 0
 	const char *file_out = parameter.getOptionValue("-out");
 #endif
 
-        ityr::global_vector_options global_vec_coll_opts {true, true, true, 1024};
+        ityr::global_vector_options global_vec_coll_opts(true, 1024);
 
         per_visited = ityr::global_vector<size_t>(global_vec_coll_opts);
         per_eval    = ityr::global_vector<size_t>(global_vec_coll_opts);
@@ -399,49 +411,52 @@ void run_test(commandLine parameter) // intend to be pass-by-value manner
 
         timer t;
 
-	using T = typename U::type_elem;
-	auto [ufp,ps,dim] = load_point(file_in, to_point<T>, cnt_points);
+        using T = typename U::type_elem;
+        auto [ufp,ps,dim] = load_point(file_in, to_point<T>, cnt_points);
         my_printf("HNSW: Read inFile: %.4f\n", t.tick_s());
         my_printf("%s: [%lu,%u]\n", file_in, ps.size(), dim);
 
-	visit_point(ps.begin(), ps.end(), dim);
+        visit_point(ps.begin(), ps.end(), dim);
         my_printf("HNSW: Fetch input vectors: %.4f\n", t.tick_s());
 
-        my_printf("Start building HNSW\n");
-	static std::optional<HNSW<U>> g;
-        g.emplace(
-		ps.begin(), ps.end(), dim,
-		m_l, m, efc, alpha, batch_base, max_fraction, do_fixing
-	);
-        my_printf("HNSW: Build index: %.4f\n", t.tick_s());
+        for (int r = 0; r < repeats; r++) {
+          my_printf("Start building HNSW\n");
+          t.tick_s();
+          static std::optional<HNSW<U>> g;
+          g.emplace(
+                  ps.begin(), ps.end(), dim,
+                  m_l, m, efc, alpha, batch_base, max_fraction, do_fixing
+          );
+          my_printf("HNSW: Build index: %.4f\n", t.tick_s());
 
-        ityr::root_exec([=] {
-          const uint32_t height = g->get_height();
-          my_printf("Highest level: %u\n", height);
+          ityr::root_exec([=] {
+            const uint32_t height = g->get_height();
+            my_printf("Highest level: %u\n", height);
 
-          my_printf("level     #vertices         #degrees  max_degree\n");
-          for(uint32_t i=0; i<=height; ++i)
-          {
-                  const uint32_t level = height-i;
-                  size_t cnt_vertex = g->cnt_vertex(level);
-                  size_t cnt_degree = g->cnt_degree(level);
-                  size_t degree_max = g->get_degree_max(level);
-                  my_printf("#%2u: %14lu %16lu %11lu\n", level, cnt_vertex, cnt_degree, degree_max);
-          }
-        });
-        my_printf("HNSW: Count vertices and degrees: %.4f\n", t.tick_s());
+            my_printf("level     #vertices         #degrees  max_degree\n");
+            for(uint32_t i=0; i<=height; ++i)
+            {
+                    const uint32_t level = height-i;
+                    size_t cnt_vertex = g->cnt_vertex(level);
+                    size_t cnt_degree = g->cnt_degree(level);
+                    size_t degree_max = g->get_degree_max(level);
+                    my_printf("#%2u: %14lu %16lu %11lu\n", level, cnt_vertex, cnt_degree, degree_max);
+            }
+          });
+          my_printf("HNSW: Count vertices and degrees: %.4f\n", t.tick_s());
 
 #if 0
-	if(file_out)
-	{
-		g.save(file_out);
-		t.next("Write to the file");
-	}
+          if(file_out)
+          {
+                  g.save(file_out);
+                  t.next("Write to the file");
+          }
 #endif
 
-	output_recall(*g, parameter);
+          output_recall(*g, parameter);
 
-        g.reset();
+          g.reset();
+        }
 
         per_visited = {};
         per_eval = {};
@@ -455,7 +470,10 @@ int main(int argc, char **argv)
   set_signal_handlers();
 
   if (ityr::is_master()) {
-    printf("=============================================================\n");
+    printf("=============================================================\n"
+           "[ANNS HNSW]\n"
+           "# of processes:               %d\n",
+           ityr::n_ranks());
 
 	for(int i=0; i<argc; ++i)
 		printf("%s ", argv[i]);
@@ -478,7 +496,8 @@ int main(int argc, char **argv)
 		"-efc <ef_construction> -alpha <alpha> -f <symmEdge> [-b <batchBase>] "
 		"-in <inFile> -out <outFile> -q <queryFile> -g <groundtruthFile> [-k <numQuery>=all] "
 		"-ef <ef_query>,... -r <recall@R>,... -th <threshold>,... [-beta <beta>,...] "
-		"-le <limit_num_eval> [-w <warmup>] [-rad radius (for range search)] [-mf <max_fraction>]"
+		"-le <limit_num_eval> [-w <warmup>] [-rad radius (for range search)] [-mf <max_fraction>] "
+                "[-i <repeats>] [-fc <fast_check>]"
 	);
 
 	/* const char *dist_func = parameter.getOptionValue("-dist"); */
