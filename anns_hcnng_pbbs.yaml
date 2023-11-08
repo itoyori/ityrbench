@@ -19,6 +19,37 @@ default_name: anns_hcnng_pbbs
 default_queue: node_${nodes}
 default_duplicates: 1
 
+batches:
+  recall10M:
+    name: anns_hcnng_pbbs_${batch_name}
+    params:
+      dataset: [bigann-10M, msspacev-10M, text2image-10M]
+      repeats: 1
+      fast_check: 0
+    artifacts:
+      - type: stdout
+        dest: anns_hcnng_pbbs/${batch_name}/${dataset}_${duplicate}.log
+      - type: stats
+        dest: anns_hcnng_pbbs/${batch_name}/${dataset}_${duplicate}.stats
+      - type: file
+        src: anns_pbbs/benchmarks/ANN/HCNNG/mpirun_out.txt
+        dest: anns_hcnng_pbbs/${batch_name}/${dataset}_${duplicate}.out
+
+  build10M:
+    name: anns_hcnng_pbbs_${batch_name}
+    params:
+      dataset: [bigann-10M, msspacev-10M, text2image-10M]
+      repeats: 3
+      fast_check: 1
+    artifacts:
+      - type: stdout
+        dest: anns_hcnng_pbbs/${batch_name}/${dataset}_${duplicate}.log
+      - type: stats
+        dest: anns_hcnng_pbbs/${batch_name}/${dataset}_${duplicate}.stats
+      - type: file
+        src: anns_pbbs/benchmarks/ANN/HCNNG/mpirun_out.txt
+        dest: anns_hcnng_pbbs/${batch_name}/${dataset}_${duplicate}.out
+
 build:
   depend_params: []
   script: |
@@ -88,4 +119,4 @@ run:
 
     export PARLAY_NUM_THREADS=$KOCHI_PARAM_CORES
 
-    ./neighbors $opts
+    ./neighbors $opts 2>&1 | tee $STDOUT_FILE

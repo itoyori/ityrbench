@@ -22,6 +22,42 @@ default_name: anns_hnsw_pbbs
 default_queue: node_${nodes}
 default_duplicates: 1
 
+batches:
+  recall10M:
+    name: anns_hnsw_pbbs_${batch_name}
+    params:
+      dataset: [bigann-10M, msspacev-10M, text2image-10M]
+      repeats: 1
+      max_fraction: 0.1
+      fast_check: 0
+    artifacts:
+      - type: stdout
+        dest: anns_hnsw_pbbs/${batch_name}/${dataset}_${duplicate}.log
+      - type: stats
+        dest: anns_hnsw_pbbs/${batch_name}/${dataset}_${duplicate}.stats
+      - type: file
+        src: anns_pbbs/benchmarks/ANN/HNSW/mpirun_out.txt
+        dest: anns_hnsw_pbbs/${batch_name}/${dataset}_${duplicate}.out
+      - type: file
+        src: anns_pbbs/benchmarks/ANN/HNSW/log.csv
+        dest: anns_hnsw_pbbs/${batch_name}/${dataset}_${duplicate}.csv
+
+  build10M:
+    name: anns_hnsw_pbbs_${batch_name}
+    params:
+      dataset: [bigann-10M, msspacev-10M, text2image-10M]
+      repeats: 3
+      max_fraction: 0.1
+      fast_check: 1
+    artifacts:
+      - type: stdout
+        dest: anns_hnsw_pbbs/${batch_name}/${dataset}_${duplicate}.log
+      - type: stats
+        dest: anns_hnsw_pbbs/${batch_name}/${dataset}_${duplicate}.stats
+      - type: file
+        src: anns_pbbs/benchmarks/ANN/HNSW/mpirun_out.txt
+        dest: anns_hnsw_pbbs/${batch_name}/${dataset}_${duplicate}.out
+
 build:
   depend_params: []
   script: |
