@@ -23,7 +23,8 @@ batches:
   recall10M:
     name: anns_hcnng_pbbs_${batch_name}
     params:
-      dataset: [bigann-10M, msspacev-10M, text2image-10M]
+      # dataset: [bigann-10M, msspacev-10M, text2image-10M]
+      dataset: [bigann-10M, msspacev-10M]
       repeats: 1
       fast_check: 0
     artifacts:
@@ -38,7 +39,8 @@ batches:
   build10M:
     name: anns_hcnng_pbbs_${batch_name}
     params:
-      dataset: [bigann-10M, msspacev-10M, text2image-10M]
+      # dataset: [bigann-10M, msspacev-10M, text2image-10M]
+      dataset: [bigann-10M, msspacev-10M]
       repeats: 3
       fast_check: 1
     artifacts:

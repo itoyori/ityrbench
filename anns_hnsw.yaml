@@ -28,7 +28,7 @@ default_params:
   block_size: 65536 # bytes
   sub_block_size: 512 # bytes
   max_dirty: $cache_size # MB
-  noncoll_alloc_size: 64 # MB
+  noncoll_alloc_size: 128 # MB
   shared_mem: 1
   prof: disabled # disabled/stats/trace
   dag_prof: disabled # disabled/workspan
@@ -38,6 +38,53 @@ default_params:
 default_name: anns_hnsw
 default_queue: node_${nodes}
 default_duplicates: 1
+
+batches:
+  recall10M:
+    name: anns_hnsw_${batch_name}
+    params:
+      nodes:
+        - value: [2x3x2:torus]
+          machines: [wisteria-o]
+      # dataset: [bigann-10M, msspacev-10M, text2image-10M]
+      dataset: [bigann-10M, msspacev-10M]
+      repeats: 1
+      max_fraction: 0.1
+      fast_check: 0
+    artifacts:
+      - type: stdout
+        dest: anns_hnsw/${batch_name}/${dataset}_node_${nodes}_${duplicate}.log
+      - type: stats
+        dest: anns_hnsw/${batch_name}/${dataset}_node_${nodes}_${duplicate}.stats
+      - type: file
+        src: mpirun_out.txt
+        dest: anns_hnsw/${batch_name}/${dataset}_node_${nodes}_${duplicate}.out
+      - type: file
+        src: log.csv
+        dest: anns_hnsw/${batch_name}/${dataset}_node_${nodes}_${duplicate}.csv
+
+  build10M:
+    name: anns_hnsw_${batch_name}
+    params:
+      nodes:
+        - value: [1, 2:torus, 2x3:torus, 2x3x2:torus]
+          machines: [wisteria-o]
+      # dataset: [bigann-10M, msspacev-10M, text2image-10M]
+      dataset: [bigann-10M, msspacev-10M]
+      sched: [randws, adws]
+      cache_policy: [nocache, writeback_lazy]
+      repeats: 3
+      max_fraction: 0.1
+      fast_check: 1
+      noncoll_alloc_size: "`(432 if '$nodes' == '1' else 324)`"
+    artifacts:
+      - type: stdout
+        dest: anns_hnsw/${batch_name}/${dataset}_node_${nodes}_s_${sched}_p_${cache_policy}_${duplicate}.log
+      - type: stats
+        dest: anns_hnsw/${batch_name}/${dataset}_node_${nodes}_s_${sched}_p_${cache_policy}_${duplicate}.stats
+      - type: file
+        src: mpirun_out.txt
+        dest: anns_hnsw/${batch_name}/${dataset}_node_${nodes}_s_${sched}_p_${cache_policy}_${duplicate}.out
 
 build:
   depend_params: [dataset, dist_policy, block_size, prof, dag_prof, cache_prof]

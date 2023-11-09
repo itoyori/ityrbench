@@ -26,7 +26,8 @@ batches:
   recall10M:
     name: anns_hnsw_pbbs_${batch_name}
     params:
-      dataset: [bigann-10M, msspacev-10M, text2image-10M]
+      # dataset: [bigann-10M, msspacev-10M, text2image-10M]
+      dataset: [bigann-10M, msspacev-10M]
       repeats: 1
       max_fraction: 0.1
       fast_check: 0
@@ -45,7 +46,8 @@ batches:
   build10M:
     name: anns_hnsw_pbbs_${batch_name}
     params:
-      dataset: [bigann-10M, msspacev-10M, text2image-10M]
+      # dataset: [bigann-10M, msspacev-10M, text2image-10M]
+      dataset: [bigann-10M, msspacev-10M]
       repeats: 3
       max_fraction: 0.1
       fast_check: 1

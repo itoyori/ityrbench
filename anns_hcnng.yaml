@@ -36,6 +36,47 @@ default_name: anns_hcnng
 default_queue: node_${nodes}
 default_duplicates: 1
 
+batches:
+  recall10M:
+    name: anns_hcnng_${batch_name}
+    params:
+      nodes:
+        - value: [2x3x2:torus]
+          machines: [wisteria-o]
+      # dataset: [bigann-10M, msspacev-10M, text2image-10M]
+      dataset: [bigann-10M, msspacev-10M]
+      repeats: 1
+      fast_check: 0
+    artifacts:
+      - type: stdout
+        dest: anns_hcnng/${batch_name}/${dataset}_node_${nodes}_${duplicate}.log
+      - type: stats
+        dest: anns_hcnng/${batch_name}/${dataset}_node_${nodes}_${duplicate}.stats
+      - type: file
+        src: mpirun_out.txt
+        dest: anns_hcnng/${batch_name}/${dataset}_node_${nodes}_${duplicate}.out
+
+  build10M:
+    name: anns_hcnng_${batch_name}
+    params:
+      nodes:
+        - value: [1, 2:torus, 2x3:torus, 2x3x2:torus]
+          machines: [wisteria-o]
+      # dataset: [bigann-10M, msspacev-10M, text2image-10M]
+      dataset: [bigann-10M, msspacev-10M]
+      sched: [randws, adws]
+      cache_policy: [nocache, writeback_lazy]
+      repeats: 3
+      fast_check: 1
+    artifacts:
+      - type: stdout
+        dest: anns_hcnng/${batch_name}/${dataset}_node_${nodes}_s_${sched}_p_${cache_policy}_${duplicate}.log
+      - type: stats
+        dest: anns_hcnng/${batch_name}/${dataset}_node_${nodes}_s_${sched}_p_${cache_policy}_${duplicate}.stats
+      - type: file
+        src: mpirun_out.txt
+        dest: anns_hcnng/${batch_name}/${dataset}_node_${nodes}_s_${sched}_p_${cache_policy}_${duplicate}.out
+
 build:
   depend_params: [dataset, dist_policy, block_size, prof, dag_prof, cache_prof]
   script: |
