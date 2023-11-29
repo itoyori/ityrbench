@@ -16,8 +16,8 @@ namespace EXAFMM_NAMESPACE {
       } else {                                                  // If body vector is not empty
 	bounds.Xmin = bounds.Xmax = bodies.front().X;           //  Initialize Xmin, Xmax
         for (B_iter B=bodies.begin(); B!=bodies.end(); B++) {   //  Loop over bodies
-          bounds.Xmin = min(B->X, bounds.Xmin - 1e-5);          //   Update Xmin
-          bounds.Xmax = max(B->X, bounds.Xmax + 1e-5);          //   Update Xmax
+          bounds.Xmin = min(B->X - 1e-5, bounds.Xmin);          //   Update Xmin
+          bounds.Xmax = max(B->X + 1e-5, bounds.Xmax);          //   Update Xmax
         }                                                       //  End loop over bodies
       }                                                         // End if for empty body vector
       logger::stopTimer("Get bounds");                          // Stop timer
@@ -28,8 +28,8 @@ namespace EXAFMM_NAMESPACE {
     Bounds getBounds(Bodies bodies, Bounds bounds) {
       logger::startTimer("Get bounds");                         // Start timer
       for (B_iter B=bodies.begin(); B!=bodies.end(); B++) {     // Loop over bodies
-        bounds.Xmin = min(B->X, bounds.Xmin - 1e-5);            //  Update Xmin
-        bounds.Xmax = max(B->X, bounds.Xmax + 1e-5);            //  Update Xmax
+        bounds.Xmin = min(B->X - 1e-5, bounds.Xmin);            //  Update Xmin
+        bounds.Xmax = max(B->X + 1e-5, bounds.Xmax);            //  Update Xmax
       }                                                         // End loop over bodies
       logger::stopTimer("Get bounds");                          // Stop timer
       return bounds;                                            // Return Xmin and Xmax
