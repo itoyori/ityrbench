@@ -95,6 +95,7 @@ batches:
       cache_policy: [nocache, writeback_lazy]
       dag_prof: workspan
       accuracy_test: 0
+      noncoll_alloc_size: "`(256 if '$nodes' == '1' else 128)`"
     artifacts:
       - type: stdout
         dest: exafmm/${batch_name}/nodes_${nodes}_s_${sched}_p_${cache_policy}_${duplicate}.log

@@ -205,24 +205,18 @@ dependencies:
 
   big-anns:
     git: https://github.com/harsha-simhadri/big-ann-benchmarks
-    commit_hash: f5bb90b5674843b2438ed5cf8e7f8522356cae4c
+    commit_hash: 190a4dcfb7fa8d329e8083330f7cace5e4c5c172
     recipes:
       - name: dataset
         script: |
-          # repeat downloading bigann to avoid an error:
-          # https://github.com/harsha-simhadri/big-ann-benchmarks/issues/127
           python3 create_dataset.py --dataset bigann-10M
-          python3 create_dataset.py --dataset bigann-10M
-          python3 create_dataset.py --dataset bigann-10M
-          # python3 create_dataset.py --dataset bigann-100M
-          # python3 create_dataset.py --dataset bigann-100M
-          # python3 create_dataset.py --dataset bigann-100M
+          python3 create_dataset.py --dataset bigann-100M
           python3 create_dataset.py --dataset msspacev-1M
           python3 create_dataset.py --dataset msspacev-10M
-          # python3 create_dataset.py --dataset msspacev-100M
+          python3 create_dataset.py --dataset msspacev-100M
           python3 create_dataset.py --dataset text2image-1M
           python3 create_dataset.py --dataset text2image-10M
-          # python3 create_dataset.py --dataset text2image-100M
+          python3 create_dataset.py --dataset text2image-100M
           mv data/* ${KOCHI_INSTALL_PREFIX}
           # post-processing (benchmarks/ANN/scripts/prepare_datasets.sh)
           git clone https://github.com/cmuparlay/pbbsbench-vldb2024.git
