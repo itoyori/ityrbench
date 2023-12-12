@@ -48,7 +48,7 @@ nn_result checkRecall(
   int r = 10;
   float query_time;
   if(random){
-    beamSearchRandom(q, v, beamQ, k, d, mips, cut, limit);
+    /* beamSearchRandom(q, v, beamQ, k, d, mips, cut, limit); */
     t.next_time();
     beamSearchRandom(q, v, beamQ, k, d, mips, cut, limit);
     query_time = t.next_time();

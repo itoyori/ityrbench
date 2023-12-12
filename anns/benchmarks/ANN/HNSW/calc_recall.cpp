@@ -102,6 +102,11 @@ double output_recall(HNSW<U> &g, uint32_t ef, uint32_t k,
                   return g.search(q_, k, ef);
               });
 	}
+
+        ityr::coll_exec([] {
+          ityr::profiler_begin();
+        });
+
         my_printf("HNSW: Doing search: %.4f\n", t.tick_s());
 
         ityr::transform(
@@ -120,6 +125,11 @@ double output_recall(HNSW<U> &g, uint32_t ef, uint32_t k,
         const double time_query = t.tick_s();
         const auto qps = cnt_query/time_query;
         my_printf("HNSW: Find neighbors: %.4f\n", time_query);
+
+        ityr::coll_exec([] {
+          ityr::profiler_end();
+          ityr::profiler_flush();
+        });
 
 	double ret_val = 0;
 	if(radius) // range search

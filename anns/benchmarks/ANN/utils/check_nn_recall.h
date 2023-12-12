@@ -48,10 +48,16 @@ nn_result checkRecall(
   int r = 10;
   float query_time;
   if(random){
-    beamSearchRandom(q, v, beamQ, k, d, mips, cut, limit);
+    /* beamSearchRandom(q, v, beamQ, k, d, mips, cut, limit); */
+
+    ityr::profiler_begin();
+
     t.tick_s();
     beamSearchRandom(q, v, beamQ, k, d, mips, cut, limit);
     query_time = t.tick_s();
+
+    ityr::profiler_end();
+    ityr::profiler_flush();
   }else{
 #if 0
     searchAll(q, v, beamQ, k, d, v[start_point], mips, cut, limit);
