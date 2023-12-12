@@ -41,10 +41,11 @@ batches:
     name: anns_hcnng_${batch_name}
     params:
       nodes:
-        - value: [2x3x2:torus]
+        - value: [1, 2x3x2:torus]
           machines: [wisteria-o]
       # dataset: [bigann-10M, msspacev-10M, text2image-10M]
       dataset: [bigann-10M, msspacev-10M]
+      sched: adws
       repeats: 1
       fast_check: 0
     artifacts:

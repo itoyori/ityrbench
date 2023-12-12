@@ -44,13 +44,15 @@ batches:
     name: anns_hnsw_${batch_name}
     params:
       nodes:
-        - value: [2x3x2:torus]
+        - value: [1, 2x3x2:torus]
           machines: [wisteria-o]
       # dataset: [bigann-10M, msspacev-10M, text2image-10M]
       dataset: [bigann-10M, msspacev-10M]
+      sched: adws
       repeats: 1
       max_fraction: 0.1
       fast_check: 0
+      noncoll_alloc_size: "`(432 if '$nodes' == '1' else 324)`"
     artifacts:
       - type: stdout
         dest: anns_hnsw/${batch_name}/${dataset}_node_${nodes}_${duplicate}.log
