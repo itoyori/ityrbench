@@ -174,10 +174,10 @@ public:
 	struct node{
 		// uint32_t id;
 		uint32_t level;
-                ityr::global_vector<ityr::global_span<node_id>> neighbors;
+                ityr::global_vector<ityr::global_vector<node_id>> neighbors;
 		T data; // point
                 node() {}
-                node(uint32_t level, ityr::global_vector<ityr::global_span<node_id>>&& neighbors, const T& data)
+                node(uint32_t level, ityr::global_vector<ityr::global_vector<node_id>>&& neighbors, const T& data)
                   : level(level), neighbors(std::move(neighbors)), data(data) {}
 	};
 
@@ -220,11 +220,8 @@ public:
 	uint32_t ef_construction;
 	float alpha;
 	uint32_t n;
-        uint32_t n_inserted;
 	Allocator<node> allocator;
         ityr::global_vector<node> node_pool;
-
-        std::vector<ityr::global_vector<node_id>> edgelist_bufs;
 
         struct edge {
           node_id src;
@@ -260,13 +257,9 @@ public:
 		}
 	}
 */
-
-        template<typename Iter, typename Rng>
-        void init_edgelist(Iter begin, Iter end, Rng&& rng);
-
 	// node* insert(const T &q, uint32_t id);
-	template<typename Iter>
-	void insert(Iter begin, Iter end, bool from_blank);
+	template<typename Iter, typename Rng>
+	void insert(Iter begin, Iter end, bool from_blank, Rng&& rng);
 
 #if 0
 	template<typename Queue>
@@ -355,12 +348,12 @@ public:
                         {
                           auto e_cs = ityr::make_checkout(&node_pool[e.u], 1, ityr::checkout_mode::read);
 
-                          auto nbhs_cs = ityr::make_checkout(&e_cs[0].neighbors[level], 1, ityr::checkout_mode::read);
-                          auto &nbhs = nbhs_cs[0];
+                          auto nbh_v_cs = ityr::make_checkout(&e_cs[0].neighbors[level], 1, ityr::checkout_mode::read);
+                          auto &nbh_v = nbh_v_cs[0];
 
-                                for(node_id e_adj : nbhs)
+                                for(node_id e_adj : nbh_v)
                                 {
-                                        if(e_adj == std::numeric_limits<node_id>::max()) break;
+                                        // if(e_adj==nullptr) continue; // TODO: check
                                         if(W_tmp.find(e_adj)==W_tmp.end())
                                                 W_tmp.insert(e_adj);
                                 }
@@ -597,15 +590,8 @@ public:
                 if (u.level < l) {
                   return 0;
                 } else {
-                  auto nbhs_cs = ityr::make_checkout(&u.neighbors[l], 1, ityr::checkout_mode::read);
-                  auto& nbhs = nbhs_cs[0];
-                  auto nbhs_buf_cs = ityr::make_checkout(nbhs.data(), nbhs.size(), ityr::checkout_mode::read);
-                  std::size_t count = 0;
-                  for (node_id pv : nbhs_buf_cs) {
-                    if (pv == std::numeric_limits<node_id>::max()) break;
-                    count++;
-                  }
-                  return count;
+                  auto nbh_v_cs = ityr::make_checkout(&u.neighbors[l], 1, ityr::checkout_mode::read);
+                  return nbh_v_cs[0].size();
                 }
               });
 	}
@@ -631,15 +617,8 @@ public:
                 if (u.level < l) {
                   return 0;
                 } else {
-                  auto nbhs_cs = ityr::make_checkout(&u.neighbors[l], 1, ityr::checkout_mode::read);
-                  auto& nbhs = nbhs_cs[0];
-                  auto nbhs_buf_cs = ityr::make_checkout(nbhs.data(), nbhs.size(), ityr::checkout_mode::read);
-                  std::size_t count = 0;
-                  for (node_id pv : nbhs_buf_cs) {
-                    if (pv == std::numeric_limits<node_id>::max()) break;
-                    count++;
-                  }
-                  return count;
+                  auto nbh_v_cs = ityr::make_checkout(&u.neighbors[l], 1, ityr::checkout_mode::read);
+                  return nbh_v_cs[0].size();
                 }
               });
 	}
@@ -797,7 +776,6 @@ template<typename Iter>
 HNSW<U,Allocator>::HNSW(Iter begin, Iter end, uint32_t dim_, float m_l_, uint32_t m_, uint32_t ef_construction_, float alpha_, float batch_base, float max_fraction, bool do_fixing [[maybe_unused]])
 	: entrance(ityr::global_vector_options(true, 1024)), // coll
           dim(dim_), m_l(m_l_), m(m_), ef_construction(ef_construction_), alpha(alpha_), n(std::distance(begin,end)),
-          n_inserted(0),
           node_pool(ityr::global_vector_options(true, 1024)),
           eps_batch(ityr::global_vector_options(true, 1024)),
           edge_add_batch(ityr::global_vector_options(true, 1024)),
@@ -820,7 +798,6 @@ HNSW<U,Allocator>::HNSW(Iter begin, Iter end, uint32_t dim_, float m_l_, uint32_
         uint64_t seed = 42;
         ityr::default_random_engine rng(seed);
 
-#if 0
 	const auto level_ep = get_level_random(rng);
 	// node *entrance_init = allocator.allocate(1);
 	// node_pool.push_back(entrance_init);
@@ -828,11 +805,6 @@ HNSW<U,Allocator>::HNSW(Iter begin, Iter end, uint32_t dim_, float m_l_, uint32_
         node_pool.reserve(n);
         node_pool.emplace_back(level_ep, ityr::global_vector<ityr::global_vector<node_id>>(level_ep+1), (*begin).get()/*anything else*/);
 	entrance.push_back(entrance_init);
-#else
-        init_edgelist(begin, end, rng);
-	entrance.push_back(0);
-        n_inserted = 1;
-#endif
 
         ityr::profiler_begin();
 
@@ -848,7 +820,7 @@ HNSW<U,Allocator>::HNSW(Iter begin, Iter end, uint32_t dim_, float m_l_, uint32_
 		*/
 		// batch_end = batch_begin+1;
 
-		insert(begin+batch_begin, begin+batch_end, true);
+		insert(begin+batch_begin, begin+batch_end, true, rng);
 		// insert(rand_seq.begin()+batch_begin, rand_seq.begin()+batch_end, false);
 
 		if(batch_end>n*(progress+0.05))
@@ -902,74 +874,14 @@ HNSW<U,Allocator>::HNSW(Iter begin, Iter end, uint32_t dim_, float m_l_, uint32_
 
 template<typename U, template<typename> class Allocator>
 template<typename Iter, typename Rng>
-void HNSW<U,Allocator>::init_edgelist(Iter begin, Iter end, Rng&& rng)
-{
-  node_pool.resize(n);
-
-  ityr::root_exec([=, rng = rng.split()]() mutable {
-    ityr::transform(
-        ityr::execution::parallel_policy(1024),
-        begin, end, ityr::count_iterator<uint64_t>(0), node_pool.begin(),
-        [=](const T& q, uint64_t i) {
-          auto rng_ = rng;
-          const auto level_u = get_level_random(rng_.split(i));
-          return node{level_u, ityr::global_vector<ityr::global_span<node_id>>(level_u + 1), q};
-        });
-
-    auto max_level = ityr::transform_reduce(
-        ityr::execution::parallel_policy(1024),
-        node_pool.begin(), node_pool.end(), ityr::reducer::max<uint32_t>{},
-        [](const node& u) {
-          return u.level;
-        });
-
-    ityr::global_vector<uint32_t> buf_indices(ityr::global_vector_options(true, 1024),
-                                              n + 1, 0);
-
-    for (uint32_t l = 0; l <= max_level; l++) {
-      ityr::transform_inclusive_scan(
-          ityr::execution::parallel_policy(1024),
-          node_pool.begin(), node_pool.end(), buf_indices.begin() + 1,
-          ityr::reducer::plus<uint32_t>{},
-          [=](const node& u) {
-            return (l <= u.level) ? 1 : 0;
-          });
-      auto n_nodes = buf_indices.back().get();
-
-      auto n_edges_per_node = get_threshold_m(l);
-
-      ityr::coll_exec([=] {
-        edgelist_bufs.emplace_back(ityr::global_vector_options(true, 1024), n_nodes * n_edges_per_node,
-                                   std::numeric_limits<node_id>::max());
-      });
-
-      auto edgelist_buf_begin = edgelist_bufs[l].begin();
-      ityr::for_each(
-          ityr::execution::parallel_policy(1024),
-          ityr::make_global_iterator(node_pool.begin()  , ityr::checkout_mode::read),
-          ityr::make_global_iterator(node_pool.end()    , ityr::checkout_mode::read),
-          ityr::make_global_iterator(buf_indices.begin(), ityr::checkout_mode::read),
-          [=](node& u, uint32_t i) {
-            if (l <= u.level) {
-              auto ngh_cs = ityr::make_checkout(&u.neighbors[l], 1, ityr::checkout_mode::read_write);
-              ngh_cs[0] = ityr::global_span<node_id>(edgelist_buf_begin + i * n_edges_per_node,
-                                                     n_edges_per_node);
-            }
-          });
-    }
-  });
-}
-
-template<typename U, template<typename> class Allocator>
-template<typename Iter>
-void HNSW<U,Allocator>::insert(Iter begin, Iter end, bool from_blank [[maybe_unused]])
+void HNSW<U,Allocator>::insert(Iter begin, Iter end, bool from_blank, Rng&& rng)
 {
   const auto size_batch = std::distance(begin,end);
   eps_batch.resize(size_batch);
   edge_add_batch.resize(size_batch);
   edge_indices_batch.resize(size_batch + 1, 0);
 
-      ityr::root_exec([=] {
+      ityr::root_exec([=, rng = rng.split()]() mutable {
         timer t;
 
         auto e_cs = ityr::make_checkout(&node_pool[entrance[0].get()], 1, ityr::checkout_mode::read);
@@ -978,7 +890,6 @@ void HNSW<U,Allocator>::insert(Iter begin, Iter end, bool from_blank [[maybe_unu
 	//const float factor_m = from_blank? 0.5: 1;
 	const auto factor_m = 1;
 
-#if 0
         auto offset = node_pool.size();
 
 	debug_output("Insert %lu elements; from blank? [%c]\n", size_batch, "NY"[from_blank]);
@@ -996,7 +907,7 @@ void HNSW<U,Allocator>::insert(Iter begin, Iter end, bool from_blank [[maybe_unu
               [=](const T& q, uint64_t i) {
                 auto rng_ = rng;
                 const auto level_u = get_level_random(rng_.split(i));
-                return node{level_u, ityr::global_vector<ityr::global_span<node_id>>(level_u + 1), q};
+                return node{level_u, ityr::global_vector<ityr::global_vector<node_id>>(level_u + 1), q};
               });
 	}
 	else
@@ -1009,16 +920,13 @@ void HNSW<U,Allocator>::insert(Iter begin, Iter end, bool from_blank [[maybe_unu
         throw std::runtime_error("from_blank false");
 #endif
 	}
-#else
-        auto offset = n_inserted;
-#endif
 
 	debug_output("insert: prologue: %.4f\n", t.tick_s());
 	debug_output("Nodes are settled\n");
 	// TODO: merge ops
         ityr::transform(
             ityr::execution::par,
-            node_pool.begin() + offset, node_pool.begin() + offset + size_batch, eps_batch.begin(),
+            node_pool.begin() + offset, node_pool.end(), eps_batch.begin(),
             [=](const node& u) {
               const auto level_u = u.level;
               ityr::global_vector<node_id> eps_u(
@@ -1046,10 +954,10 @@ void HNSW<U,Allocator>::insert(Iter begin, Iter end, bool from_blank [[maybe_unu
 #endif
                 ityr::for_each(
                     ityr::execution::par,
-                    ityr::make_global_iterator(node_pool.begin() + offset             , ityr::checkout_mode::read),
-                    ityr::make_global_iterator(node_pool.begin() + offset + size_batch, ityr::checkout_mode::read),
-                    ityr::make_global_iterator(eps_batch.begin()                      , ityr::checkout_mode::read_write),
-                    ityr::make_global_iterator(edge_add_batch.begin()                 , ityr::checkout_mode::read_write),
+                    ityr::make_global_iterator(node_pool.begin() + offset, ityr::checkout_mode::read),
+                    ityr::make_global_iterator(node_pool.end()           , ityr::checkout_mode::read),
+                    ityr::make_global_iterator(eps_batch.begin()         , ityr::checkout_mode::read_write),
+                    ityr::make_global_iterator(edge_add_batch.begin()    , ityr::checkout_mode::read_write),
                     ityr::count_iterator<node_id>(offset),
                     [=](node& u, auto& eps_u, auto& edge_u, node_id pu) {
                       edge_u.clear();
@@ -1084,11 +992,8 @@ void HNSW<U,Allocator>::insert(Iter begin, Iter end, bool from_blank [[maybe_unu
                           [=](node_id pv) { return edge{pv, pu}; });
 
                       if((uint32_t)l_c<=u.level) {
-                        auto nbhs_cs = ityr::make_checkout(&u.neighbors[l_c], 1, ityr::checkout_mode::read);
-                        auto& nbhs = nbhs_cs[0];
-                        assert(neighbors_vec.size() <= nbhs.size());
-                        ityr::copy(ityr::execution::sequenced_policy(neighbors_vec.size()),
-                                   neighbors_vec.begin(), neighbors_vec.end(), nbhs.data());
+                        auto nbh_v_cs = ityr::make_checkout(&u.neighbors[l_c], 1, ityr::checkout_mode::read_write);
+                        nbh_v_cs[0] = std::move(neighbors_vec);
                       }
 
                       eps_u.clear();
@@ -1147,52 +1052,48 @@ void HNSW<U,Allocator>::insert(Iter begin, Iter end, bool from_blank [[maybe_unu
                       auto node_cs = ityr::make_checkout(&node_pool[pv], 1, ityr::checkout_mode::read);
                       auto& u = node_cs[0];
 
-                      auto nbhs_cs = ityr::make_checkout(&u.neighbors[l_c], 1, ityr::checkout_mode::read);
-                      auto& nbhs = nbhs_cs[0];
+                      auto nbh_v_cs = ityr::make_checkout(&u.neighbors[l_c], 1, ityr::checkout_mode::read_write);
+                      auto &nbh_v = nbh_v_cs[0];
 
-                      auto nbhs_buf_cs = ityr::make_checkout(nbhs.data(), nbhs.size(), ityr::checkout_mode::read_write);
-                      auto nbhs_buf_end = nbhs_buf_cs.end();
-                      for (std::size_t i = 0; i < nbhs_buf_cs.size(); i++) {
-                        if (nbhs_buf_cs[i] == std::numeric_limits<node_id>::max()) {
-                          nbhs_buf_end = nbhs_buf_cs.begin() + i;
-                          break;
-                        }
-                      }
-                      auto nbhs_buf_size = nbhs_buf_end - nbhs_buf_cs.begin();
+                      auto nbh_cs = ityr::make_checkout(nbh_v.data(), nbh_v.size(), ityr::checkout_mode::read);
 
-                      std::vector<node_id> nbhs_add;
-                      nbhs_add.reserve(edges_cs.size());
+                      std::vector<node_id> nbh_v_add;
+                      nbh_v_add.reserve(edges_cs.size());
                       for (auto&& [_, pu] : edges_cs) {
-                        bool is_extant = pu==pv||std::find_if(nbhs_buf_cs.begin(), nbhs_buf_end, [pu=pu](const node_id pu_extant){
+                        bool is_extant = pu==pv||std::find_if(nbh_cs.begin(), nbh_cs.end(), [pu=pu](const node_id pu_extant){
                             return pu==pu_extant;
-                            })!=nbhs_buf_end;
+                            })!=nbh_cs.end();
 
                         if (!is_extant) {
-                          nbhs_add.push_back(pu);
+                          nbh_v_add.push_back(pu);
                         }
                       }
 
-                      const uint32_t size_nbh_total = nbhs_buf_size + nbhs_add.size();
+                      const uint32_t size_nbh_total = nbh_cs.size()+nbh_v_add.size();
 
                       const auto m_s = get_threshold_m(l_c)*factor_m;
                       if(size_nbh_total>m_s)
                       {
                               auto candidates = std::vector<dist>(size_nbh_total);
-                              for(size_t k=0; k<nbhs_buf_size; ++k) {
-                                auto v_cs = ityr::make_checkout(&node_pool[nbhs_buf_cs[k]], 1, ityr::checkout_mode::read);
-                                      candidates[k] = dist{U::distance(v_cs[0].data,u.data,dim), nbhs_buf_cs[k]};
+                              for(size_t k=0; k<nbh_cs.size(); ++k) {
+                                auto v_cs = ityr::make_checkout(&node_pool[nbh_cs[k]], 1, ityr::checkout_mode::read);
+                                      candidates[k] = dist{U::distance(v_cs[0].data,u.data,dim), nbh_cs[k]};
                               }
-                              for(size_t k=0; k<nbhs_add.size(); ++k) {
-                                auto v_cs = ityr::make_checkout(&node_pool[nbhs_add[k]], 1, ityr::checkout_mode::read);
-                                      candidates[k+nbhs_buf_size] = dist{U::distance(v_cs[0].data,u.data,dim), nbhs_add[k]};
+                              for(size_t k=0; k<nbh_v_add.size(); ++k) {
+                                auto v_cs = ityr::make_checkout(&node_pool[nbh_v_add[k]], 1, ityr::checkout_mode::read);
+                                      candidates[k+nbh_cs.size()] = dist{U::distance(v_cs[0].data,u.data,dim), nbh_v_add[k]};
                               }
 
                               std::sort(candidates.begin(), candidates.end(), farthest());
 
-                              std::transform(
-                                  candidates.begin(), candidates.begin() + m_s, nbhs_buf_cs.begin(),
-                                  [](const auto& c) { return c.u; });
+                              nbh_cs.checkin();
 
+                              nbh_v.resize(m_s);
+                              ityr::transform(
+                                  ityr::execution::sequenced_policy(1024),
+                                  candidates.begin(), candidates.begin() + m_s,
+                                  nbh_v.begin(),
+                                  [](const auto& c) { return c.u; });
                               /*
                               auto res = select_neighbors(get_node(pv).data, candidates, m_s, l_c);
                               nbh_v.clear();
@@ -1202,7 +1103,8 @@ void HNSW<U,Allocator>::insert(Iter begin, Iter end, bool from_blank [[maybe_unu
                               // nbh_v = select_neighbors(get_node(pv).data, candidates, m_s, l_c);
                       }
                       else {
-                        std::copy(nbhs_add.begin(), nbhs_add.end(), nbhs_buf_end);
+                        nbh_cs.checkin();
+                        nbh_v.insert(nbh_v.end(),nbh_v_add.begin(), nbh_v_add.end());
                       }
                     });
 
@@ -1213,7 +1115,7 @@ void HNSW<U,Allocator>::insert(Iter begin, Iter end, bool from_blank [[maybe_unu
 	// finally, update the entrance
 	auto node_highest_gptr = ityr::max_element(
             ityr::execution::parallel_policy(1024),
-            node_pool.begin() + offset, node_pool.begin() + offset + size_batch,
+            node_pool.begin() + offset, node_pool.end(),
             [&](const node& u, const node& v){
               return u.level < v.level;
             });
@@ -1248,8 +1150,6 @@ void HNSW<U,Allocator>::insert(Iter begin, Iter end, bool from_blank [[maybe_unu
 
         debug_output("insert: total: %.4f\n", t.total_duration_s());
       });
-
-  n_inserted += size_batch;
 }
 
 template<typename U, template<typename> class Allocator>
@@ -1317,15 +1217,13 @@ auto HNSW<U,Allocator>::search_layer(const node &u, const ityr::global_vector<no
 		// C.pop_back();
 		C.erase(C.begin());
 
-                auto nbhs_cs = ityr::make_checkout(&c.neighbors[l_c], 1, ityr::checkout_mode::read);
-                auto& nbhs = nbhs_cs[0];
+                auto nbh_v_cs = ityr::make_checkout(&c.neighbors[l_c], 1, ityr::checkout_mode::read);
+                auto &nbh_v = nbh_v_cs[0];
 
-                auto nbhs_buf_cs = ityr::make_checkout(nbhs.data(), nbhs.size(), ityr::checkout_mode::read);
+                auto nbh_cs = ityr::make_checkout(nbh_v.data(), nbh_v.size(), ityr::checkout_mode::read);
 
-		for(node_id pv: nbhs_buf_cs)
+		for(node_id pv: nbh_cs)
 		{
-                  if (pv == std::numeric_limits<node_id>::max()) break;
-
 			//const auto id = U::get_id(get_node(pv).data);
 			//const auto idx = parlay::hash64_2(id)&mask;
 			//if(visited[idx]==id) continue;
