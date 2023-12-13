@@ -66,7 +66,7 @@ build:
     source build_common.bash
 
     cd anns_pbbs/benchmarks/ANN/HNSW
-    $CXX -O3 -g -std=c++17 -Wall -Wextra -Wl,--unresolved-symbols=ignore-all -I../bench ${CXXFLAGS:+$CXXFLAGS} -o calc_recall calc_recall.cpp -lpthread
+    ${CXX:-g++} -O3 -g -std=c++17 -Wall -Wextra -Wl,--unresolved-symbols=ignore-all -I../bench ${CXXFLAGS:+$CXXFLAGS} -o calc_recall calc_recall.cpp -lpthread
 
 run:
   depend_params: [nodes, cores, dataset, repeats, n_points, n_queries, max_fraction, fast_check]

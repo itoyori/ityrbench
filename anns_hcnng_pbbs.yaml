@@ -58,7 +58,7 @@ build:
     source build_common.bash
 
     cd anns_pbbs/benchmarks/ANN/HCNNG
-    $CXX -O3 -g -DNDEBUG -std=c++17 -I. -include ./neighbors.h -DHOMEGROWN ${CXXFLAGS:+$CXXFLAGS} -o neighbors ../bench/neighborsTime.C -lpthread -ldl
+    ${CXX:-g++} -O3 -g -DNDEBUG -std=c++17 -I. -include ./neighbors.h -DHOMEGROWN ${CXXFLAGS:+$CXXFLAGS} -o neighbors ../bench/neighborsTime.C -lpthread -ldl
 
 run:
   depend_params: [nodes, cores, dataset, repeats, fast_check]

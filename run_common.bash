@@ -89,25 +89,27 @@ case $KOCHI_MACHINE in
       local n_processes_per_node=$2
       local bind_to=$3
 
-      trap "compgen -G ${STDOUT_FILE}.* && tail -n +1 \$(ls ${STDOUT_FILE}.* -v) > $STDOUT_FILE && rm ${STDOUT_FILE}.*" EXIT
+      (
+        trap "compgen -G ${STDOUT_FILE}.* && tail -n +1 \$(ls ${STDOUT_FILE}.* -v) > $STDOUT_FILE && rm ${STDOUT_FILE}.*" EXIT
 
-      # Workaround for the issue: https://github.com/openpmix/openpmix/issues/2980
-      if [[ $MPIEXEC == mpitx ]]; then
-        double_hyphen=--
-      else
-        double_hyphen=
-      fi
+        # Workaround for the issue: https://github.com/openpmix/openpmix/issues/2980
+        if [[ $MPIEXEC == mpitx ]]; then
+          double_hyphen=--
+        else
+          double_hyphen=
+        fi
 
-      $MPIEXEC -n $n_processes -N $n_processes_per_node \
-        --bind-to $bind_to \
-        --output file=$STDOUT_FILE \
-        --prtemca ras simulator \
-        --prtemca plm_ssh_agent ssh \
-        --prtemca plm_ssh_args " -i /sqfs/home/v60680/sshd/ssh_client_rsa_key -o StrictHostKeyChecking=no -p 50000 -q" \
-        --hostfile $NQSII_MPINODES \
-        --mca btl ^ofi \
-        --mca osc_ucx_acc_single_intrinsic true \
-        $double_hyphen setarch $(uname -m) --addr-no-randomize "${@:4}"
+        $MPIEXEC -n $n_processes -N $n_processes_per_node \
+          --bind-to $bind_to \
+          --output file=$STDOUT_FILE \
+          --prtemca ras simulator \
+          --prtemca plm_ssh_agent ssh \
+          --prtemca plm_ssh_args " -i /sqfs/home/v60680/sshd/ssh_client_rsa_key -o StrictHostKeyChecking=no -p 50000 -q" \
+          --hostfile $NQSII_MPINODES \
+          --mca btl ^ofi \
+          --mca osc_ucx_acc_single_intrinsic true \
+          $double_hyphen setarch $(uname -m) --addr-no-randomize "${@:4}"
+      )
     }
     ;;
   *)

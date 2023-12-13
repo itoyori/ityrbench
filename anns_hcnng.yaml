@@ -43,6 +43,8 @@ batches:
       nodes:
         - value: [1, 2x3x2:torus]
           machines: [wisteria-o]
+        - value: [1, 8]
+          machines: [squid-c]
       # dataset: [bigann-10M, msspacev-10M, text2image-10M]
       dataset: [bigann-10M, msspacev-10M]
       sched: adws
@@ -63,6 +65,8 @@ batches:
       nodes:
         - value: [1, 2:torus, 2x3:torus, 2x3x2:torus]
           machines: [wisteria-o]
+        - value: [1, 2, 4, 8, 16]
+          machines: [squid-c]
       # dataset: [bigann-10M, msspacev-10M, text2image-10M]
       dataset: [bigann-10M, msspacev-10M]
       sched: [randws, adws]
