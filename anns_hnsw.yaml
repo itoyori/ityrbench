@@ -40,6 +40,27 @@ default_queue: node_${nodes}
 default_duplicates: 1
 
 batches:
+  serial:
+    name: anns_hnsw_${batch_name}
+    queue: serial
+    params:
+      nodes: 1
+      cores: 1
+      serial: 1
+      # dataset: [bigann-10M, msspacev-10M, text2image-10M]
+      dataset: [bigann-10M, msspacev-10M]
+      repeats: 3
+      max_fraction: 0.1
+      fast_check: 1
+    artifacts:
+      - type: stdout
+        dest: anns_hnsw/${batch_name}/${dataset}_${duplicate}.log
+      - type: stats
+        dest: anns_hnsw/${batch_name}/${dataset}_${duplicate}.stats
+      - type: file
+        src: mpirun_out.txt
+        dest: anns_hnsw/${batch_name}/${dataset}_${duplicate}.out
+
   recall10M:
     name: anns_hnsw_${batch_name}
     params:
