@@ -32,13 +32,13 @@
 #define randd(y,t) (exp(-2*(t))*sin(y))
 #define solu(x,y,t) (exp(-2*(t))*sin(x)*sin(y))
 
-long nx = 512;
-long ny = 512;
+long nx = 4096;
+long ny = 4096;
 long nt = 100;
 double xu = 0.0;
-double xo = 1.570796326794896558;
+double xo = 157.0796326794896558;
 double yu = 0.0;
-double yo = 1.570796326794896558;
+double yo = 157.0796326794896558;
 double tu = 0.0;
 double to = 0.0000001;
 
@@ -47,7 +47,7 @@ double dx, dy, dt;
 double dtdxsq, dtdysq;
 double t;
 
-long leafmaxcol = 10;
+long leafmaxcol = 1;
 
 /*****************   Initialization of grid partition  ********************/
 
