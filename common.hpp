@@ -62,18 +62,19 @@ inline void set_abort_timeout(int timeout_sec) {
   timer_settime(*abort_timer_instance(), 0, &its, NULL);
 }
 
-inline void print_backtrace() {
+inline void print_backtrace(void* ctx = nullptr) {
   backward::StackTrace st;
-  st.load_here(32);
+  st.load_here(32, ctx);
   backward::Printer p;
   p.object = true;
   p.color_mode = backward::ColorMode::always;
   p.address = true;
+  p.reverse = false;
   p.print(st, stderr);
   fflush(stderr);
 }
 
-inline void signal_handler(int sig, siginfo_t* si, void*) {
+inline void signal_handler(int sig, siginfo_t* si, void* ctx) {
   // cancel signal handler for SIGABRT
   signal(SIGABRT, SIG_DFL);
 
@@ -84,14 +85,16 @@ inline void signal_handler(int sig, siginfo_t* si, void*) {
   // which can result in a deadlock.
   set_abort_timeout(10);
 
+  auto t = ityr::gettime_ns();
+
   if (sig == 11) { // SIGSEGV
-    fprintf(stderr, "Signal %d received (at %p).\n", sig, si->si_addr);
+    fprintf(stderr, "%ld: Signal %d received (at %p).\n", t, sig, si->si_addr);
   } else {
-    fprintf(stderr, "Signal %d received.\n", sig);
+    fprintf(stderr, "%ld: Signal %d received.\n", t, sig);
   }
   fflush(stderr);
 
-  print_backtrace();
+  print_backtrace(ctx);
 
   std::abort();
 }
