@@ -1,0 +1,76 @@
+depends:
+  - name: itoyori
+    recipe: release
+
+default_params:
+  nodes: 1
+  cores:
+    - value: 48
+      machines: [wisteria-o]
+    - value: 76
+      machines: [squid-c]
+    - value: 6
+      machines: [local]
+  nx: 4096
+  ny: 4096
+  nt: 11
+  cutoff: 1
+  # common params
+  serial: 0
+  sched: randws # randws/adws
+  cache_policy: writeback_lazy # nocache/writethrough/writeback/writeback_lazy/getput
+  dist_policy: default # default/block/cyclic/block_adws
+  cache_size: 128 # MB
+  block_size: 65536 # bytes
+  sub_block_size: 4096 # bytes
+  max_dirty: $cache_size # MB
+  noncoll_alloc_size: 2 # MB
+  shared_mem: 1
+  prof: disabled # disabled/stats/trace
+  dag_prof: disabled # disabled/workspan
+  cache_prof: disabled # disabled/stats
+  debugger: 0
+
+default_name: heat
+default_queue: node_${nodes}
+default_duplicates: 1
+
+build:
+  depend_params: [dist_policy, block_size, prof, dag_prof, cache_prof]
+  script: |
+    source build_common.bash
+
+    # CXXFLAGS="${CXXFLAGS:+$CXXFLAGS} -DITYR_MAX_VERBOSE_LEVEL=1"
+    CXXFLAGS="${CXXFLAGS:+$CXXFLAGS} -DITYR_ALLOCATOR_USE_DYNAMIC_WIN=false"
+
+    CC=$MPICC CXX=$MPICXX cmake -DCMAKE_CXX_FLAGS="$CXXFLAGS" $CMAKE_OPTIONS .
+    make clean
+    make -j heat
+
+run:
+  depend_params: [nodes, cores, nx, ny, nt, cutoff, serial, sched, cache_policy, cache_size, sub_block_size, max_dirty, noncoll_alloc_size, shared_mem, prof, debugger]
+  script: |
+    source run_common.bash
+
+    if [[ $KOCHI_PARAM_SERIAL == 1 ]]; then
+      config_name=serial
+    else
+      config_name=${KOCHI_PARAM_SCHED}_${KOCHI_PARAM_CACHE_POLICY}
+    fi
+
+    commands="
+      ./heat_${config_name}.out
+        -x $KOCHI_PARAM_NX
+        -y $KOCHI_PARAM_NY
+        -t $KOCHI_PARAM_NT
+        -c $KOCHI_PARAM_CUTOFF"
+
+    n_nodes=$(echo $KOCHI_PARAM_NODES | cut -f 1 -d ":" | sed 's/x/*/g' | bc)
+
+    if [[ $KOCHI_PARAM_DEBUGGER == 0 ]]; then
+      ityr_mpirun $((n_nodes * KOCHI_PARAM_CORES)) $KOCHI_PARAM_CORES core $commands
+    else
+      MPIEXEC=mpitx ityr_mpirun $((n_nodes * KOCHI_PARAM_CORES)) $KOCHI_PARAM_CORES core gdb --args $commands
+    fi
+
+    if [[ $KOCHI_PARAM_PROF == trace ]]; then run_trace_viewer; fi
