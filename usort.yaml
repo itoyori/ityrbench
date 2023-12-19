@@ -13,6 +13,9 @@ default_params:
     - value: 6
       machines: [local]
   n_input: 1_000_000
+  algo: hyksort # samplesort/hyksort
+  kway: 64
+  prof: 1
   repeats: 11
   debugger: 0
 
@@ -21,16 +24,28 @@ default_queue: node_${nodes}
 default_duplicates: 1
 
 build:
-  depend_params: []
+  depend_params: [algo, kway, prof]
   script: |
     source build_common.bash
     cd usort
 
     CXXFLAGS="${CXXFLAGS:+$CXXFLAGS} -O3 -DNDEBUG -g"
     CXXFLAGS="${CXXFLAGS:+$CXXFLAGS} -D__USE_64_BIT_INT__"
-    CXXFLAGS="${CXXFLAGS:+$CXXFLAGS} -DKWICK"
 
-    ${MPICXX:-mpicxx} -std=c++11 -I./include ${CXXFLAGS:+$CXXFLAGS} -o usort -fopenmp src/parUtils.cpp src/binUtils.cpp src/main.cpp
+    case $KOCHI_PARAM_ALGO in
+      hyksort)    CXXFLAGS="${CXXFLAGS:+$CXXFLAGS} -DKWICK -DKWAY=$KOCHI_PARAM_KWAY" ;;
+      samplesort) ;;
+      *)          echo "Unknown algo ($KOCHI_PARAM_ALGO)"; exit 1 ;;
+    esac
+
+    sources="src/parUtils.cpp src/binUtils.cpp src/main.cpp"
+
+    if [[ $KOCHI_PARAM_PROF == 1 ]]; then
+      CXXFLAGS="${CXXFLAGS:+$CXXFLAGS} -D_PROFILE_SORT"
+      sources="src/sort_profiler.cpp $sources"
+    fi
+
+    ${MPICXX:-mpicxx} -std=c++11 -I./include ${CXXFLAGS:+$CXXFLAGS} -o usort.out -fopenmp $sources -lm
 
 run:
   depend_params: [nodes, cores, n_input, repeats, debugger]
@@ -39,7 +54,7 @@ run:
     cd usort
 
     commands="
-      ./usort $KOCHI_PARAM_CORES
+      ./usort.out $KOCHI_PARAM_CORES
         i$KOCHI_PARAM_N_INPUT
         UNIF
         $KOCHI_PARAM_REPEATS"
