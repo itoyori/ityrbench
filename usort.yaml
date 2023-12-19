@@ -55,13 +55,13 @@ run:
     source run_common.bash
     cd usort
 
+    n_nodes=$(echo $KOCHI_PARAM_NODES | cut -f 1 -d ":" | sed 's/x/*/g' | bc)
+
     commands="
       ./usort.out $KOCHI_PARAM_CORES
-        i$KOCHI_PARAM_N_INPUT
+        i$(( (KOCHI_PARAM_N_INPUT + n_nodes - 1) / n_nodes ))
         UNIF
         $KOCHI_PARAM_REPEATS"
-
-    n_nodes=$(echo $KOCHI_PARAM_NODES | cut -f 1 -d ":" | sed 's/x/*/g' | bc)
 
     if [[ $KOCHI_PARAM_DEBUGGER == 0 ]]; then
       ityr_mpirun $((n_nodes)) 1 none numactl -iall $commands
