@@ -1,0 +1,53 @@
+depends:
+  - name: openmpi
+    recipe: v5.0.0
+    machines: [squid-c, local]
+
+default_params:
+  nodes: 1
+  cores:
+    - value: 48
+      machines: [wisteria-o]
+    - value: 76
+      machines: [squid-c]
+    - value: 6
+      machines: [local]
+  n_input: 1_000_000
+  repeats: 11
+  debugger: 0
+
+default_name: usort
+default_queue: node_${nodes}
+default_duplicates: 1
+
+build:
+  depend_params: []
+  script: |
+    source build_common.bash
+    cd usort
+
+    CXXFLAGS="${CXXFLAGS:+$CXXFLAGS} -O3 -DNDEBUG -g"
+    CXXFLAGS="${CXXFLAGS:+$CXXFLAGS} -D__USE_64_BIT_INT__"
+    CXXFLAGS="${CXXFLAGS:+$CXXFLAGS} -DKWICK"
+
+    ${MPICXX:-mpicxx} -std=c++11 -I./include ${CXXFLAGS:+$CXXFLAGS} -o usort -fopenmp src/parUtils.cpp src/binUtils.cpp src/main.cpp
+
+run:
+  depend_params: [nodes, cores, n_input, repeats, debugger]
+  script: |
+    source run_common.bash
+    cd usort
+
+    commands="
+      ./usort $KOCHI_PARAM_CORES
+        i$KOCHI_PARAM_N_INPUT
+        UNIF
+        $KOCHI_PARAM_REPEATS"
+
+    n_nodes=$(echo $KOCHI_PARAM_NODES | cut -f 1 -d ":" | sed 's/x/*/g' | bc)
+
+    if [[ $KOCHI_PARAM_DEBUGGER == 0 ]]; then
+      ityr_mpirun $((n_nodes)) 1 none numactl -iall $commands
+    else
+      MPIEXEC=mpitx ityr_mpirun $((n_nodes)) 1 none gdb --args $commands
+    fi

@@ -161,7 +161,7 @@ bool verify (std::vector<T>& in_, std::vector<T> &out_, MPI_Comm comm){
 }
 
 template <class T>
-double time_sort(size_t N, MPI_Comm comm, DistribType dist_type){
+double time_sort(size_t N, MPI_Comm comm, DistribType dist_type, int n_repeats){
   // std::cout << "Entering time_sort" << std::endl;
   int myrank, p;
 
@@ -172,94 +172,74 @@ double time_sort(size_t N, MPI_Comm comm, DistribType dist_type){
   // std::cout << "Num threads: " << omp_p << std::endl;
   // std::cout << "N: " << N << std::endl;
 
-  // Generate random data
+  double wtime_all = 0;
   std::vector<T> in(N);
-	if(dist_type==UNIF_DISTRIB){
-    // std::cout << "Uniform Dist" << std::endl;
-    // #pragma omp parallel for
-    for(int j=0;j<omp_p;j++){
-      unsigned int seed=j*p+myrank;
-      size_t start=(j*N)/omp_p;
-      size_t end=((j+1)*N)/omp_p;
-      for(unsigned int i=start;i<end;i++){ 
-        in[i]=rand_r(&seed);
-      }
-    }
-	} else if(dist_type==GAUSS_DISTRIB) {
-    // std::cout << "Gauss Dist" << std::endl;
-    double e=2.7182818284590452;
-    double log_e=log(e);
-
-    unsigned int seed1=p+myrank;
-    long mn = rand_r(&seed1);
-
-    // #pragma omp parallel for
-    for(int j=0;j<omp_p;j++){
-      unsigned int seed=j*p+myrank;
-      size_t start=(j*N)/omp_p;
-      size_t end=((j+1)*N)/omp_p;
-      for(unsigned int i=start;i<end;i++){ 
-        in[i]= mn + sqrt(-2*log(rand_r(&seed)*1.0/RAND_MAX)/log_e)
-              * cos(rand_r(&seed)*2*M_PI/RAND_MAX)*RAND_MAX*0.1;
-      }
-    }
-	}
-  // std::cout << "Finished generating Data" << std::endl;
-
-  std::vector<T> in_cpy=in;
   std::vector<T> out;
 
-  // std::cout << "Calling sort" << std::endl;
-  // in=in_cpy;
-  SORT_FUNCTION<T>(in_cpy, out, comm);
-  // par::sampleSort(in_cpy, comm);
-  // std::sort(in_cpy.begin(), in_cpy.end());
-  
-  // std::cout << "Finished sort" << std::endl;
+  for (int r = 0; r < n_repeats; r++) {
+    // Generate random data
+          if(dist_type==UNIF_DISTRIB){
+      // std::cout << "Uniform Dist" << std::endl;
+      // #pragma omp parallel for
+      for(int j=0;j<omp_p;j++){
+        unsigned int seed=j*p+myrank;
+        size_t start=(j*N)/omp_p;
+        size_t end=((j+1)*N)/omp_p;
+        for(unsigned int i=start;i<end;i++){ 
+          in[i]=rand_r(&seed);
+        }
+      }
+          } else if(dist_type==GAUSS_DISTRIB) {
+      // std::cout << "Gauss Dist" << std::endl;
+      double e=2.7182818284590452;
+      double log_e=log(e);
+
+      unsigned int seed1=p+myrank;
+      long mn = rand_r(&seed1);
+
+      // #pragma omp parallel for
+      for(int j=0;j<omp_p;j++){
+        unsigned int seed=j*p+myrank;
+        size_t start=(j*N)/omp_p;
+        size_t end=((j+1)*N)/omp_p;
+        for(unsigned int i=start;i<end;i++){ 
+          in[i]= mn + sqrt(-2*log(rand_r(&seed)*1.0/RAND_MAX)/log_e)
+                * cos(rand_r(&seed)*2*M_PI/RAND_MAX)*RAND_MAX*0.1;
+        }
+      }
+          }
+    //Sort
+    MPI_Barrier(comm);
+    double wtime=-omp_get_wtime();
+    SORT_FUNCTION<T>(in, out, comm);
+    // SORT_FUNCTION<T>(in, comm);
+    MPI_Barrier(comm);
+    wtime+=omp_get_wtime();
+    wtime_all+=wtime;
+
+    if(!myrank){
+      printf("[%d] %f s\n", r, wtime);
+      fflush(stdout);
+    }
 
 #ifdef __VERIFY__
-  verify(in,in_cpy,comm);
+    verify(in,out,comm);
 #endif
-
-
-#ifdef _PROFILE_SORT
-	total_sort.clear();
-	
-	seq_sort.clear();
-	sort_partitionw.clear();
-	
-	sample_get_splitters.clear();
-	sample_sort_splitters.clear();
-	sample_prepare_scatter.clear();
-	sample_do_all2all.clear();
-	
-	hyper_compute_splitters.clear();
-	hyper_communicate.clear();
-	hyper_merge.clear();
-#endif
-
-
-  //Sort
-  MPI_Barrier(comm);
-  double wtime=-omp_get_wtime();
-  SORT_FUNCTION<T>(in, out, comm);
-  // SORT_FUNCTION<T>(in, comm);
-  MPI_Barrier(comm);
-  wtime+=omp_get_wtime();
+  }
 
   // std::cout << "Done time_sort" << std::endl;
-  return wtime;
+  return wtime_all;
 }
 
 int main(int argc, char **argv){
   
   if (argc < 4) {
-    std::cerr << "Usage: " << argv[0] << " numThreads typeSize typeDistrib" << std::endl;
-    std::cerr << "\t\t typeSize is a character for type of data follwed by data size per node." << std::endl;
+    std::cerr << "Usage: " << argv[0] << " numThreads typeSize typeDistrib [numRepeats=1]" << std::endl;
+    std::cerr << "\t\t typeSize is a character for type of data follwed by the number of elements per node." << std::endl;
 		std::cerr << "\t\t typeSize can be d-double, f-float, i-int, l-long." << std::endl;
     std::cerr << "\t\t Examples:" << std::endl;
-    std::cerr << "\t\t i1GB : integer  array of size 1GB" << std::endl;
-    std::cerr << "\t\t l1GB : long     array of size 1GB" << std::endl;
+    std::cerr << "\t\t i10000 : integer  array of 10000 elements" << std::endl;
+    std::cerr << "\t\t l10000 : long     array of 10000 elements" << std::endl;
 		std::cerr << "\t\t typeDistrib can be UNIF, GAUSS" << std::endl;
     return 1;  
   }
@@ -359,12 +339,15 @@ int main(int argc, char **argv){
   
   int k = 0; // in case size based runs are needed 
   char dtype = argv[2][0];
-  long N = getNumElements(argv[2]);
+  /* long N = getNumElements(argv[2]); */
+  long N = atol(&argv[2][1]);
 	DistribType dist_type=getDistType(argv[3]);
   if (!N) {
     std::cerr << "illegal typeSize code provided: " << argv[2] << std::endl;
     return 2;
   }
+
+  int n_repeats = (argc >= 5) ? atoi(argv[4]) : 1;
  
   std::string num;
   std::stringstream mystream;
@@ -387,16 +370,16 @@ int main(int argc, char **argv){
     
     switch(dtype) {
 			case 'd':
-				ttt = time_sort<double>(N, MPI_COMM_WORLD,dist_type);
+				ttt = time_sort<double>(N, MPI_COMM_WORLD,dist_type,n_repeats);
 				break;
 			case 'f':
-				ttt = time_sort<float>(N, MPI_COMM_WORLD,dist_type);
+				ttt = time_sort<float>(N, MPI_COMM_WORLD,dist_type,n_repeats);
 				break;	
 			case 'i':
-				ttt = time_sort<int>(N, MPI_COMM_WORLD,dist_type);
+				ttt = time_sort<int>(N, MPI_COMM_WORLD,dist_type,n_repeats);
 				break;
       case 'l':
-        ttt = time_sort<long>(N, MPI_COMM_WORLD,dist_type);
+        ttt = time_sort<long>(N, MPI_COMM_WORLD,dist_type,n_repeats);
         break;
       default:
         std::cout << "Unknown type" << std::endl;
@@ -438,16 +421,16 @@ int main(int argc, char **argv){
 
     switch(dtype) {
 			case 'd':
-				ttt = time_sort<double>(N, comm,dist_type);
+				ttt = time_sort<double>(N, comm,dist_type,n_repeats);
 				break;
 			case 'f':
-				ttt = time_sort<float>(N, comm,dist_type);
+				ttt = time_sort<float>(N, comm,dist_type,n_repeats);
 				break;	
 			case 'i':
-        ttt = time_sort<int>(N, comm,dist_type);
+        ttt = time_sort<int>(N, comm,dist_type,n_repeats);
         break;
       case 'l':
-        ttt = time_sort<long>(N, comm,dist_type);
+        ttt = time_sort<long>(N, comm,dist_type,n_repeats);
         break;
     };
 

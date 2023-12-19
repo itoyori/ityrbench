@@ -1,4 +1,5 @@
 #include <cstdlib>
+#include <cstring>
 #include <omp.h>
 #include <iterator>
 #include <vector>
