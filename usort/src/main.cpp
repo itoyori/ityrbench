@@ -173,10 +173,10 @@ double time_sort(size_t N, MPI_Comm comm, DistribType dist_type, int n_repeats){
   // std::cout << "N: " << N << std::endl;
 
   double wtime_all = 0;
-  std::vector<T> in(N);
-  std::vector<T> out;
+  std::vector<T> in;
 
   for (int r = 0; r < n_repeats; r++) {
+    in.resize(N);
     // Generate random data
           if(dist_type==UNIF_DISTRIB){
       // std::cout << "Uniform Dist" << std::endl;
@@ -208,11 +208,14 @@ double time_sort(size_t N, MPI_Comm comm, DistribType dist_type, int n_repeats){
         }
       }
           }
+#ifdef __VERIFY__
+    auto in_copy = in;
+#endif
     //Sort
     MPI_Barrier(comm);
     double wtime=-omp_get_wtime();
-    SORT_FUNCTION<T>(in, out, comm);
-    // SORT_FUNCTION<T>(in, comm);
+    MPI_Barrier(comm);
+    SORT_FUNCTION<T>(in, comm);
     MPI_Barrier(comm);
     wtime+=omp_get_wtime();
     wtime_all+=wtime;
@@ -221,9 +224,25 @@ double time_sort(size_t N, MPI_Comm comm, DistribType dist_type, int n_repeats){
       printf("[%d] %f s\n", r, wtime);
       fflush(stdout);
     }
+ #ifdef _PROFILE_SORT 			
+		if (!myrank) {
+			std::cout << "---------------------------------------------------------------------------" << std::endl;
+		#ifndef KWICK
+			std::cout << "\tSample Sort with " << KWAY << "-way all2all" << "\t\tMean\tMin\tMax" << std::endl;
+		#else
+		  #ifdef SWAPRANKS
+			  std::cout << "\t" << KWAY << "-way SwapRankSort " << "\t\tMean\tMin\tMax" << std::endl;
+      #else	
+        std::cout << "\t" << KWAY << "-way HyperQuickSort" << "\t\tMean\tMin\tMax" << std::endl;
+		  #endif
+		#endif
+			std::cout << "---------------------------------------------------------------------------" << std::endl;
+		}
+		printResults(omp_p, comm);
+ #endif
 
 #ifdef __VERIFY__
-    verify(in,out,comm);
+    verify(in_copy,in,comm);
 #endif
   }
 
@@ -385,22 +404,6 @@ int main(int argc, char **argv){
         std::cout << "Unknown type" << std::endl;
         break;
     };
- #ifdef _PROFILE_SORT 			
-		if (!myrank) {
-			std::cout << "---------------------------------------------------------------------------" << std::endl;
-		#ifndef KWICK
-			std::cout << "\tSample Sort with " << KWAY << "-way all2all" << "\t\tMean\tMin\tMax" << std::endl;
-		#else
-		  #ifdef SWAPRANKS
-			  std::cout << "\t" << KWAY << "-way SwapRankSort " << "\t\tMean\tMin\tMax" << std::endl;
-      #else	
-        std::cout << "\t" << KWAY << "-way HyperQuickSort" << "\t\tMean\tMin\tMax" << std::endl;
-		  #endif
-		#endif
-			std::cout << "---------------------------------------------------------------------------" << std::endl;
-		}
-		printResults(num_threads, MPI_COMM_WORLD);
- #endif
 		
     if(!myrank){
       tt[100*k+0]=ttt;
