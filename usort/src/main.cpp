@@ -8,7 +8,9 @@
 #include <vector>
 #include <omp.h>
 #include <sstream>
+#include <random>
 
+#include "pcg_random.hpp"
 
 #ifdef _PROFILE_SORT
 #include "sort_profiler.h"
@@ -160,6 +162,20 @@ bool verify (std::vector<T>& in_, std::vector<T> &out_, MPI_Comm comm){
   return true;
 }
 
+template <typename T, typename Rng>
+typename std::enable_if<std::is_integral<T>::value, T>::type
+gen_random_elem(Rng& r) {
+ static std::uniform_int_distribution<T> dist(0, std::numeric_limits<T>::max());
+ return dist(r);
+}
+
+template <typename T, typename Rng>
+typename std::enable_if<std::is_floating_point<T>::value, T>::type
+gen_random_elem(Rng& r) {
+  static std::uniform_real_distribution<T> dist(0, 1.0);
+  return dist(r);
+}
+
 template <class T>
 double time_sort(size_t N, MPI_Comm comm, DistribType dist_type, int n_repeats){
   // std::cout << "Entering time_sort" << std::endl;
@@ -175,19 +191,18 @@ double time_sort(size_t N, MPI_Comm comm, DistribType dist_type, int n_repeats){
   double wtime_all = 0;
   std::vector<T> in;
 
+  int counter = 0;
+
   for (int r = 0; r < n_repeats; r++) {
     in.resize(N);
     // Generate random data
           if(dist_type==UNIF_DISTRIB){
+            auto seed = counter++;
       // std::cout << "Uniform Dist" << std::endl;
-      // #pragma omp parallel for
-      for(int j=0;j<omp_p;j++){
-        unsigned int seed=j*p+myrank;
-        size_t start=(j*N)/omp_p;
-        size_t end=((j+1)*N)/omp_p;
-        for(unsigned int i=start;i<end;i++){ 
-          in[i]=rand_r(&seed);
-        }
+      #pragma omp parallel for
+      for(unsigned int i=0;i<N;i++){
+        pcg32 rng(seed, N * myrank + i);
+        in[i] = gen_random_elem<T>(rng);
       }
           } else if(dist_type==GAUSS_DISTRIB) {
       // std::cout << "Gauss Dist" << std::endl;

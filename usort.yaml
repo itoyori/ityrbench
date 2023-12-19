@@ -45,7 +45,9 @@ build:
       sources="src/sort_profiler.cpp $sources"
     fi
 
-    ${MPICXX:-mpicxx} -std=c++11 -I./include ${CXXFLAGS:+$CXXFLAGS} -o usort.out -fopenmp $sources -lm
+    # CXXFLAGS="${CXXFLAGS:+$CXXFLAGS} -D__VERIFY__"
+
+    ${MPICXX:-mpicxx} -std=c++11 -I./include -I../third-party/pcg-cpp/include ${CXXFLAGS:+$CXXFLAGS} -o usort.out -fopenmp $sources -lm
 
 run:
   depend_params: [nodes, cores, n_input, repeats, debugger]
