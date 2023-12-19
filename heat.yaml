@@ -62,7 +62,7 @@ batches:
     name: heat_${batch_name}
     params:
       nodes:
-        # - value: [1, 2:torus, 2x3:torus, 2x3x2:torus, 3x4x3:torus, 6x6x4:torus, 8x9x8:toru]
+        # - value: [1, 2:torus, 2x3:torus, 2x3x2:torus, 3x4x3:torus, 6x6x4:torus, 8x9x8:torus]
         - value: [1, 2:torus, 2x3:torus, 2x3x2:torus, 3x4x3:torus, 6x6x4:torus]
           machines: [wisteria-o]
         - value: [1, 2, 4, 8, 16, 32]
