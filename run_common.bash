@@ -76,6 +76,7 @@ case $KOCHI_MACHINE in
         $MPIEXEC $of_opt -n $n_processes \
           --vcoordfile $vcoordfile \
           --mca plm_ple_cpu_affinity $set_cpu_affinity \
+          --mca plm_ple_numanode_assign_policy share_band \
           -- setarch $(uname -m) --addr-no-randomize "${@:4}" | $tee_cmd
       )
     }
