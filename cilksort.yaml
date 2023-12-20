@@ -109,6 +109,30 @@ batches:
         src: mpirun_out.txt
         dest: cilksort/${batch_name}/nodes_${nodes}_s_${sched}_p_${cache_policy}_${duplicate}.out
 
+  weak1G:
+    name: cilksort_${batch_name}
+    params:
+      nodes:
+        # - value: [1, 2:torus, 2x3:torus, 2x3x2:torus, 3x4x3:torus, 6x6x4:torus, 8x9x8:torus]
+        - value: [1, 2:torus, 2x3:torus, 2x3x2:torus, 3x4x3:torus, 6x6x4:torus]
+          machines: [wisteria-o]
+        - value: [1, 2, 4, 8, 16, 32]
+          machines: [squid-c]
+      n_input: "`eval('$nodes'.split(':')[0].replace('x', '*')) * 1_000_000_000`"
+      sched: [randws, adws]
+      # cache_policy: [nocache, writethrough, writeback, writeback_lazy, getput]
+      cache_policy: [nocache, writeback_lazy]
+      prof: stats
+      dag_prof: workspan
+    artifacts:
+      - type: stdout
+        dest: cilksort/${batch_name}/nodes_${nodes}_s_${sched}_p_${cache_policy}_${duplicate}.log
+      - type: stats
+        dest: cilksort/${batch_name}/nodes_${nodes}_s_${sched}_p_${cache_policy}_${duplicate}.stats
+      - type: file
+        src: mpirun_out.txt
+        dest: cilksort/${batch_name}/nodes_${nodes}_s_${sched}_p_${cache_policy}_${duplicate}.out
+
   granularity:
     name: cilksort_${batch_name}
     params:
