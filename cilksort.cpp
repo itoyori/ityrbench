@@ -264,6 +264,66 @@ bool check_sorted(ityr::global_span<T> s) {
       s.begin(), s.end());
 }
 
+void run() {
+  {
+    // warmup?
+    ityr::global_vector<elem_t> a_vec(ityr::global_vector_options(true, 1024), n_input);
+    ityr::global_vector<elem_t> b_vec(ityr::global_vector_options(true, 1024), n_input);
+  }
+
+  ityr::global_vector<elem_t> a_vec(ityr::global_vector_options(true, 1024), n_input);
+  ityr::global_vector<elem_t> b_vec(ityr::global_vector_options(true, 1024), n_input);
+
+  ityr::global_span<elem_t> a(a_vec);
+  ityr::global_span<elem_t> b(b_vec);
+
+  /* ityr::ito::adws_enable_steal_option::set(false); */
+
+  for (int r = 0; r < n_repeats; r++) {
+    ityr::root_exec([=] {
+      fill_array(a);
+    });
+
+    ityr::profiler_begin();
+
+    auto t0 = ityr::gettime_ns();
+
+    if (exec_type == exec_t::StdSort) {
+      ityr::root_exec([=] {
+        std::sort(a.begin(), a.end());
+      });
+    } else {
+      ityr::root_exec([=] {
+        cilksort(a, b);
+      });
+    }
+
+    auto t1 = ityr::gettime_ns();
+
+    ityr::profiler_end();
+
+    if (ityr::is_master()) {
+      printf("[%d] %ld ns", r, t1 - t0);
+    }
+
+    if (verify_result) {
+      bool success = ityr::root_exec([=] {
+        return check_sorted(a);
+      });
+      if (ityr::is_master()) {
+        printf(success ? " - Result verified" : " - Wrong result");
+      }
+    }
+
+    if (ityr::is_master()) {
+      printf("\n");
+      fflush(stdout);
+    }
+
+    ityr::profiler_flush();
+  }
+}
+
 void show_help_and_exit(int argc [[maybe_unused]], char** argv) {
   if (ityr::is_master()) {
     printf("Usage: %s [options]\n"
@@ -344,60 +404,7 @@ int main(int argc, char** argv) {
     fflush(stdout);
   }
 
-  ityr::ori::global_ptr<elem_t> a_ptr = ityr::ori::malloc_coll<elem_t>(n_input);
-  ityr::ori::global_ptr<elem_t> b_ptr = ityr::ori::malloc_coll<elem_t>(n_input);
-
-  ityr::global_span<elem_t> a(a_ptr, n_input);
-  ityr::global_span<elem_t> b(b_ptr, n_input);
-
-  /* ityr::ito::adws_enable_steal_option::set(false); */
-
-  for (int r = 0; r < n_repeats; r++) {
-    ityr::root_exec([=] {
-      fill_array(a);
-    });
-
-    ityr::profiler_begin();
-
-    auto t0 = ityr::gettime_ns();
-
-    if (exec_type == exec_t::StdSort) {
-      ityr::root_exec([=] {
-        std::sort(a.begin(), a.end());
-      });
-    } else {
-      ityr::root_exec([=] {
-        cilksort(a, b);
-      });
-    }
-
-    auto t1 = ityr::gettime_ns();
-
-    ityr::profiler_end();
-
-    if (ityr::is_master()) {
-      printf("[%d] %ld ns", r, t1 - t0);
-    }
-
-    if (verify_result) {
-      bool success = ityr::root_exec([=] {
-        return check_sorted(a);
-      });
-      if (ityr::is_master()) {
-        printf(success ? " - Result verified" : " - Wrong result");
-      }
-    }
-
-    if (ityr::is_master()) {
-      printf("\n");
-      fflush(stdout);
-    }
-
-    ityr::profiler_flush();
-  }
-
-  ityr::ori::free_coll<elem_t>(a_ptr);
-  ityr::ori::free_coll<elem_t>(b_ptr);
+  run();
 
   ityr::fini();
   return 0;
