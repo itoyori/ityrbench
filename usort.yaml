@@ -87,7 +87,7 @@ build:
     source build_common.bash
     cd usort
 
-    CXXFLAGS="${CXXFLAGS:+$CXXFLAGS} -O3 -DNDEBUG -g"
+    CXXFLAGS="${CXXFLAGS:+$CXXFLAGS} -O3 -g"
     CXXFLAGS="${CXXFLAGS:+$CXXFLAGS} -D__USE_64_BIT_INT__"
 
     case $KOCHI_PARAM_ALGO in

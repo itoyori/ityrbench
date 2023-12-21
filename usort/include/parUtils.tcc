@@ -1467,10 +1467,14 @@ namespace par {
 #ifdef _PROFILE_SORT
       seq_sort.stop();
 #endif
-
       while(npes>1 && totSize>0){
-        if(kway>npes) kway = npes;
-        int blk_size=npes/kway; assert(blk_size*kway==npes);
+        kway = npes;
+        while (kway > KWAY) {
+          kway /= 2;
+        }
+        assert(kway % 2 == 0);
+        int blk_size=npes/kway;
+        assert(blk_size*kway==npes);
         int blk_id=myrank/blk_size, new_pid=myrank%blk_size;
 
         // Determine splitters.
@@ -1495,7 +1499,7 @@ namespace par {
           int recv_iter=0;
           std::vector<T*> recv_ptr(kway);
           std::vector<size_t> recv_cnt(kway);
-          std::vector<int> recv_size(kway), recv_disp(kway+1,0);
+          std::vector<int> recv_size(kway), recv_disp(binOp::getNextHighestPowerOfTwo(kway)+1,0);
           for(int i_=0;i_<=kway/2;i_++){
             int i1=(blk_id+i_)%kway;
             int i2=(blk_id+kway-i_)%kway;
@@ -1510,6 +1514,9 @@ namespace par {
               recv_cnt[recv_iter]=recv_size[recv_iter];
               recv_iter++;
             }
+          }
+          while (recv_iter <= binOp::getNextHighestPowerOfTwo(kway)) {
+            recv_disp[recv_iter++] = recv_disp[kway];
           }
 
           // Communicate data.
@@ -1555,9 +1562,11 @@ namespace par {
 				hyper_merge.start();
 #endif
 					// Merge remaining parts.
-          while(merg_indx<=(int)kway){
-              MPI_Waitall(1, &reqst[(merg_indx-1)*2], &status[(merg_indx-1)*2]);
-              MPI_Waitall(1, &reqst[(merg_indx-2)*2], &status[(merg_indx-2)*2]);
+          while(merg_indx<=binOp::getNextHighestPowerOfTwo(kway)){
+              if(merg_indx<=kway){
+                MPI_Waitall(1, &reqst[(merg_indx-1)*2], &status[(merg_indx-1)*2]);
+                MPI_Waitall(1, &reqst[(merg_indx-2)*2], &status[(merg_indx-2)*2]);
+              }
               {
                 T* A=&arr_[0]; T* B=&arr__[0];
                 for(int s=2;merg_indx%s==0;s*=2){
@@ -1577,7 +1586,6 @@ namespace par {
 						else swap(arr,arr__);
 					}
 				}
-
 #ifdef _PROFILE_SORT
 				hyper_merge.stop();
 				hyper_comm_split.start();
