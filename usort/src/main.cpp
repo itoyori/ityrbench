@@ -200,7 +200,7 @@ double time_sort(size_t N, MPI_Comm comm, DistribType dist_type, int n_repeats){
             auto seed = counter++;
       // std::cout << "Uniform Dist" << std::endl;
       #pragma omp parallel for
-      for(unsigned int i=0;i<N;i++){
+      for(size_t i=0;i<N;i++){
         pcg32 rng(seed, N * myrank + i);
         in[i] = gen_random_elem<T>(rng);
       }
