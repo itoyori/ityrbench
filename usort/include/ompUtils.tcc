@@ -60,7 +60,7 @@ void omp_par::merge(T A_,T A_last,T B_,T B_last,T C_,int p,StrictWeakOrdering co
   for(int i=1;i<p;i++){
     _DiffType req_size=(i*(N1+N2))/p;
 
-    int j=std::lower_bound(&split_size[0],&split_size[p*n],req_size,std::less<_DiffType>())-&split_size[0];
+    _DiffType j=std::lower_bound(&split_size[0],&split_size[p*n],req_size,std::less<_DiffType>())-&split_size[0];
     if(j>=p*n)
       j=p*n-1;
     _ValType  split1     =split     [j];
@@ -128,7 +128,7 @@ void omp_par::merge_sort(T A,T A_last,StrictWeakOrdering comp){
 	omp_par::merge(A_+split[i],A_+split[i+j],A_+split[i+j],A_+split[(i+2*j<=p?i+2*j:p)],B_+split[i],p,comp);
       }else{
 	#pragma omp parallel for
-	for(int k=split[i];k<split[p];k++)
+	for(_DiffType k=split[i];k<split[p];k++)
 	  B_[k]=A_[k];
       }
     }
@@ -140,7 +140,7 @@ void omp_par::merge_sort(T A,T A_last,StrictWeakOrdering comp){
   //The final result should be in A.
   if(A_!=&A[0]){
     #pragma omp parallel for
-    for(int i=0;i<N;i++)
+    for(_DiffType i=0;i<N;i++)
       A[i]=A_[i];
   }
 
@@ -224,8 +224,8 @@ void omp_par::scan(T* A, T* B,I cnt){
 
   #pragma omp parallel for
   for(int i=0; i<p; i++){
-    int start=i*step_size;
-    int end=start+step_size;
+    I start=i*step_size;
+    I end=start+step_size;
     if(i==p-1) end=cnt;
     if(i!=0)B[start]=0;
     for(I j=start+1; j<end; j++)
@@ -239,8 +239,8 @@ void omp_par::scan(T* A, T* B,I cnt){
 
   #pragma omp parallel for
   for(int i=1; i<p; i++){
-    int start=i*step_size;
-    int end=start+step_size;
+    I start=i*step_size;
+    I end=start+step_size;
     if(i==p-1) end=cnt;
     T sum_=sum[i];
     for(I j=start; j<end; j++)
