@@ -16,6 +16,7 @@
 #include <iostream>
 #include <algorithm>
 #include <cstring>
+#include <limits>
 
 
 #include "indexHolder.h"
@@ -64,6 +65,24 @@ namespace par {
     }
 
   template <typename T>
+    inline std::vector<MPI_Request> Mpi_Issend(T* buf, long count, int dest, int tag,
+        MPI_Comm comm) {
+
+      std::vector<MPI_Request> requests;
+      while (count > 0) {
+        long count_ = std::min((long)std::numeric_limits<int>::max() - 1, count);
+        MPI_Request req;
+        MPI_Issend(buf, count_, par::Mpi_datatype<T>::value(),
+            dest, tag, comm, &req);
+        requests.push_back(req);
+        buf += count_;
+        count -= count_;
+      }
+
+      return requests;
+    }
+
+  template <typename T>
     inline int Mpi_Recv(T* buf, int count, int source, int tag,
         MPI_Comm comm, MPI_Status* status) {
 
@@ -83,6 +102,24 @@ namespace par {
 
       return 1;
 
+    }
+
+  template <typename T>
+    inline std::vector<MPI_Request> Mpi_Irecv(T* buf, long count, int source, int tag,
+        MPI_Comm comm) {
+
+      std::vector<MPI_Request> requests;
+      while (count > 0) {
+        long count_ = std::min((long)std::numeric_limits<int>::max() - 1, count);
+        MPI_Request req;
+        MPI_Irecv(buf, count_, par::Mpi_datatype<T>::value(),
+            source, tag, comm, &req);
+        requests.push_back(req);
+        buf += count_;
+        count -= count_;
+      }
+
+      return requests;
     }
 
   template <typename T, typename S>
@@ -1491,7 +1528,7 @@ namespace par {
           hyper_communicate.start();
 #endif
           // Determine send_size.
-          std::vector<int> send_size(kway), send_disp(kway+1); send_disp[0] = 0; send_disp[kway] = arr.size();
+          std::vector<long> send_size(kway), send_disp(kway+1); send_disp[0] = 0; send_disp[kway] = arr.size();
           for(int i=1;i<kway;i++) send_disp[i] = std::lower_bound(&arr[0], &arr[arr.size()], split_key[i-1]) - &arr[0];
           for(int i=0;i<kway;i++) send_size[i] = send_disp[i+1] - send_disp[i];
 
@@ -1499,16 +1536,15 @@ namespace par {
           int recv_iter=0;
           std::vector<T*> recv_ptr(kway);
           std::vector<size_t> recv_cnt(kway);
-          std::vector<int> recv_size(kway), recv_disp(binOp::getNextHighestPowerOfTwo(kway)+1,0);
+          std::vector<long> recv_size(kway), recv_disp(binOp::getNextHighestPowerOfTwo(kway)+1,0);
           for(int i_=0;i_<=kway/2;i_++){
             int i1=(blk_id+i_)%kway;
             int i2=(blk_id+kway-i_)%kway;
-            MPI_Status status;
             for(int j=0;j<(i_==0 || i_==kway/2?1:2);j++){
               int i=(i_==0?i1:((j+blk_id/i_)%2?i1:i2));
               int partner=blk_size*i+new_pid;
-              MPI_Sendrecv(&send_size[     i   ], 1, MPI_INT, partner, 0,
-                           &recv_size[recv_iter], 1, MPI_INT, partner, 0, comm, &status);
+              MPI_Sendrecv(&send_size[     i   ], 1, MPI_LONG, partner, 0,
+                           &recv_size[recv_iter], 1, MPI_LONG, partner, 0, comm, MPI_STATUS_IGNORE);
               recv_disp[recv_iter+1] = recv_disp[recv_iter]+recv_size[recv_iter];
               recv_ptr[recv_iter]=&arr_[0] + recv_disp[recv_iter]; //! @hari - only setting address, doesnt need to be allocated yet (except for 0)
               recv_cnt[recv_iter]=recv_size[recv_iter];
@@ -1523,8 +1559,7 @@ namespace par {
           int asynch_count=2;
           recv_iter=0;
 					int merg_indx=2;
-          std::vector<MPI_Request> reqst(kway*2);
-          std::vector<MPI_Status> status(kway*2);
+          std::vector<std::vector<MPI_Request>> reqst(kway*2);
           arr_ .resize(recv_disp[kway]);
           arr__.resize(recv_disp[kway]);
           for(int i_=0;i_<=kway/2;i_++){
@@ -1534,16 +1569,19 @@ namespace par {
               int i=(i_==0?i1:((j+blk_id/i_)%2?i1:i2));
               int partner=blk_size*i+new_pid;
 
-              if(recv_iter-asynch_count-1>=0) MPI_Waitall(2, &reqst[(recv_iter-asynch_count-1)*2], &status[(recv_iter-asynch_count-1)*2]);
+              if(recv_iter-asynch_count-1>=0) {
+                MPI_Waitall(reqst[(recv_iter-asynch_count-1)*2].size(), reqst[(recv_iter-asynch_count-1)*2].data(), MPI_STATUSES_IGNORE);
+                MPI_Waitall(reqst[(recv_iter-asynch_count-1)*2+1].size(), reqst[(recv_iter-asynch_count-1)*2+1].data(), MPI_STATUSES_IGNORE);
+              }
               
-							par::Mpi_Irecv <T>(&arr_[recv_disp[recv_iter]], recv_size[recv_iter], partner, 1, comm, &reqst[recv_iter*2+0]);
-              par::Mpi_Issend<T>(&arr [send_disp[     i   ]], send_size[     i   ], partner, 1, comm, &reqst[recv_iter*2+1]);
+              reqst[recv_iter*2+0] = par::Mpi_Irecv<T>(&arr_[recv_disp[recv_iter]], recv_size[recv_iter], partner, 1, comm);
+              reqst[recv_iter*2+1] = par::Mpi_Issend<T>(&arr[send_disp[     i   ]], send_size[     i   ], partner, 1, comm);
               
 							recv_iter++;
 
               int flag[2]={0,0};
-              if ( recv_iter > merg_indx ) MPI_Test(&reqst[(merg_indx-1)*2], &flag[0], &status[(merg_indx-1)*2]);
-              if ( recv_iter > merg_indx ) MPI_Test(&reqst[(merg_indx-2)*2], &flag[1], &status[(merg_indx-2)*2]);
+              if ( recv_iter > merg_indx ) MPI_Testall(reqst[(merg_indx-1)*2].size(), reqst[(merg_indx-1)*2].data(), &flag[0], MPI_STATUSES_IGNORE);
+              if ( recv_iter > merg_indx ) MPI_Testall(reqst[(merg_indx-2)*2].size(), reqst[(merg_indx-2)*2].data(), &flag[1], MPI_STATUSES_IGNORE);
               if (flag[0] && flag[1]){
                 T* A=&arr_[0]; T* B=&arr__[0];
                 for(int s=2; merg_indx%s==0; s*=2){
@@ -1564,8 +1602,8 @@ namespace par {
 					// Merge remaining parts.
           while(merg_indx<=binOp::getNextHighestPowerOfTwo(kway)){
               if(merg_indx<=kway){
-                MPI_Waitall(1, &reqst[(merg_indx-1)*2], &status[(merg_indx-1)*2]);
-                MPI_Waitall(1, &reqst[(merg_indx-2)*2], &status[(merg_indx-2)*2]);
+                MPI_Waitall(reqst[(merg_indx-1)*2].size(), reqst[(merg_indx-1)*2].data(), MPI_STATUSES_IGNORE);
+                MPI_Waitall(reqst[(merg_indx-2)*2].size(), reqst[(merg_indx-2)*2].data(), MPI_STATUSES_IGNORE);
               }
               {
                 T* A=&arr_[0]; T* B=&arr__[0];
