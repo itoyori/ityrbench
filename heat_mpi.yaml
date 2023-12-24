@@ -1,0 +1,93 @@
+depends:
+  - name: openmpi
+    recipe: v5.0.0
+    machines: [squid-c, local]
+
+default_params:
+  nodes: 1
+  cores:
+    - value: 48
+      machines: [wisteria-o]
+    - value: 76
+      machines: [squid-c]
+    - value: 6
+      machines: [local]
+  nx: 4096
+  ny: 4096
+  nt: 11
+  debugger: 0
+
+default_name: heat_mpi
+default_queue: node_${nodes}
+default_duplicates: 1
+
+batches:
+  strong32K:
+    name: heat_mpi_${batch_name}
+    params:
+      nodes:
+        # - value: [1, 2:torus, 2x3:torus, 2x3x2:torus, 3x4x3:torus, 6x6x4:torus, 8x9x8:torus]
+        - value: [1, 2:torus, 2x3:torus, 2x3x2:torus, 3x4x3:torus, 6x6x4:torus]
+          machines: [wisteria-o]
+        - value: [1, 2, 4, 8, 16, 32]
+          machines: [squid-c]
+      nx: 32768
+      ny: 32768
+    artifacts:
+      - type: stdout
+        dest: heat_mpi/${batch_name}/nodes_${nodes}_${duplicate}.log
+      - type: stats
+        dest: heat_mpi/${batch_name}/nodes_${nodes}_${duplicate}.stats
+      - type: file
+        src: mpirun_out.txt
+        dest: heat_mpi/${batch_name}/nodes_${nodes}_${duplicate}.out
+
+  weak32K:
+    name: heat_${batch_name}
+    params:
+      nodes:
+        # - value: [1, 2:torus, 2x3:torus, 2x3x2:torus, 3x4x3:torus, 6x6x4:torus, 8x9x8:torus]
+        - value: [1, 2:torus, 2x3:torus, 2x3x2:torus, 3x4x3:torus, 6x6x4:torus]
+          machines: [wisteria-o]
+        - value: [1, 2, 4, 8, 16, 32]
+          machines: [squid-c]
+      nx: "`eval('$nodes'.split(':')[0].replace('x', '*')) * 32768`"
+      ny: 32768
+    artifacts:
+      - type: stdout
+        dest: heat_mpi/${batch_name}/nodes_${nodes}_${duplicate}.log
+      - type: stats
+        dest: heat_mpi/${batch_name}/nodes_${nodes}_${duplicate}.stats
+      - type: file
+        src: mpirun_out.txt
+        dest: heat_mpi/${batch_name}/nodes_${nodes}_${duplicate}.out
+
+build:
+  depend_params: [dist_policy, block_size, prof, dag_prof, cache_prof]
+  script: |
+    source build_common.bash
+
+    CXXFLAGS="${CXXFLAGS:+$CXXFLAGS} -O3 -g"
+
+    ${MPICXX:-mpicxx} -std=c++17 ${CXXFLAGS:+$CXXFLAGS} -o heat_mpi.out -fopenmp heat_mpi.cpp -lm
+
+run:
+  depend_params: [nodes, cores, nx, ny, nt, debugger]
+  script: |
+    source run_common.bash
+
+    commands="
+      ./heat_mpi.out
+        -x $KOCHI_PARAM_NX
+        -y $KOCHI_PARAM_NY
+        -t $KOCHI_PARAM_NT"
+
+    export OMP_NUM_THREADS=$KOCHI_PARAM_CORES
+
+    n_nodes=$(echo $KOCHI_PARAM_NODES | cut -f 1 -d ":" | sed 's/x/*/g' | bc)
+
+    if [[ $KOCHI_PARAM_DEBUGGER == 0 ]]; then
+      ityr_mpirun $((n_nodes)) 1 none $commands
+    else
+      MPIEXEC=mpitx ityr_mpirun $((n_nodes)) 1 none gdb --args $commands
+    fi
