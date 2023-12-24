@@ -83,6 +83,7 @@ run:
         -t $KOCHI_PARAM_NT"
 
     export OMP_NUM_THREADS=$KOCHI_PARAM_CORES
+    export OMP_PROC_BIND=true
 
     n_nodes=$(echo $KOCHI_PARAM_NODES | cut -f 1 -d ":" | sed 's/x/*/g' | bc)
 

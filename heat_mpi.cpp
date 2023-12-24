@@ -32,6 +32,7 @@
 #include <ctime>
 #include <unistd.h>
 #include <clocale>
+#include <cstdint>
 #include <mpi.h>
 #include <omp.h>
 
