@@ -73,11 +73,12 @@ batches:
     name: exafmm_mpi_${batch_name}
     params:
       nodes:
-        - value: [1, 2:torus, 2x3:torus, 2x3x2:torus, 3x4x3:torus, 6x6x4:torus]
+        - value: [1, 2x2x2:torus, 4x4x4:torus, 8x8x8:torus]
           machines: [wisteria-o]
-        - value: [1, 2, 4, 8, 16]
+        - value: [1, 8, 64]
           machines: [squid-c]
       n_input: "`eval('$nodes'.split(':')[0].replace('x', '*')) * 1_000_000`"
+      accuracy_test: 0
     artifacts:
       - type: stdout
         dest: exafmm_mpi/${batch_name}/nodes_${nodes}_${duplicate}.log
