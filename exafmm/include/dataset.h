@@ -14,12 +14,11 @@ namespace EXAFMM_NAMESPACE {
   private:
     long filePosition;                                          //!< Position of file stream
 
-    /* template <typename T, typename Rng> */
-    /* std::enable_if_t<std::is_floating_point_v<T>, T> */
-    /* gen_random_elem(Rng& r) const { */
-    /*   static std::uniform_real_distribution<T> dist(0, 1.0); */
-    /*   return dist(r); */
-    /* } */
+    template <typename T, typename Rng>
+    T gen_random_elem(Rng& r) const {
+      static std::uniform_real_distribution<T> dist(0, 1.0);
+      return dist(r);
+    }
 
     //! Split range and return partial range
     void splitRange(int & begin, int & end, int iSplit, int numSplit) const {
@@ -63,15 +62,16 @@ namespace EXAFMM_NAMESPACE {
 	int begin = 0;                                          //  Begin index of bodies
 	int end = bodies.size();                                //  End index of bodies
 	splitRange(begin, end, i, numSplit);                    //  Split range of bodies
-	srand48(seed);                                          //  Set seed for random number generator
 
         ityr::for_each(
-            body_seq_policy,
+            body_par_policy,
             ityr::make_global_iterator(bodies.begin() + begin, ityr::checkout_mode::write),
             ityr::make_global_iterator(bodies.begin() + end  , ityr::checkout_mode::write),
-            [&](auto&& B) {
+            ityr::count_iterator<std::size_t>(0),
+            [=](auto&& B, std::size_t j) {
+              pcg32 rng(seed, j);
               for (int d=0; d<3; d++) {                             //   Loop over dimension
-                B.X[d] = drand48() * 2 * M_PI - M_PI;              //    Initialize coordinates
+                B.X[d] = gen_random_elem<real_t>(rng) * 2 * M_PI - M_PI;              //    Initialize coordinates
               }                                                     //   End loop over dimension
             });
       }                                                         // End loop over partitions
@@ -158,21 +158,24 @@ namespace EXAFMM_NAMESPACE {
 	int begin = 0;                                          //  Begin index of bodies
 	int end = bodies.size();                                //  End index of bodies
 	splitRange(begin, end, i, numSplit);                    //  Split range of bodies
-	srand48(seed);                                          //  Set seed for random number generator
 
 #if EXAFMM_LAPLACE
 
-	real_t average = 0;                                     //  Initialize average charge
         ityr::for_each(
-            body_seq_policy,
+            body_par_policy,
             ityr::make_global_iterator(bodies.begin() + begin, ityr::checkout_mode::read_write),
             ityr::make_global_iterator(bodies.begin() + end  , ityr::checkout_mode::read_write),
-            [&](auto&& B) {
-              B.SRC = drand48() - .5;                              //   Initialize charge
-              average += B.SRC;                                    //   Accumulate average
+            ityr::count_iterator<std::size_t>(0),
+            [=](auto&& B, std::size_t j) {
+              pcg32 rng(seed, j);
+              B.SRC = gen_random_elem<real_t>(rng) - .5;                              //   Initialize charge
             });
 
-        average /= (end - begin);
+        real_t average = ityr::transform_reduce(
+            body_par_policy,
+            bodies.begin() + begin, bodies.begin() + end,
+            ityr::reducer::plus<real_t>{},
+            [=](const auto& B) { return B.SRC; }) / (end - begin);
 
         ityr::for_each(
             body_par_policy,
@@ -195,12 +198,14 @@ namespace EXAFMM_NAMESPACE {
 #elif EXAFMM_BIOTSAVART
 
         ityr::for_each(
-            body_seq_policy,
+            body_par_policy,
             ityr::make_global_iterator(bodies.begin() + begin, ityr::checkout_mode::read_write),
             ityr::make_global_iterator(bodies.begin() + end  , ityr::checkout_mode::read_write),
-            [&](auto&& B) {
+            ityr::count_iterator<std::size_t>(0),
+            [=](auto&& B, std::size_t j) {
+              pcg32 rng(seed, j);
 	      for (int d=0; d<3; d++) {                             //   Loop over dimensions
-	        B.SRC[d] = drand48() / bodies.size();              //    Initialize source
+	        B.SRC[d] = gen_random_elem<real_t>(rng) / bodies.size();              //    Initialize source
 	      }                                                     //   End loop over dimensions
 	      B.SRC[3] = powf(bodies.size() * numSplit, -1./3) * 2 * M_PI * 0.01; // Initialize core radius
             });
