@@ -88,6 +88,26 @@ batches:
         src: mpirun_out.txt
         dest: exafmm_mpi/${batch_name}/nodes_${nodes}_${duplicate}.out
 
+  weak10M:
+    name: exafmm_mpi_${batch_name}
+    params:
+      nodes:
+        - value: [1, 2x2x2:torus, 4x4x4:torus, 8x8x8:torus]
+          machines: [wisteria-o]
+        - value: [1, 8, 64]
+          machines: [squid-c]
+      n_input: "`eval('$nodes'.split(':')[0].replace('x', '*')) * 10_000_000`"
+      theta: 0.6
+      accuracy_test: 0
+    artifacts:
+      - type: stdout
+        dest: exafmm_mpi/${batch_name}/nodes_${nodes}_${duplicate}.log
+      - type: stats
+        dest: exafmm_mpi/${batch_name}/nodes_${nodes}_${duplicate}.stats
+      - type: file
+        src: mpirun_out.txt
+        dest: exafmm_mpi/${batch_name}/nodes_${nodes}_${duplicate}.out
+
 build:
   depend_params: [serial]
   script: |
