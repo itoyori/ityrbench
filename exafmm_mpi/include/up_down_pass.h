@@ -12,9 +12,11 @@ namespace EXAFMM_NAMESPACE {
   private:
     //! Post-order traversal for upward pass
     void postOrderTraversal(C_iter C, C_iter C0) {
+      mk_task_group;
       for (C_iter CC=C0+C->ICHILD; CC!=C0+C->ICHILD+C->NCHILD; CC++) { // Loop over child cells
-        postOrderTraversal(CC, C0);                             //  Recursive call for child cell
+        create_taskc([=] { postOrderTraversal(CC, C0); });                             //  Recursive call for child cell
       }                                                         // End loop over child cells
+      wait_tasks;
       if(C->NCHILD==0) kernel.P2M(C);                           // P2M kernel
       else {                                                    // If not leaf cell
         kernel.M2M(C, C0);                                      //  M2M kernel
@@ -36,9 +38,11 @@ namespace EXAFMM_NAMESPACE {
         }                                                       //  End loop over bodies in cell
       }                                                         // End if for leaf cell
 #endif
+      mk_task_group;
       for (C_iter CC=C0+C->ICHILD; CC!=C0+C->ICHILD+C->NCHILD; CC++) {// Loop over child cells
-        preOrderTraversal(CC, C0);                              //  Recursive call for child cell
+        create_taskc([=] { preOrderTraversal(CC, C0); });                              //  Recursive call for child cell
       }                                                         // End loop over chlid cells
+      wait_tasks;
     };
 
   public:
