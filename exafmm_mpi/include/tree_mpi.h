@@ -29,6 +29,10 @@ namespace EXAFMM_NAMESPACE {
     std::vector<int> sendCellDispl;                             //!< Send displacement
     std::vector<int> recvCellCount;                             //!< Receive count
     std::vector<int> recvCellDispl;                             //!< Receive displacement
+                                                                //
+    CellBases sendCellBases;
+    std::vector<complex_t> sendCellData;
+    std::vector<complex_t> recvCellData;
 
   private:
     //! Exchange send count for bodies
@@ -62,7 +66,7 @@ namespace EXAFMM_NAMESPACE {
     }
 
     //! Exchange send count for cells
-    void alltoall(Cells) {
+    void alltoall(Cells&) {
       MPI_Alltoall(&sendCellCount[0], 1, MPI_INT,               // Communicate send count to get receive count
 		   &recvCellCount[0], 1, MPI_INT, MPI_COMM_WORLD);
       recvCellDispl[0] = 0;                                     // Initialize receive displacements
@@ -73,8 +77,8 @@ namespace EXAFMM_NAMESPACE {
 
     //! Exchange cells
     void alltoallv(Cells & cells) {
-      CellBases sendCellBases(sendCells.size());                // Send buffer for cell's base components
-      std::vector<complex_t> sendCellData(sendCells.size()*kernel.NTERM*2); // Send buffer for cell's data
+      sendCellBases.resize(sendCells.size());                // Send buffer for cell's base components
+      sendCellData.resize(sendCells.size()*kernel.NTERM*2); // Send buffer for cell's data
       CB_iter CB = sendCellBases.begin();                       // Iterator for cell's base components
       std::vector<complex_t>::iterator CD = sendCellData.begin(); // Iterator for cell's data
       for (C_iter C=sendCells.begin(); C!=sendCells.end(); C++,CB++) { // Loop over send cells
@@ -94,7 +98,7 @@ namespace EXAFMM_NAMESPACE {
       bytes = sizeof(complex_t) * kernel.NTERM * 2;             // Byte size of send cell's data
       MPI_Type_contiguous(bytes, MPI_CHAR, &cellType);          // Set MPI data type
       MPI_Type_commit(&cellType);                               // Commit MPI data type
-      std::vector<complex_t> recvCellData(recvCellBases.size()*kernel.NTERM*2); // Recv buffer for cell's data
+      recvCellData.resize(recvCellBases.size()*kernel.NTERM*2); // Recv buffer for cell's data
       MPI_Alltoallv(&sendCellData[0], &sendCellCount[0], &sendCellDispl[0], cellType,// Communicate cells
 		    &recvCellData[0], &recvCellCount[0], &recvCellDispl[0], cellType, MPI_COMM_WORLD);
       CB = recvCellBases.begin();                               // Iterator for recv cell's base components

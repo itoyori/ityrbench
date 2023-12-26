@@ -303,7 +303,7 @@ namespace EXAFMM_NAMESPACE {
       }                                                         // End loop over cells
     }
 #else
-    void initListCount(Cells) {}
+    void initListCount(Cells&) {}
 #endif
 
 #if EXAFMM_USE_WEIGHT
@@ -319,7 +319,7 @@ namespace EXAFMM_NAMESPACE {
       }                                                         // End loop over cells
     }
 #else
-    void initWeight(Cells) {}
+    void initWeight(Cells&) {}
 #endif
 
     //! Evaluate P2P and M2L using list based traversal
