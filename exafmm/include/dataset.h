@@ -65,8 +65,8 @@ namespace EXAFMM_NAMESPACE {
 
         ityr::for_each(
             body_par_policy,
-            ityr::make_global_iterator(bodies.begin() + begin, ityr::checkout_mode::write),
-            ityr::make_global_iterator(bodies.begin() + end  , ityr::checkout_mode::write),
+            ityr::make_global_iterator(bodies.begin() + begin, ityr::checkout_mode::read_write),
+            ityr::make_global_iterator(bodies.begin() + end  , ityr::checkout_mode::read_write),
             ityr::count_iterator<std::size_t>(0),
             [=](auto&& B, std::size_t j) {
               pcg32 rng(seed, j);
@@ -77,28 +77,32 @@ namespace EXAFMM_NAMESPACE {
       }                                                         // End loop over partitions
     }
 
-#if 0
     //! Random distribution on r = 1 sphere
-    Bodies sphere(int numBodies, int seed, int numSplit) {
-      Bodies bodies(numBodies);                                 // Initialize bodies
+    void sphere(GBodies bodies, int seed, int numSplit) const {
       for (int i=0; i<numSplit; i++, seed++) {                  // Loop over partitions (if there are any)
 	int begin = 0;                                          //  Begin index of bodies
 	int end = bodies.size();                                //  End index of bodies
 	splitRange(begin, end, i, numSplit);                    //  Split range of bodies
-	srand48(seed);                                          //  Set seed for random number generator
-	for (B_iter B=bodies.begin()+begin; B!=bodies.begin()+end; B++) {// Loop over bodies
-	  for (int d=0; d<3; d++) {                             //   Loop over dimension
-	    B->X[d] = drand48() * 2 - 1;                        //    Initialize coordinates
-	  }                                                     //   End loop over dimension
-	  real_t r = std::sqrt(norm(B->X));                     //   Distance from center
-	  for (int d=0; d<3; d++) {                             //   Loop over dimension
-	    B->X[d] *= M_PI / r;                                //    Normalize coordinates
-	  }                                                     //   End loop over dimension
-	}                                                       //  End loop over bodies
+
+        ityr::for_each(
+            body_par_policy,
+            ityr::make_global_iterator(bodies.begin() + begin, ityr::checkout_mode::read_write),
+            ityr::make_global_iterator(bodies.begin() + end  , ityr::checkout_mode::read_write),
+            ityr::count_iterator<std::size_t>(0),
+            [=](auto&& B, std::size_t j) {
+              pcg32 rng(seed, j);
+              for (int d=0; d<3; d++) {                             //   Loop over dimension
+                B.X[d] = gen_random_elem<real_t>(rng) * 2 - 1;                        //    Initialize coordinates
+              }                                                     //   End loop over dimension
+              real_t r = std::sqrt(norm(B.X));                     //   Distance from center
+              for (int d=0; d<3; d++) {                             //   Loop over dimension
+                B.X[d] *= M_PI / r;                                //    Normalize coordinates
+              }                                                     //   End loop over dimension
+            });
       }                                                         // End loop over partitions
-      return bodies;                                            // Return bodies
     }
 
+#if 0
     //! Random distribution on one octant of a r = 1 sphere
     Bodies octant(int numBodies, int seed, int numSplit) {
       Bodies bodies(numBodies);                                 // Initialize bodies
@@ -117,37 +121,42 @@ namespace EXAFMM_NAMESPACE {
       }                                                         // End loop over partitions
       return bodies;                                            // Return bodies
     }
+#endif
 
     //! Plummer distribution in a r = M_PI/2 sphere
-    Bodies plummer(int numBodies, int seed, int numSplit) {
-      Bodies bodies(numBodies);                                 // Initialize bodies
+    void plummer(GBodies bodies, int seed, int numSplit) const {
       for (int i=0; i<numSplit; i++, seed++) {                  // Loop over partitions (if there are any)
 	int begin = 0;                                          //  Begin index of bodies
 	int end = bodies.size();                                //  End index of bodies
 	splitRange(begin, end, i, numSplit);                    //  Split range of bodies
-	srand48(seed);                                          //  Set seed for random number generator
-	B_iter B=bodies.begin()+begin;                          //  Body begin iterator
-	while (B != bodies.begin()+end) {                       //  While body iterator is within range
-	  real_t X1 = drand48();                                //   First random number
-	  real_t X2 = drand48();                                //   Second random number
-	  real_t X3 = drand48();                                //   Third random number
-	  real_t R = 1.0 / sqrt( (pow(X1, -2.0 / 3.0) - 1.0) ); //   Radius
-	  if (R < 100.0) {                                      //   If radius is less than 100
-	    real_t Z = (1.0 - 2.0 * X2) * R;                    //    z component
-	    real_t X = sqrt(R * R - Z * Z) * std::cos(2.0 * M_PI * X3);// x component
-	    real_t Y = sqrt(R * R - Z * Z) * std::sin(2.0 * M_PI * X3);// y component
-	    real_t scale = 3.0 * M_PI / 16.0;                   //    Scaling factor
-	    X *= scale; Y *= scale; Z *= scale;                 //    Scale coordinates
-	    B->X[0] = X;                                        //    Assign x coordinate to body
-	    B->X[1] = Y;                                        //    Assign y coordinate to body
-	    B->X[2] = Z;                                        //    Assign z coordinate to body
-	    B++;                                                //    Increment body iterator
-	  }                                                     //   End if for bodies within range
-	}                                                       //  End while loop over bodies
+
+        ityr::for_each(
+            body_par_policy,
+            ityr::make_global_iterator(bodies.begin() + begin, ityr::checkout_mode::read_write),
+            ityr::make_global_iterator(bodies.begin() + end  , ityr::checkout_mode::read_write),
+            ityr::count_iterator<std::size_t>(0),
+            [=](auto&& B, std::size_t j) {
+              pcg32 rng(seed, j);
+              while (true) {                       //  While body iterator is within range
+                real_t X1 = gen_random_elem<real_t>(rng);                                //   First random number
+                real_t X2 = gen_random_elem<real_t>(rng);                                //   Second random number
+                real_t X3 = gen_random_elem<real_t>(rng);                                //   Third random number
+                real_t R = 1.0 / sqrt( (pow(X1, -2.0 / 3.0) - 1.0) ); //   Radius
+                if (R < 100.0) {                                      //   If radius is less than 100
+                  real_t Z = (1.0 - 2.0 * X2) * R;                    //    z component
+                  real_t X = sqrt(R * R - Z * Z) * std::cos(2.0 * M_PI * X3);// x component
+                  real_t Y = sqrt(R * R - Z * Z) * std::sin(2.0 * M_PI * X3);// y component
+                  real_t scale = 3.0 * M_PI / 16.0;                   //    Scaling factor
+                  X *= scale; Y *= scale; Z *= scale;                 //    Scale coordinates
+                  B.X[0] = X;                                        //    Assign x coordinate to body
+                  B.X[1] = Y;                                        //    Assign y coordinate to body
+                  B.X[2] = Z;                                        //    Assign z coordinate to body
+                  break;
+                }                                                     //   End if for bodies within range
+              }                                                       //  End while loop over bodies
+            });
       }                                                         // End loop over partitions
-      return bodies;                                            // Return bodies
     }
-#endif
 
   public:
     Dataset() : filePosition(0) {}                              // Constructor
@@ -287,17 +296,17 @@ namespace EXAFMM_NAMESPACE {
       case 'c':                                                 // Case for cube
 	cube(bodies,mpirank,numSplit);              //  Random distribution in [-1,1]^3 cube
 	break;                                                  // End case for cube
-#if 0
       case 's':                                                 // Case for sphere
-	bodies = sphere(numBodies,mpirank,numSplit);            //  Random distribution on surface of r = 1 sphere
+	sphere(bodies,mpirank,numSplit);            //  Random distribution on surface of r = 1 sphere
 	break;                                                  // End case for sphere
+#if 0
       case 'o':                                                 // Case for octant
 	bodies = octant(numBodies,mpirank,numSplit);            //  Random distribution on octant of a r = 1 sphere
 	break;                                                  // End case for octant
-      case 'p':                                                 // Case plummer
-	bodies = plummer(numBodies,mpirank,numSplit);           //  Plummer distribution in a r = M_PI/2 sphere
-	break;                                                  // End case for plummer
 #endif
+      case 'p':                                                 // Case plummer
+	plummer(bodies,mpirank,numSplit);           //  Plummer distribution in a r = M_PI/2 sphere
+	break;                                                  // End case for plummer
       default:                                                  // If none of the above
 	fprintf(stderr, "Unknown data distribution %s\n", distribution);// Print error message
       }                                                         // End switch between data distribution type

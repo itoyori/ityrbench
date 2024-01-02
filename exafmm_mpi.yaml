@@ -16,6 +16,7 @@ default_params:
       machines: [local]
   n_input: 10000
   repeats: 11
+  dist: cube # cube/sphere/plummer
   theta: 0.2
   nspawn: 1000
   ncrit: 32
@@ -130,7 +131,7 @@ build:
     make -j
 
 run:
-  depend_params: [nodes, cores, n_input, repeats, theta, nspawn, ncrit, P, kernel, accuracy_test, serial, debugger]
+  depend_params: [nodes, cores, n_input, repeats, dist, theta, nspawn, ncrit, P, kernel, accuracy_test, serial, debugger]
   script: |
     source run_common.bash
 
@@ -149,6 +150,7 @@ run:
         $([[ $KOCHI_PARAM_ACCURACY_TEST == 0 ]] || echo -a)
         -n $KOCHI_PARAM_N_INPUT
         -r $KOCHI_PARAM_REPEATS
+        -d $KOCHI_PARAM_DIST
         -t $KOCHI_PARAM_THETA
         -s $KOCHI_PARAM_NSPAWN
         -c $KOCHI_PARAM_NCRIT
