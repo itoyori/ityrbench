@@ -271,6 +271,7 @@ build:
     source build_common.bash
 
     CXXFLAGS="${CXXFLAGS:+$CXXFLAGS} -DITYR_ALLOCATOR_USE_DYNAMIC_WIN=false"
+    # CXXFLAGS="${CXXFLAGS:+$CXXFLAGS} -DITYR_DEBUG_UCX=1"
 
     CC=$MPICC CXX=$MPICXX cmake -DCMAKE_CXX_FLAGS="$CXXFLAGS" $CMAKE_OPTIONS .
     make clean

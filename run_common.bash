@@ -85,6 +85,7 @@ case $KOCHI_MACHINE in
     export OMPI_MCA_mca_base_env_list="TERM;UCX_NET_DEVICES;UCX_MAX_NUM_EPS=inf;"
     # export OMPI_MCA_mca_base_env_list="TERM;UCX_NET_DEVICES;UCX_MAX_NUM_EPS=inf;UCX_LOG_LEVEL=info;"
     # export OMPI_MCA_mca_base_env_list="TERM;UCX_NET_DEVICES;UCX_MAX_NUM_EPS=inf;UCX_LOG_LEVEL=func;UCX_LOG_FILE=ucxlog.%h.%p;"
+    # export OMPI_MCA_mca_base_env_list="TERM;UCX_NET_DEVICES;UCX_MAX_NUM_EPS=inf;UCX_LOG_LEVEL=func;UCX_LOG_FILE=/dev/null;"
     ityr_mpirun() {
       local n_processes=$1
       local n_processes_per_node=$2
@@ -100,28 +101,42 @@ case $KOCHI_MACHINE in
           double_hyphen=
         fi
 
+        # About hcoll: https://github.com/open-mpi/ompi/issues/9885
         $MPIEXEC -n $n_processes -N $n_processes_per_node \
           --bind-to $bind_to \
           --output file=$STDOUT_FILE \
           --prtemca ras simulator \
           --prtemca plm_ssh_agent ssh \
           --prtemca plm_ssh_args " -i /sqfs/home/v60680/sshd/ssh_client_rsa_key -o StrictHostKeyChecking=no -p 50000 -q" \
+          --prtemca plm_ssh_no_tree_spawn "true" \
           --hostfile $NQSII_MPINODES \
           --mca btl ^ofi \
           --mca osc_ucx_acc_single_intrinsic true \
+          --mca coll_hcoll_enable 0 \
           $double_hyphen setarch $(uname -m) --addr-no-randomize "${@:4}"
       )
     }
     ;;
   *)
+    # export OMPI_MCA_mca_base_env_list="UCX_LOG_LEVEL=func;UCX_LOG_FILE=ucxlog.%h.%p;"
     ityr_mpirun() {
       local n_processes=$1
       local n_processes_per_node=$2
       local bind_to=$3
+
+      # Workaround for the issue: https://github.com/openpmix/openpmix/issues/2980
+      if [[ $MPIEXEC == mpitx ]]; then
+        double_hyphen=--
+      else
+        double_hyphen=
+      fi
+
       $MPIEXEC -n $n_processes -N $n_processes_per_node \
         --bind-to $bind_to \
         --mca osc ucx \
-        -- setarch $(uname -m) --addr-no-randomize "${@:4}" | tee $STDOUT_FILE
+        --mca pml_ucx_tls any \
+        --mca pml_ucx_devices any \
+        $double_hyphen setarch $(uname -m) --addr-no-randomize "${@:4}" | tee $STDOUT_FILE
     }
     ;;
 esac

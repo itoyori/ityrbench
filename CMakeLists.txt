@@ -21,6 +21,12 @@ set(ITYRBENCH_DEFAULT_MEM_MAPPER default CACHE STRING "Default memory mapper (di
 
 find_package(itoyori REQUIRED)
 
+# just for debugging with UCX logger
+if(DEFINED ENV{KOCHI_INSTALL_PREFIX_UCX})
+  target_include_directories(itoyori INTERFACE $ENV{KOCHI_INSTALL_PREFIX_UCX}/include)
+  target_link_libraries(itoyori INTERFACE $ENV{KOCHI_INSTALL_PREFIX_UCX}/lib/libucs.so)
+endif()
+
 add_subdirectory(third-party/backward-cpp)
 
 include(GNUInstallDirs)

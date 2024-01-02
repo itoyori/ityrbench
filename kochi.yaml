@@ -53,6 +53,8 @@ dependencies:
         before_script: UCX_VERSION=1.15.0 CONFIGURE_OPTS="--disable-logging --disable-debug --disable-assertions --disable-params-check --without-go"
       - name: v1.15.0-mt
         before_script: UCX_VERSION=1.15.0 CONFIGURE_OPTS="--disable-logging --disable-debug --disable-assertions --disable-params-check --without-go --enable-mt"
+      - name: v1.15.0-debug
+        before_script: UCX_VERSION=1.15.0 CONFIGURE_OPTS="--enable-logging=trace_func --enable-debug --enable-debug-data --without-go"
     script:
       - wget -q https://github.com/openucx/ucx/releases/download/v${UCX_VERSION}/ucx-${UCX_VERSION}.tar.gz
       - tar xvf ucx-${UCX_VERSION}.tar.gz
@@ -74,6 +76,11 @@ dependencies:
         depends:
           - name: ucx
             recipe: v1.15.0-mt
+      - name:   v5.0.0-debug
+        branch: v5.0.0
+        depends:
+          - name: ucx
+            recipe: v1.15.0-debug
     script:
       - ./autogen.pl
       - mkdir build
@@ -126,6 +133,18 @@ dependencies:
         script:
           - CC=$MPICC CXX=$MPICXX cmake -DCMAKE_INSTALL_PREFIX=$KOCHI_INSTALL_PREFIX -DBUILD_TESTING=off -DBUILD_EXAMPLES=off -DITYR_USE_BOOST_MEMORY_RESOURCE=on .
           - make -j all install
+      - name: debug
+        mirror: true
+        mirror_dir: ../itoyori
+        script:
+          - CC=$MPICC CXX=$MPICXX cmake -DCMAKE_INSTALL_PREFIX=$KOCHI_INSTALL_PREFIX -DBUILD_TESTING=off -DBUILD_EXAMPLES=off -DITYR_USE_BOOST_MEMORY_RESOURCE=on .
+          - make -j all install
+        depends:
+          - name: openmpi
+            recipe: v5.0.0-debug
+            machines: [local, squid-c]
+          - name: boost
+            recipe: v1.80.0
       - name: develop_test
         on_machine: true
         mirror: true
