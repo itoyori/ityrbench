@@ -154,6 +154,10 @@ run:
         -c $KOCHI_PARAM_NCRIT
         -P $KOCHI_PARAM_P"
 
+    if [[ $KOCHI_MACHINE == wisteria-o ]]; then
+      export MYTH_CPU_LIST="12-60"
+    fi
+
     n_nodes=$(echo $KOCHI_PARAM_NODES | cut -f 1 -d ":" | sed 's/x/*/g' | bc)
 
     if [[ $KOCHI_PARAM_DEBUGGER == 0 ]]; then
