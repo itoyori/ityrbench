@@ -1,0 +1,68 @@
+depends:
+  - name: massivethreads
+    recipe: release
+
+default_params:
+  nodes: 1
+  cores:
+    - value: 48
+      machines: [wisteria-o]
+    - value: 76
+      machines: [squid-c]
+    - value: 6
+      machines: [local]
+  elem_type: int
+  n_input: 1_000_000
+  repeats: 11
+  verify: 1
+  cutoff_s: 16384
+  cutoff_m: $cutoff_s
+  debugger: 0
+
+default_name: cilksort_myth
+default_queue: node_${nodes}
+default_duplicates: 1
+
+build:
+  depend_params: [elem_type]
+  script: |
+    source build_common.bash
+
+    CXXFLAGS="${CXXFLAGS:+$CXXFLAGS} -DITYRBENCH_ELEM_TYPE=$KOCHI_PARAM_ELEM_TYPE"
+
+    MYTH_CXXFLAGS="-I${KOCHI_INSTALL_PREFIX_MASSIVETHREADS}/include"
+    MYTH_LDFLAGS="-L${KOCHI_INSTALL_PREFIX_MASSIVETHREADS}/lib -Wl,-R${KOCHI_INSTALL_PREFIX_MASSIVETHREADS}/lib"
+    MYTH_LIBS="-lmyth"
+
+    ${CXX:-g++} -O3 -g -DNDEBUG -std=c++17 -I./third-party/pcg-cpp/include $MYTH_CXXFLAGS ${CXXFLAGS:+$CXXFLAGS} -o cilksort_myth.out cilksort_myth.cpp $MYTH_LDFLAGS -lpthread -ldl $MYTH_LIBS
+
+run:
+  depend_params: [nodes, cores, n_input, repeats, verify, cutoff_m, cutoff_s, debugger]
+  script: |
+    source run_common.bash
+
+    commands="
+      ./cilksort_myth.out
+        -n $KOCHI_PARAM_N_INPUT
+        -r $KOCHI_PARAM_REPEATS
+        -v $KOCHI_PARAM_VERIFY
+        -m $KOCHI_PARAM_CUTOFF_M
+        -s $KOCHI_PARAM_CUTOFF_S"
+
+    n_nodes=$(echo $KOCHI_PARAM_NODES | cut -f 1 -d ":" | sed 's/x/*/g' | bc)
+    if [[ $n_nodes != 1 ]]; then
+      echo "The number of nodes must be 1."
+      exit 1
+    fi
+
+    export MYTH_NUM_WORKERS=$KOCHI_PARAM_CORES
+
+    if [[ $KOCHI_MACHINE == wisteria-o ]]; then
+      export MYTH_CPU_LIST="12-60"
+    fi
+
+    if [[ $KOCHI_PARAM_DEBUGGER == 0 ]]; then
+      numactl -iall $commands
+    else
+      gdb --args $commands
+    fi
