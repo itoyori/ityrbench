@@ -17,10 +17,10 @@ default_params:
   n_input: 10000
   repeats: 11
   dist: cube # cube/sphere/plummer
-  theta: 0.2
+  theta: 0.5
   nspawn: 1000
   ncrit: 32
-  P: 4
+  P: 5
   kernel: laplace # laplace/helmholtz/biotsavart
   accuracy_test: 1
   serial: 0
@@ -31,26 +31,7 @@ default_queue: node_${nodes}
 default_duplicates: 1
 
 batches:
-  scale1M:
-    name: exafmm_mpi_${batch_name}
-    params:
-      nodes:
-        # - value: [1, 2:torus, 2x3:torus, 2x3x2:torus, 3x4x3:torus, 6x6x4:torus, 8x9x8:torus]
-        - value: [1, 2:torus, 2x3:torus, 2x3x2:torus, 3x4x3:torus, 6x6x4:torus]
-          machines: [wisteria-o]
-        - value: [1, 2, 4, 8, 16, 32]
-          machines: [squid-c]
-      n_input: 1_000_000
-    artifacts:
-      - type: stdout
-        dest: exafmm_mpi/${batch_name}/nodes_${nodes}_${duplicate}.log
-      - type: stats
-        dest: exafmm_mpi/${batch_name}/nodes_${nodes}_${duplicate}.stats
-      - type: file
-        src: mpirun_out.txt
-        dest: exafmm_mpi/${batch_name}/nodes_${nodes}_${duplicate}.out
-
-  scale10M:
+  strong10M:
     name: exafmm_mpi_${batch_name}
     params:
       nodes:
@@ -60,34 +41,16 @@ batches:
         - value: [1, 2, 4, 8, 16, 32]
           machines: [squid-c]
       n_input: 10_000_000
+      dist: [cube, plummer]
       accuracy_test: 0
     artifacts:
       - type: stdout
-        dest: exafmm_mpi/${batch_name}/nodes_${nodes}_${duplicate}.log
+        dest: exafmm_mpi/${batch_name}/nodes_${nodes}_d_${dist}_${duplicate}.log
       - type: stats
-        dest: exafmm_mpi/${batch_name}/nodes_${nodes}_${duplicate}.stats
+        dest: exafmm_mpi/${batch_name}/nodes_${nodes}_d_${dist}_${duplicate}.stats
       - type: file
         src: mpirun_out.txt
-        dest: exafmm_mpi/${batch_name}/nodes_${nodes}_${duplicate}.out
-
-  weak1M:
-    name: exafmm_mpi_${batch_name}
-    params:
-      nodes:
-        - value: [1, 2x2x2:torus, 4x4x4:torus, 8x8x8:torus]
-          machines: [wisteria-o]
-        - value: [1, 8, 64]
-          machines: [squid-c]
-      n_input: "`eval('$nodes'.split(':')[0].replace('x', '*')) * 1_000_000`"
-      accuracy_test: 0
-    artifacts:
-      - type: stdout
-        dest: exafmm_mpi/${batch_name}/nodes_${nodes}_${duplicate}.log
-      - type: stats
-        dest: exafmm_mpi/${batch_name}/nodes_${nodes}_${duplicate}.stats
-      - type: file
-        src: mpirun_out.txt
-        dest: exafmm_mpi/${batch_name}/nodes_${nodes}_${duplicate}.out
+        dest: exafmm_mpi/${batch_name}/nodes_${nodes}_d_${dist}_${duplicate}.out
 
   weak10M:
     name: exafmm_mpi_${batch_name}
@@ -98,16 +61,16 @@ batches:
         - value: [1, 8, 64]
           machines: [squid-c]
       n_input: "`eval('$nodes'.split(':')[0].replace('x', '*')) * 10_000_000`"
-      theta: 0.6
+      dist: [cube, plummer]
       accuracy_test: 0
     artifacts:
       - type: stdout
-        dest: exafmm_mpi/${batch_name}/nodes_${nodes}_${duplicate}.log
+        dest: exafmm_mpi/${batch_name}/nodes_${nodes}_d_${dist}_${duplicate}.log
       - type: stats
-        dest: exafmm_mpi/${batch_name}/nodes_${nodes}_${duplicate}.stats
+        dest: exafmm_mpi/${batch_name}/nodes_${nodes}_d_${dist}_${duplicate}.stats
       - type: file
         src: mpirun_out.txt
-        dest: exafmm_mpi/${batch_name}/nodes_${nodes}_${duplicate}.out
+        dest: exafmm_mpi/${batch_name}/nodes_${nodes}_d_${dist}_${duplicate}.out
 
 build:
   depend_params: [serial]
