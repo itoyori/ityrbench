@@ -75,7 +75,6 @@ batches:
       cache_policy: [nocache, writeback_lazy]
       dag_prof: workspan
       accuracy_test: 0
-      noncoll_alloc_size: 256
     artifacts:
       - type: stdout
         dest: exafmm/${batch_name}/nodes_${nodes}_d_${dist}_s_${sched}_p_${cache_policy}_${duplicate}.log
@@ -99,7 +98,6 @@ batches:
       cache_policy: [nocache, writeback_lazy]
       dag_prof: workspan
       accuracy_test: 0
-      noncoll_alloc_size: 256
     artifacts:
       - type: stdout
         dest: exafmm/${batch_name}/nodes_${nodes}_d_${dist}_s_${sched}_p_${cache_policy}_${duplicate}.log
@@ -125,7 +123,6 @@ batches:
       prof: stats
       dag_prof: workspan
       accuracy_test: 0
-      noncoll_alloc_size: 256
     artifacts:
       - type: stdout
         dest: exafmm/${batch_name}/nodes_${nodes}_d_${dist}_s_${sched}_p_${cache_policy}_${duplicate}.log
