@@ -360,38 +360,39 @@ namespace EXAFMM_NAMESPACE {
 
         auto [cso, csc] =
           ityr::make_checkouts(octNode, 1, ityr::checkout_mode::read,
-                               C      , 1, ityr::checkout_mode::write);
-        auto o = &cso[0];
+                               C      , 1, ityr::checkout_mode::read_write);
+        const auto& o = cso[0];
+        auto& c = csc[0];
 
-        Cell* c = new (&csc[0]) Cell();
-        c->IPARENT = iparent;                                   //  Index of parent cell
-        c->R       = R0 / (1 << level);                         //  Cell radius
-        c->X       = o->X;                                //  Cell center
-        c->NBODY   = o->NBODY;                            //  Number of decendant bodies
-        c->IBODY   = o->IBODY;                            //  Index of first body in cell
-        c->BODY    = B0 + c->IBODY;                             //  Iterator of first body in cell
-        c->ICELL   = getKey(c->X, X0-R0, 2*c->R);               //  Get Morton key
-        if (o->NNODE == 1) {                              //  If node has no children
-          c->ICHILD = 0;                                        //   Set index of first child cell to zero
-          c->NCHILD = 0;                                        //   Number of child cells
+        c = Cell();
+        c.IPARENT = iparent;                                   //  Index of parent cell
+        c.R       = R0 / (1 << level);                         //  Cell radius
+        c.X       = o.X;                                //  Cell center
+        c.NBODY   = o.NBODY;                            //  Number of decendant bodies
+        c.IBODY   = o.IBODY;                            //  Index of first body in cell
+        c.BODY    = B0 + c.IBODY;                             //  Iterator of first body in cell
+        c.ICELL   = getKey(c.X, X0-R0, 2*c.R);               //  Get Morton key
+        if (o.NNODE == 1) {                              //  If node has no children
+          c.ICHILD = 0;                                        //   Set index of first child cell to zero
+          c.NCHILD = 0;                                        //   Number of child cells
           assert(c->NBODY > 0);                                 //   Check for empty leaf cells
           numLevels = level;
         } else {                                                //  Else if node has children
           int octants[8];                                       //   Map of child index to octants
           for (int i=0; i<8; i++) {                             //   Loop over octants
-            if (o->CHILD[i]) {                            //    If child exists for that octant
+            if (o.CHILD[i]) {                            //    If child exists for that octant
               octants[nchild] = i;                              //     Map octant to child index
               nchild++;                                         //     Increment child cell counter
             }                                                   //    End if for child existance
           }                                                     //   End loop over octants
-          c->ICHILD = Ci - C0;                                  //   Set Index of first child cell
-          c->NCHILD = nchild;                                   //   Number of child cells
+          c.ICHILD = Ci - C0;                                  //   Set Index of first child cell
+          c.NCHILD = nchild;                                   //   Number of child cells
           assert(c->NCHILD > 0);                                //   Check for childless non-leaf cells
           CN += nchild;                                         //   Increment next free memory address
 
           for (int i=0; i<nchild; i++) {
             int octant = octants[i];                            //    Get octant from child index
-            children[i] = o->CHILD[octant];
+            children[i] = o.CHILD[octant];
             CNs[i] = CN;
             CN += children[i]->*(&OctreeNode::NNODE) - 1;            //    Increment next free memory address
           }                                                     //   End loop over octants
