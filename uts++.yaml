@@ -84,6 +84,8 @@ batches:
         # - value: [2x3x2:torus, 3x4x3:torus, 6x6x4:torus, 8x9x8:torus]
         - value: [2x3x2:torus, 3x4x3:torus, 6x6x4:torus]
           machines: [wisteria-o]
+        - value: [8, 16, 32]
+          machines: [squid-c]
       tree: T1XL
       sched: [randws, adws]
       cache_policy: [nocache, writeback_lazy]

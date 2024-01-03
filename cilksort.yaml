@@ -143,15 +143,16 @@ batches:
           machines: [squid-c]
       n_input: 1_000_000_000
       cutoff_s: [64, 256, 1024, 4096, 16384, 65536]
+      sched: randws
       cache_policy: [nocache, writethrough, writeback, writeback_lazy]
     artifacts:
       - type: stdout
-        dest: cilksort/${batch_name}/c_${cutoff_s}_p_${cache_policy}_${duplicate}.log
+        dest: cilksort/${batch_name}/c_${cutoff_s}_s_${sched}_p_${cache_policy}_${duplicate}.log
       - type: stats
-        dest: cilksort/${batch_name}/c_${cutoff_s}_p_${cache_policy}_${duplicate}.stats
+        dest: cilksort/${batch_name}/c_${cutoff_s}_s_${sched}_p_${cache_policy}_${duplicate}.stats
       - type: file
         src: mpirun_out.txt
-        dest: cilksort/${batch_name}/c_${cutoff_s}_p_${cache_policy}_${duplicate}.out
+        dest: cilksort/${batch_name}/c_${cutoff_s}_s_${sched}_p_${cache_policy}_${duplicate}.out
 
   sbsize:
     name: cilksort_${batch_name}

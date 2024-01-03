@@ -23,6 +23,40 @@ default_name: cilksort_myth
 default_queue: node_${nodes}
 default_duplicates: 1
 
+batches:
+  normal:
+    name: cilksort_myth_${batch_name}
+    params:
+      nodes: 1
+      n_input:
+        - value: [1_000_000_000]
+          machines: [wisteria-o]
+        - value: [1_000_000_000, 10_000_000_000]
+          machines: [squid-c]
+    artifacts:
+      - type: stdout
+        dest: cilksort_myth/${batch_name}/n_${n_input}_${duplicate}.log
+      - type: stats
+        dest: cilksort_myth/${batch_name}/n_${n_input}_${duplicate}.stats
+      - type: file
+        src: mpirun_out.txt
+        dest: cilksort_myth/${batch_name}/n_${n_input}_${duplicate}.out
+
+  granularity:
+    name: cilksort_myth_${batch_name}
+    params:
+      nodes: 1
+      n_input: 1_000_000_000
+      cutoff_s: [64, 256, 1024, 4096, 16384, 65536]
+    artifacts:
+      - type: stdout
+        dest: cilksort_myth/${batch_name}/c_${cutoff_s}_${duplicate}.log
+      - type: stats
+        dest: cilksort_myth/${batch_name}/c_${cutoff_s}_${duplicate}.stats
+      - type: file
+        src: mpirun_out.txt
+        dest: cilksort_myth/${batch_name}/c_${cutoff_s}_${duplicate}.out
+
 build:
   depend_params: [elem_type]
   script: |
@@ -62,7 +96,7 @@ run:
     fi
 
     if [[ $KOCHI_PARAM_DEBUGGER == 0 ]]; then
-      numactl -iall $commands
+      numactl -iall $commands | tee $STDOUT_FILE
     else
       gdb --args $commands
     fi
