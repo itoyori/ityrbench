@@ -111,6 +111,8 @@ namespace EXAFMM_NAMESPACE {
 	return "octant";
       case 'p':
 	return "plummer";
+      case 'w':
+	return "wplummer";
       case 's':
 	return "sphere";
       default:

@@ -135,6 +135,45 @@ namespace EXAFMM_NAMESPACE {
       return bodies;                                            // Return bodies
     }
 
+    //! Double plummer clusters
+    Bodies wplummer(int numBodies, int seed, int numSplit) {
+      double ratio = 0.4;
+      double x_shift = 16.0;
+      double y_shift = 15.0;
+      double z_shift = 14.0;
+      double scale2 = 0.6;
+      Bodies bodies(numBodies);                                 // Initialize bodies
+      for (int i=0; i<numSplit; i++, seed++) {                  // Loop over partitions (if there are any)
+	int begin = 0;                                          //  Begin index of bodies
+	int end = bodies.size();                                //  End index of bodies
+	splitRange(begin, end, i, numSplit);                    //  Split range of bodies
+	srand48(seed);                                          //  Set seed for random number generator
+	B_iter B=bodies.begin()+begin;                          //  Body begin iterator
+	while (B != bodies.begin()+end) {                       //  While body iterator is within range
+	  real_t X1 = drand48();                                //   First random number
+	  real_t X2 = drand48();                                //   Second random number
+	  real_t X3 = drand48();                                //   Third random number
+	  real_t R = 1.0 / sqrt( (pow(X1, -2.0 / 3.0) - 1.0) ); //   Radius
+	  if (R < 100.0) {                                      //   If radius is less than 100
+	    real_t Z = (1.0 - 2.0 * X2) * R;                    //    z component
+	    real_t X = sqrt(R * R - Z * Z) * std::cos(2.0 * M_PI * X3);// x component
+	    real_t Y = sqrt(R * R - Z * Z) * std::sin(2.0 * M_PI * X3);// y component
+	    real_t scale = 3.0 * M_PI / 16.0;                   //    Scaling factor
+	    X *= scale; Y *= scale; Z *= scale;                 //    Scale coordinates
+            if (drand48() < ratio) {
+              X *= scale2; Y *= scale2; Z *= scale2;
+              X += x_shift; Y += y_shift; Z += z_shift;
+            }
+	    B->X[0] = X;                                        //    Assign x coordinate to body
+	    B->X[1] = Y;                                        //    Assign y coordinate to body
+	    B->X[2] = Z;                                        //    Assign z coordinate to body
+	    B++;                                                //    Increment body iterator
+	  }                                                     //   End if for bodies within range
+	}                                                       //  End while loop over bodies
+      }                                                         // End loop over partitions
+      return bodies;                                            // Return bodies
+    }
+
   public:
     Dataset() : filePosition(0) {}                              // Constructor
 
@@ -246,6 +285,9 @@ namespace EXAFMM_NAMESPACE {
       case 'p':                                                 // Case plummer
 	bodies = plummer(numBodies,mpirank,numSplit);           //  Plummer distribution in a r = M_PI/2 sphere
 	break;                                                  // End case for plummer
+      case 'w':
+	bodies = wplummer(numBodies,mpirank,numSplit);
+	break;
       default:                                                  // If none of the above
 	fprintf(stderr, "Unknown data distribution %s\n", distribution);// Print error message
       }                                                         // End switch between data distribution type

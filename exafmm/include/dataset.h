@@ -158,6 +158,50 @@ namespace EXAFMM_NAMESPACE {
       }                                                         // End loop over partitions
     }
 
+    //! Double plummer clusters
+    void wplummer(GBodies bodies, int seed, int numSplit) const {
+      double ratio = 0.4;
+      double x_shift = 16.0;
+      double y_shift = 15.0;
+      double z_shift = 14.0;
+      double scale2 = 0.6;
+      for (int i=0; i<numSplit; i++, seed++) {                  // Loop over partitions (if there are any)
+	int begin = 0;                                          //  Begin index of bodies
+	int end = bodies.size();                                //  End index of bodies
+	splitRange(begin, end, i, numSplit);                    //  Split range of bodies
+
+        ityr::for_each(
+            body_par_policy,
+            ityr::make_global_iterator(bodies.begin() + begin, ityr::checkout_mode::read_write),
+            ityr::make_global_iterator(bodies.begin() + end  , ityr::checkout_mode::read_write),
+            ityr::count_iterator<std::size_t>(0),
+            [=](auto&& B, std::size_t j) {
+              pcg32 rng(seed, j);
+              while (true) {                       //  While body iterator is within range
+                real_t X1 = gen_random_elem<real_t>(rng);                                //   First random number
+                real_t X2 = gen_random_elem<real_t>(rng);                                //   Second random number
+                real_t X3 = gen_random_elem<real_t>(rng);                                //   Third random number
+                real_t R = 1.0 / sqrt( (pow(X1, -2.0 / 3.0) - 1.0) ); //   Radius
+                if (R < 100.0) {                                      //   If radius is less than 100
+                  real_t Z = (1.0 - 2.0 * X2) * R;                    //    z component
+                  real_t X = sqrt(R * R - Z * Z) * std::cos(2.0 * M_PI * X3);// x component
+                  real_t Y = sqrt(R * R - Z * Z) * std::sin(2.0 * M_PI * X3);// y component
+                  real_t scale = 3.0 * M_PI / 16.0;                   //    Scaling factor
+                  X *= scale; Y *= scale; Z *= scale;                 //    Scale coordinates
+                  if (gen_random_elem<real_t>(rng) < ratio) {
+                    X *= scale2; Y *= scale2; Z *= scale2;
+                    X += x_shift; Y += y_shift; Z += z_shift;
+                  }
+                  B.X[0] = X;                                        //    Assign x coordinate to body
+                  B.X[1] = Y;                                        //    Assign y coordinate to body
+                  B.X[2] = Z;                                        //    Assign z coordinate to body
+                  break;
+                }                                                     //   End if for bodies within range
+              }                                                       //  End while loop over bodies
+            });
+      }                                                         // End loop over partitions
+    }
+
   public:
     Dataset() : filePosition(0) {}                              // Constructor
 
@@ -307,6 +351,9 @@ namespace EXAFMM_NAMESPACE {
       case 'p':                                                 // Case plummer
 	plummer(bodies,mpirank,numSplit);           //  Plummer distribution in a r = M_PI/2 sphere
 	break;                                                  // End case for plummer
+      case 'w':
+	wplummer(bodies,mpirank,numSplit);
+	break;
       default:                                                  // If none of the above
 	fprintf(stderr, "Unknown data distribution %s\n", distribution);// Print error message
       }                                                         // End switch between data distribution type
