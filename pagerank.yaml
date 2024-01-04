@@ -15,7 +15,7 @@ default_params:
       machines: [local]
   real_type: double
   repeats: 11
-  max_iters: 100
+  max_iters: 3
   dataset: rmat_20_24
   cutoff_v: 4096
   cutoff_e: 16384

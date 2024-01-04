@@ -43,7 +43,7 @@ batches:
         dest: heat_mpi/${batch_name}/nodes_${nodes}_${duplicate}.out
 
   weak32K:
-    name: heat_${batch_name}
+    name: heat_mpi_${batch_name}
     params:
       nodes:
         # - value: [1, 2:torus, 2x3:torus, 2x3x2:torus, 3x4x3:torus, 6x6x4:torus, 8x9x8:torus]
