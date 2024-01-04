@@ -172,33 +172,47 @@ graph load_dataset(const char* filename) {
   static uintE* in_edges = reinterpret_cast<uintE*>(data + skip);
   skip += m * sizeof(uintE);
 
-  ityr::global_vector<vertex_data> v_in_data(ityr::global_vector_options(true, cutoff_v), n);
-  ityr::global_vector<vertex_data> v_out_data(ityr::global_vector_options(true, cutoff_v), n);
+  ityr::global_vector<vertex_data> v_in_data(ityr::global_vector_options(true, cutoff_v));
+  ityr::global_vector<uintE> in_edges_vec(ityr::global_vector_options(true, cutoff_e));
 
-  ityr::global_vector<uintE> in_edges_vec(ityr::global_vector_options(true, cutoff_e), m);
+  if (exec_type == exec_t::Naive) {
+    v_in_data.resize(n);
+    in_edges_vec.resize(m);
+  }
+
+  ityr::global_vector<vertex_data> v_out_data(ityr::global_vector_options(true, cutoff_v), n);
   ityr::global_vector<uintE> out_edges_vec(ityr::global_vector_options(true, cutoff_e), m);
 
-  auto v_in_data_begin  = v_in_data.begin();
-  auto v_out_data_begin = v_out_data.begin();
+  auto v_in_data_begin = v_in_data.begin();
+  auto in_edges_vec_begin = in_edges_vec.begin();
 
-  auto in_edges_vec_begin  = in_edges_vec.begin();
+  auto v_out_data_begin = v_out_data.begin();
   auto out_edges_vec_begin = out_edges_vec.begin();
 
   ityr::root_exec([=] {
     ityr::execution::parallel_policy par_v(cutoff_v);
     ityr::execution::parallel_policy par_e(cutoff_e);
 
-    ityr::transform(
-        par_v,
-        ityr::count_iterator<long>(0),
-        ityr::count_iterator<long>(n),
-        v_in_data_begin,
-        [&](long i) {
-          return vertex_data {
-            .offset = in_offsets[i],
-            .degree = static_cast<uintE>(in_offsets[i + 1] - in_offsets[i]),
-          };
-        });
+    if (exec_type == exec_t::Naive) {
+      ityr::transform(
+          par_v,
+          ityr::count_iterator<long>(0),
+          ityr::count_iterator<long>(n),
+          v_in_data_begin,
+          [&](long i) {
+            return vertex_data {
+              .offset = in_offsets[i],
+              .degree = static_cast<uintE>(in_offsets[i + 1] - in_offsets[i]),
+            };
+          });
+
+      ityr::transform(
+          par_e,
+          ityr::count_iterator<long>(0),
+          ityr::count_iterator<long>(m),
+          in_edges_vec_begin,
+          [&](long i) { return in_edges[i]; });
+    }
 
     ityr::transform(
         par_v,
@@ -211,13 +225,6 @@ graph load_dataset(const char* filename) {
             .degree = static_cast<uintE>(out_offsets[i + 1] - out_offsets[i]),
           };
         });
-
-    ityr::transform(
-        par_e,
-        ityr::count_iterator<long>(0),
-        ityr::count_iterator<long>(m),
-        in_edges_vec_begin,
-        [&](long i) { return in_edges[i]; });
 
     ityr::transform(
         par_e,
@@ -670,10 +677,6 @@ void init_gpop(graph& g) {
     }
     exit(1);
   }
-
-  // clear to save memory
-  g.in_edges = {};
-  g.v_in_data = {};
 
   long n_parts = (g.n + bin_width - 1) / bin_width;
   partition(n_parts, g);
