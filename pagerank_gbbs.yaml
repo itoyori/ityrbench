@@ -22,6 +22,38 @@ default_name: pagerank_gbbs
 default_queue: node_${nodes}
 default_duplicates: 1
 
+batches:
+  serial:
+    name: pagerank_gbbs_${batch_name}
+    queue: serial
+    params:
+      nodes: 1
+      cores: 1
+      serial: 1
+      dataset: [rmat_26_30, twitter2010]
+    artifacts:
+      - type: stdout
+        dest: pagerank_gbbs/${batch_name}/${dataset}_${duplicate}.log
+      - type: stats
+        dest: pagerank_gbbs/${batch_name}/${dataset}_${duplicate}.stats
+      - type: file
+        src: mpirun_out.txt
+        dest: pagerank_gbbs/${batch_name}/${dataset}_${duplicate}.out
+
+  normal:
+    name: pagerank_gbbs_${batch_name}
+    params:
+      nodes: 1
+      dataset: [rmat_26_30, twitter2010]
+    artifacts:
+      - type: stdout
+        dest: pagerank_gbbs/${batch_name}/${dataset}_${duplicate}.log
+      - type: stats
+        dest: pagerank_gbbs/${batch_name}/${dataset}_${duplicate}.stats
+      - type: file
+        src: mpirun_out.txt
+        dest: pagerank_gbbs/${batch_name}/${dataset}_${duplicate}.out
+
 build:
   depend_params: [serial]
   script: |
@@ -70,7 +102,7 @@ run:
     fi
 
     if [[ $KOCHI_PARAM_DEBUGGER == 0 ]]; then
-      $numactl_cmd $commands
+      $numactl_cmd $commands 2>&1 | tee $STDOUT_FILE
     else
       gdb --args $commands
     fi

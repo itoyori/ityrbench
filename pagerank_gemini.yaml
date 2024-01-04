@@ -24,6 +24,39 @@ default_name: pagerank_gemini
 default_queue: node_${nodes}
 default_duplicates: 1
 
+batches:
+  strong:
+    name: pagerank_gemini_${batch_name}
+    params:
+      nodes:
+        - value: [1, 2, 4, 8, 16]
+          machines: [squid-c]
+      dataset: [rmat_26_30, twitter2010]
+    artifacts:
+      - type: stdout
+        dest: pagerank_gemini/${batch_name}/nodes_${nodes}_${dataset}_${duplicate}.log
+      - type: stats
+        dest: pagerank_gemini/${batch_name}/nodes_${nodes}_${dataset}_${duplicate}.stats
+      - type: file
+        src: mpirun_out.txt
+        dest: pagerank_gemini/${batch_name}/nodes_${nodes}_${dataset}_${duplicate}.out
+
+  weak:
+    name: pagerank_gemini_${batch_name}
+    params:
+      nodes:
+        - value: [1, 2, 4, 8, 16]
+          machines: [squid-c]
+      dataset: "`'_'.join(['rmat', str(len(bin(eval('$nodes'.split(':')[0].replace('x', '*')))) - 3 + 24), str(len(bin(eval('$nodes'.split(':')[0].replace('x', '*')))) - 3 + 28)])`"
+    artifacts:
+      - type: stdout
+        dest: pagerank_gemini/${batch_name}/nodes_${nodes}_${dataset}_${duplicate}.log
+      - type: stats
+        dest: pagerank_gemini/${batch_name}/nodes_${nodes}_${dataset}_${duplicate}.stats
+      - type: file
+        src: mpirun_out.txt
+        dest: pagerank_gemini/${batch_name}/nodes_${nodes}_${dataset}_${duplicate}.out
+
 build:
   depend_params: [serial]
   script: |

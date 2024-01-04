@@ -62,8 +62,7 @@ batches:
     name: heat_${batch_name}
     params:
       nodes:
-        # - value: [1, 2:torus, 2x3:torus, 2x3x2:torus, 3x4x3:torus, 6x6x4:torus, 8x9x8:torus]
-        - value: [1, 2:torus, 2x3:torus, 2x3x2:torus, 3x4x3:torus, 6x6x4:torus]
+        - value: [1, 2:torus, 2x3:torus, 2x3x2:torus, 3x4x3:torus, 6x6x4:torus, 8x9x8:torus]
           machines: [wisteria-o]
         - value: [1, 2, 4, 8, 16, 32]
           machines: [squid-c]
@@ -80,12 +79,36 @@ batches:
         src: mpirun_out.txt
         dest: heat/${batch_name}/nodes_${nodes}_s_${sched}_p_${cache_policy}_${duplicate}.out
 
+  strong32K_prof:
+    name: heat_${batch_name}
+    params:
+      nodes:
+        - value: [1, 2:torus, 2x3:torus, 2x3x2:torus, 3x4x3:torus, 6x6x4:torus, 8x9x8:torus]
+          machines: [wisteria-o]
+        - value: [1, 2, 4, 8, 16, 32]
+          machines: [squid-c]
+      nx: 32768
+      ny: 32768
+      sched: [randws, adws]
+      cache_policy: [nocache, writeback_lazy]
+      repeats: 3
+      prof: stats
+      dag_prof: workspan
+      cache_prof: stats
+    artifacts:
+      - type: stdout
+        dest: heat/${batch_name}/nodes_${nodes}_s_${sched}_p_${cache_policy}_${duplicate}.log
+      - type: stats
+        dest: heat/${batch_name}/nodes_${nodes}_s_${sched}_p_${cache_policy}_${duplicate}.stats
+      - type: file
+        src: mpirun_out.txt
+        dest: heat/${batch_name}/nodes_${nodes}_s_${sched}_p_${cache_policy}_${duplicate}.out
+
   weak32K:
     name: heat_${batch_name}
     params:
       nodes:
-        # - value: [1, 2:torus, 2x3:torus, 2x3x2:torus, 3x4x3:torus, 6x6x4:torus, 8x9x8:torus]
-        - value: [1, 2:torus, 2x3:torus, 2x3x2:torus, 3x4x3:torus, 6x6x4:torus]
+        - value: [1, 2:torus, 2x3:torus, 2x3x2:torus, 3x4x3:torus, 6x6x4:torus, 8x9x8:torus]
           machines: [wisteria-o]
         - value: [1, 2, 4, 8, 16, 32]
           machines: [squid-c]
@@ -93,6 +116,31 @@ batches:
       ny: 32768
       sched: [randws, adws]
       cache_policy: [nocache, writeback_lazy]
+    artifacts:
+      - type: stdout
+        dest: heat/${batch_name}/nodes_${nodes}_s_${sched}_p_${cache_policy}_${duplicate}.log
+      - type: stats
+        dest: heat/${batch_name}/nodes_${nodes}_s_${sched}_p_${cache_policy}_${duplicate}.stats
+      - type: file
+        src: mpirun_out.txt
+        dest: heat/${batch_name}/nodes_${nodes}_s_${sched}_p_${cache_policy}_${duplicate}.out
+
+  weak32K_prof:
+    name: heat_${batch_name}
+    params:
+      nodes:
+        - value: [1, 2:torus, 2x3:torus, 2x3x2:torus, 3x4x3:torus, 6x6x4:torus, 8x9x8:torus]
+          machines: [wisteria-o]
+        - value: [1, 2, 4, 8, 16, 32]
+          machines: [squid-c]
+      nx: "`eval('$nodes'.split(':')[0].replace('x', '*')) * 32768`"
+      ny: 32768
+      sched: [randws, adws]
+      cache_policy: [nocache, writeback_lazy]
+      repeats: 3
+      prof: stats
+      dag_prof: workspan
+      cache_prof: stats
     artifacts:
       - type: stdout
         dest: heat/${batch_name}/nodes_${nodes}_s_${sched}_p_${cache_policy}_${duplicate}.log

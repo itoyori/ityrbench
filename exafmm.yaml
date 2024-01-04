@@ -117,12 +117,13 @@ batches:
           machines: [squid-c]
       n_input: "`eval('$nodes'.split(':')[0].replace('x', '*')) * 10_000_000`"
       dist: [cube, plummer]
+      sched: [randws, adws]
+      cache_policy: [nocache, writeback_lazy]
+      accuracy_test: 0
       repeats: 3
-      sched: [adws]
-      cache_policy: [writeback_lazy]
       prof: stats
       dag_prof: workspan
-      accuracy_test: 0
+      cache_prof: stats
     artifacts:
       - type: stdout
         dest: exafmm/${batch_name}/nodes_${nodes}_d_${dist}_s_${sched}_p_${cache_policy}_${duplicate}.log
