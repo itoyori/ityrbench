@@ -73,8 +73,36 @@ batches:
       sched: [randws, adws]
       # cache_policy: [nocache, writethrough, writeback, writeback_lazy, getput]
       cache_policy: [nocache, writeback_lazy]
-      dag_prof: workspan
       accuracy_test: 0
+      dag_prof: workspan
+    artifacts:
+      - type: stdout
+        dest: exafmm/${batch_name}/nodes_${nodes}_d_${dist}_s_${sched}_p_${cache_policy}_${duplicate}.log
+      - type: stats
+        dest: exafmm/${batch_name}/nodes_${nodes}_d_${dist}_s_${sched}_p_${cache_policy}_${duplicate}.stats
+      - type: file
+        src: mpirun_out.txt
+        dest: exafmm/${batch_name}/nodes_${nodes}_d_${dist}_s_${sched}_p_${cache_policy}_${duplicate}.out
+
+  strong10M_prof:
+    name: exafmm_${batch_name}
+    params:
+      nodes:
+        # - value: [1, 2:torus, 2x3:torus, 2x3x2:torus, 3x4x3:torus, 6x6x4:torus, 8x9x8:torus]
+        - value: [1, 2:torus, 2x3:torus, 2x3x2:torus, 3x4x3:torus, 6x6x4:torus]
+          machines: [wisteria-o]
+        - value: [1, 2, 4, 8, 16, 32]
+          machines: [squid-c]
+      n_input: 10_000_000
+      dist: [cube, plummer]
+      sched: [randws, adws]
+      # cache_policy: [nocache, writethrough, writeback, writeback_lazy, getput]
+      cache_policy: [nocache, writeback_lazy]
+      accuracy_test: 0
+      repeats: 3
+      prof: stats
+      dag_prof: workspan
+      cache_prof: stats
     artifacts:
       - type: stdout
         dest: exafmm/${batch_name}/nodes_${nodes}_d_${dist}_s_${sched}_p_${cache_policy}_${duplicate}.log
@@ -96,8 +124,8 @@ batches:
       dist: [cube, plummer]
       sched: [randws, adws]
       cache_policy: [nocache, writeback_lazy]
-      dag_prof: workspan
       accuracy_test: 0
+      dag_prof: workspan
     artifacts:
       - type: stdout
         dest: exafmm/${batch_name}/nodes_${nodes}_d_${dist}_s_${sched}_p_${cache_policy}_${duplicate}.log

@@ -82,6 +82,31 @@ batches:
         src: mpirun_out.txt
         dest: pagerank/${batch_name}/nodes_${nodes}_${dataset}_exec_${exec_type}_s_${sched}_p_${cache_policy}_${duplicate}.out
 
+  strong_prof:
+    name: pagerank_${batch_name}
+    params:
+      nodes:
+        - value: [1, 2:torus, 2x3:torus, 2x3x2:torus, 3x4x3:torus]
+          machines: [wisteria-o]
+        - value: [1, 2, 4, 8, 16]
+          machines: [squid-c]
+      dataset: [rmat_26_30, twitter2010]
+      exec_type: [naive, gpop]
+      sched: [randws, adws]
+      cache_policy: [nocache, writeback_lazy]
+      repeats: 3
+      prof: stats
+      dag_prof: workspan
+      cache_prof: stats
+    artifacts:
+      - type: stdout
+        dest: pagerank/${batch_name}/nodes_${nodes}_${dataset}_exec_${exec_type}_s_${sched}_p_${cache_policy}_${duplicate}.log
+      - type: stats
+        dest: pagerank/${batch_name}/nodes_${nodes}_${dataset}_exec_${exec_type}_s_${sched}_p_${cache_policy}_${duplicate}.stats
+      - type: file
+        src: mpirun_out.txt
+        dest: pagerank/${batch_name}/nodes_${nodes}_${dataset}_exec_${exec_type}_s_${sched}_p_${cache_policy}_${duplicate}.out
+
   weak:
     name: pagerank_${batch_name}
     params:
@@ -94,6 +119,31 @@ batches:
       exec_type: [naive, gpop]
       sched: [randws, adws]
       cache_policy: [nocache, writeback_lazy]
+    artifacts:
+      - type: stdout
+        dest: pagerank/${batch_name}/nodes_${nodes}_${dataset}_exec_${exec_type}_s_${sched}_p_${cache_policy}_${duplicate}.log
+      - type: stats
+        dest: pagerank/${batch_name}/nodes_${nodes}_${dataset}_exec_${exec_type}_s_${sched}_p_${cache_policy}_${duplicate}.stats
+      - type: file
+        src: mpirun_out.txt
+        dest: pagerank/${batch_name}/nodes_${nodes}_${dataset}_exec_${exec_type}_s_${sched}_p_${cache_policy}_${duplicate}.out
+
+  weak_prof:
+    name: pagerank_${batch_name}
+    params:
+      nodes:
+        - value: [1, 2:torus, 2x2:torus, 2x2x2:torus, 4x4:torus]
+          machines: [wisteria-o]
+        - value: [1, 2, 4, 8, 16]
+          machines: [squid-c]
+      dataset: "`'_'.join(['rmat', str(len(bin(eval('$nodes'.split(':')[0].replace('x', '*')))) - 3 + 24), str(len(bin(eval('$nodes'.split(':')[0].replace('x', '*')))) - 3 + 28)])`"
+      exec_type: [naive, gpop]
+      sched: [randws, adws]
+      cache_policy: [nocache, writeback_lazy]
+      repeats: 3
+      prof: stats
+      dag_prof: workspan
+      cache_prof: stats
     artifacts:
       - type: stdout
         dest: pagerank/${batch_name}/nodes_${nodes}_${dataset}_exec_${exec_type}_s_${sched}_p_${cache_policy}_${duplicate}.log
