@@ -102,6 +102,32 @@ batches:
         src: mpirun_out.txt
         dest: anns_hcnng/${batch_name}/${dataset}_node_${nodes}_s_${sched}_p_${cache_policy}_${duplicate}.out
 
+  build10M_prof:
+    name: anns_hcnng_${batch_name}
+    params:
+      nodes:
+        - value: [1, 2:torus, 2x3:torus, 2x3x2:torus, 3x4x3:torus]
+          machines: [wisteria-o]
+        - value: [1, 2, 4, 8, 16]
+          machines: [squid-c]
+      # dataset: [bigann-10M, msspacev-10M, text2image-10M]
+      dataset: [bigann-10M, msspacev-10M]
+      sched: [randws, adws]
+      cache_policy: [nocache, writeback_lazy]
+      repeats: 3
+      fast_check: 1
+      prof: stats
+      dag_prof: workspan
+      cache_prof: stats
+    artifacts:
+      - type: stdout
+        dest: anns_hcnng/${batch_name}/${dataset}_node_${nodes}_s_${sched}_p_${cache_policy}_${duplicate}.log
+      - type: stats
+        dest: anns_hcnng/${batch_name}/${dataset}_node_${nodes}_s_${sched}_p_${cache_policy}_${duplicate}.stats
+      - type: file
+        src: mpirun_out.txt
+        dest: anns_hcnng/${batch_name}/${dataset}_node_${nodes}_s_${sched}_p_${cache_policy}_${duplicate}.out
+
 build:
   depend_params: [dataset, dist_policy, block_size, prof, dag_prof, cache_prof]
   script: |

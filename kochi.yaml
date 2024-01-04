@@ -8,7 +8,7 @@ machines:
       - pjsub --interact --sparam wait-time=unlimited -j -g gc64 -L rscgrp=interactive-o,node=$KOCHI_ALLOC_NODE_SPEC --mpi proc=$((n_nodes * 48))
     alloc_script:
       - n_nodes=$(echo $KOCHI_ALLOC_NODE_SPEC | cut -f 1 -d ":" | sed 's/x/*/g' | bc)
-      - echo "$KOCHI_WORKER_LAUNCH_CMD" | pjsub -X -j -g gc64 -L rscgrp=priority-o,node=$KOCHI_ALLOC_NODE_SPEC,elapse=${KOCHI_ALLOC_TIME_LIMIT:-6:00:00} --mpi proc=$((n_nodes * 48))
+      - echo "$KOCHI_WORKER_LAUNCH_CMD" | pjsub -X -j -g gc64 -L rscgrp=regular-o,node=$KOCHI_ALLOC_NODE_SPEC,elapse=${KOCHI_ALLOC_TIME_LIMIT:-6:00:00} --mpi proc=$((n_nodes * 48))
     load_env_script:
       on_login_node: |
         module load odyssey > /dev/null
