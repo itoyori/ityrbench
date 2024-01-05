@@ -14,7 +14,7 @@ default_params:
   repeats: 11
   max_iters: 3
   dataset: rmat_20_24
-  compressed: 1
+  compressed: 0
   serial: 0
   debugger: 0
 
@@ -96,7 +96,11 @@ run:
     export PARLAY_NUM_THREADS=$KOCHI_PARAM_CORES
 
     if [[ $KOCHI_PARAM_SERIAL == 1 || $KOCHI_PARAM_CORES == 1 ]]; then
-      numactl_cmd=""
+      if [[ $KOCHI_MACHINE == wisteria-o ]]; then
+        numactl_cmd="numactl -C 12" # core number begins with 12 on wisteria-o
+      else
+        numactl_cmd="numactl -C 0"
+      fi
     else
       numactl_cmd="numactl -iall"
     fi
