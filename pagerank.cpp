@@ -113,6 +113,9 @@ struct graph {
   ityr::global_vector<bin_edge_elem_t> bin_edges;
   ityr::global_vector<dest_bin_elem_t> dest_bin_elems;
   ityr::global_vector<real_t>          update_bin_elems;
+
+  ityr::workhint_range<std::size_t> workhint_scatter;
+  ityr::workhint_range<std::size_t> workhint_gather;
 };
 
 int         n_repeats        = 10;
@@ -680,6 +683,20 @@ void init_gpop(graph& g) {
 
   long n_parts = (g.n + bin_width - 1) / bin_width;
   partition(n_parts, g);
+
+  g.workhint_scatter = ityr::create_workhint_range(
+      ityr::execution::par,
+      g.parts.begin(), g.parts.end(),
+      [=](const part& p) {
+        return p.bin_edges.size();
+      });
+
+  g.workhint_gather = ityr::create_workhint_range(
+      ityr::execution::par,
+      g.parts.begin(), g.parts.end(),
+      [=](const part& p) {
+        return p.dest_bins_read_size;
+      });
 }
 
 using neighbors = ityr::global_span<uintE>;
@@ -801,27 +818,13 @@ void pagerank_gpop(graph&                    g,
         return one_over_n / static_cast<real_t>(vout.degree);
       });
 
-  auto workhint_scatter = ityr::create_workhint_range(
-      ityr::execution::par,
-      g.parts.begin(), g.parts.end(),
-      [=](const part& p) {
-        return p.bin_edges.size();
-      });
-
-  auto workhint_gather = ityr::create_workhint_range(
-      ityr::execution::par,
-      g.parts.begin(), g.parts.end(),
-      [=](const part& p) {
-        return p.dest_bins_read_size;
-      });
-
   int iter = 0;
   while (iter++ < max_iters) {
     auto t0 = ityr::gettime_ns();
 
     // scatter
     ityr::for_each(
-        ityr::execution::parallel_policy(workhint_scatter),
+        ityr::execution::parallel_policy(g.workhint_scatter),
         g.parts.begin(), g.parts.end(),
         [=](auto&& p_ref) {
           auto p_cs = ityr::make_checkout(&p_ref, 1, ityr::checkout_mode::read);
@@ -860,7 +863,7 @@ void pagerank_gpop(graph&                    g,
 
     // gather
     ityr::for_each(
-        ityr::execution::parallel_policy(workhint_gather),
+        ityr::execution::parallel_policy(g.workhint_gather),
         g.parts.begin(), g.parts.end(),
         [=](auto&& p_ref) {
           auto p_cs = ityr::make_checkout(&p_ref, 1, ityr::checkout_mode::read);
