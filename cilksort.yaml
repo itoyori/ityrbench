@@ -137,9 +137,9 @@ batches:
     name: cilksort_${batch_name}
     params:
       nodes:
-        - value: 2x3x2:torus
+        - value: [1, 2x3x2:torus]
           machines: [wisteria-o]
-        - value: 8
+        - value: [1, 8]
           machines: [squid-c]
       n_input: 1_000_000_000
       cutoff_s: [64, 256, 1024, 4096, 16384, 65536]
@@ -147,12 +147,12 @@ batches:
       cache_policy: [nocache, writethrough, writeback, writeback_lazy]
     artifacts:
       - type: stdout
-        dest: cilksort/${batch_name}/c_${cutoff_s}_s_${sched}_p_${cache_policy}_${duplicate}.log
+        dest: cilksort/${batch_name}/nodes_${nodes}_c_${cutoff_s}_s_${sched}_p_${cache_policy}_${duplicate}.log
       - type: stats
-        dest: cilksort/${batch_name}/c_${cutoff_s}_s_${sched}_p_${cache_policy}_${duplicate}.stats
+        dest: cilksort/${batch_name}/nodes_${nodes}_c_${cutoff_s}_s_${sched}_p_${cache_policy}_${duplicate}.stats
       - type: file
         src: mpirun_out.txt
-        dest: cilksort/${batch_name}/c_${cutoff_s}_s_${sched}_p_${cache_policy}_${duplicate}.out
+        dest: cilksort/${batch_name}/nodes_${nodes}_c_${cutoff_s}_s_${sched}_p_${cache_policy}_${duplicate}.out
 
   sbsize:
     name: cilksort_${batch_name}
