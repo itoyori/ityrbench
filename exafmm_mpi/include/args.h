@@ -46,7 +46,7 @@ namespace EXAFMM_NAMESPACE {
     int getMatrix;
     int images;
     int IneJ;
-    int numBodies;
+    long numBodies;
     const char * path;
     int P;
     int repeat;
@@ -71,7 +71,7 @@ namespace EXAFMM_NAMESPACE {
 	      " --help (-h)                     : Show this help document\n"
 	      " --images (-i)                   : Number of periodic image levels (%d)\n"
 	      " --IneJ (-j)                     : Use different sources & targets (%d)\n"
-	      " --numBodies (-n)                : Number of bodies (%d)\n"
+	      " --numBodies (-n)                : Number of bodies (%ld)\n"
 	      " --path (-p)                     : Path to save files (%s)\n"
 	      " --P (-P) not working            : Order of expansion (%d)\n"
 	      " --repeat (-r)                   : Number of iteration loops (%d)\n"
@@ -90,7 +90,7 @@ namespace EXAFMM_NAMESPACE {
 	      getMatrix,
 	      images,
 	      IneJ,
-	      numBodies,
+	      long(numBodies),
               path,
 	      P,
 	      repeat,
@@ -242,7 +242,7 @@ namespace EXAFMM_NAMESPACE {
 	  IneJ = 1;
 	  break;
 	case 'n':
-	  numBodies = atoi(optarg);
+	  numBodies = atol(optarg);
 	  break;
         case 'p':
           path = optarg;

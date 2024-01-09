@@ -21,10 +21,10 @@ namespace EXAFMM_NAMESPACE {
     }
 
     //! Split range and return partial range
-    void splitRange(int & begin, int & end, int iSplit, int numSplit) const {
+    void splitRange(bint_t & begin, bint_t & end, int iSplit, int numSplit) const {
       assert(end > begin);                                      // Check that size > 0
-      int size = end - begin;                                   // Size of range
-      int increment = size / numSplit;                          // Increment of splitting
+      bint_t size = end - begin;                                   // Size of range
+      bint_t increment = size / numSplit;                          // Increment of splitting
       int remainder = size % numSplit;                          // Remainder of splitting
       begin += iSplit * increment + std::min(iSplit,remainder); // Increment the begin counter
       end = begin + increment;                                  // Increment the end counter
@@ -59,8 +59,8 @@ namespace EXAFMM_NAMESPACE {
     //! Random distribution in [-1,1]^3 cube
     void cube(GBodies bodies, int seed, int numSplit) const {
       for (int i=0; i<numSplit; i++, seed++) {                  // Loop over partitions (if there are any)
-	int begin = 0;                                          //  Begin index of bodies
-	int end = bodies.size();                                //  End index of bodies
+	bint_t begin = 0;                                          //  Begin index of bodies
+	bint_t end = bodies.size();                                //  End index of bodies
 	splitRange(begin, end, i, numSplit);                    //  Split range of bodies
 
         ityr::for_each(
@@ -80,8 +80,8 @@ namespace EXAFMM_NAMESPACE {
     //! Random distribution on r = 1 sphere
     void sphere(GBodies bodies, int seed, int numSplit) const {
       for (int i=0; i<numSplit; i++, seed++) {                  // Loop over partitions (if there are any)
-	int begin = 0;                                          //  Begin index of bodies
-	int end = bodies.size();                                //  End index of bodies
+	bint_t begin = 0;                                          //  Begin index of bodies
+	bint_t end = bodies.size();                                //  End index of bodies
 	splitRange(begin, end, i, numSplit);                    //  Split range of bodies
 
         ityr::for_each(
@@ -126,8 +126,8 @@ namespace EXAFMM_NAMESPACE {
     //! Plummer distribution in a r = M_PI/2 sphere
     void plummer(GBodies bodies, int seed, int numSplit) const {
       for (int i=0; i<numSplit; i++, seed++) {                  // Loop over partitions (if there are any)
-	int begin = 0;                                          //  Begin index of bodies
-	int end = bodies.size();                                //  End index of bodies
+	bint_t begin = 0;                                          //  Begin index of bodies
+	bint_t end = bodies.size();                                //  End index of bodies
 	splitRange(begin, end, i, numSplit);                    //  Split range of bodies
 
         ityr::for_each(
@@ -166,8 +166,8 @@ namespace EXAFMM_NAMESPACE {
       double z_shift = 14.0;
       double scale2 = 0.6;
       for (int i=0; i<numSplit; i++, seed++) {                  // Loop over partitions (if there are any)
-	int begin = 0;                                          //  Begin index of bodies
-	int end = bodies.size();                                //  End index of bodies
+	bint_t begin = 0;                                          //  Begin index of bodies
+	bint_t end = bodies.size();                                //  End index of bodies
 	splitRange(begin, end, i, numSplit);                    //  Split range of bodies
 
         ityr::for_each(
@@ -208,8 +208,8 @@ namespace EXAFMM_NAMESPACE {
     //! Initialize source values
     void initSource(GBodies bodies, int seed, int numSplit) const {
       for (int i=0; i<numSplit; i++, seed++) {                  // Loop over partitions (if there are any)
-	int begin = 0;                                          //  Begin index of bodies
-	int end = bodies.size();                                //  End index of bodies
+	bint_t begin = 0;                                          //  Begin index of bodies
+	bint_t end = bodies.size();                                //  End index of bodies
 	splitRange(begin, end, i, numSplit);                    //  Split range of bodies
 
 #if EXAFMM_LAPLACE
@@ -319,8 +319,8 @@ namespace EXAFMM_NAMESPACE {
           body_par_policy,
           ityr::make_global_iterator(bodies.begin(), ityr::checkout_mode::read_write),
           ityr::make_global_iterator(bodies.end()  , ityr::checkout_mode::read_write),
-          ityr::count_iterator<int>(0),
-          [=](auto&& B, int i) {
+          ityr::count_iterator<bint_t>(0),
+          [=](auto&& B, bint_t i) {
             B.TRG = 0;                                             //  Clear target values
             B.IBODY = i;                            //  Initial body numbering
             B.ICELL = 0;                                           //  Initial cell index
@@ -394,11 +394,11 @@ namespace EXAFMM_NAMESPACE {
     }
 
     //! Downsize target bodies by even sampling
-    global_vec<Body> sampleBodies(GBodies bodies, int numTargets) {
-      if (numTargets < int(bodies.size())) {                    // If target size is smaller than current
+    global_vec<Body> sampleBodies(GBodies bodies, bint_t numTargets) {
+      if (numTargets < bint_t(bodies.size())) {                    // If target size is smaller than current
         global_vec<Body> sampled(numTargets);
-        int stride = bodies.size() / numTargets;                //  Stride of sampling
-        for (int i=0; i<numTargets; i++) {                      //  Loop over target samples
+        bint_t stride = bodies.size() / numTargets;                //  Stride of sampling
+        for (bint_t i=0; i<numTargets; i++) {                      //  Loop over target samples
           sampled[i] = bodies[i*stride];                         //   Sample targets
         }                                                       //  End loop over target samples
         return sampled;

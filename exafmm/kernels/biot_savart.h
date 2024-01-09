@@ -161,8 +161,8 @@ namespace EXAFMM_NAMESPACE {
     void P2P(Cell* Ci, const Cell* Cj) {
       GB_iter GBi = Ci->BODY;
       GB_iter GBj = Cj->BODY;
-      int ni = Ci->NBODY;
-      int nj = Cj->NBODY;
+      bint_t ni = Ci->NBODY;
+      bint_t nj = Cj->NBODY;
 
       auto [Bi_, Bj_] =
         ityr::make_checkouts(GBi, ni, ityr::checkout_mode::read_write,
@@ -172,12 +172,12 @@ namespace EXAFMM_NAMESPACE {
 
       {
         ITYR_PROFILER_RECORD(prof_event_user_P2P_kernel);
-        int i = 0;
+        bint_t i = 0;
         for ( ; i<ni; i++) {
           kreal_t ax = 0;
           kreal_t ay = 0;
           kreal_t az = 0;
-          for (int j=0; j<nj; j++) {
+          for (bint_t j=0; j<nj; j++) {
             vec3 dX = Bi[i].X - Bj[j].X - Xperiodic;
             real_t R2 = norm(dX) + eps2;
             if (R2 != 0) {
@@ -201,13 +201,13 @@ namespace EXAFMM_NAMESPACE {
     void P2P_direct(Cell* Ci, const Cell* Cj) {
       GB_iter GBi = Ci->BODY;
       GB_iter GBj = Cj->BODY;
-      int ni = Ci->NBODY;
-      int nj = Cj->NBODY;
+      bint_t ni = Ci->NBODY;
+      bint_t nj = Cj->NBODY;
 
       auto Bi_ = ityr::make_checkout(GBi, ni, ityr::checkout_mode::read_write);
       auto Bi = Bi_.data();
 
-      int i = 0;
+      bint_t i = 0;
       for ( ; i<ni; i++) {
         kreal_t ax = 0;
         kreal_t ay = 0;

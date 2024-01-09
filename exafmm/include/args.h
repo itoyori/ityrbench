@@ -38,7 +38,7 @@ namespace EXAFMM_NAMESPACE {
   class Args {
   public:
     int accuracy;
-    int ncrit;
+    bint_t ncrit;
     double cutoff;
     const char * distribution;
     int dual;
@@ -46,11 +46,11 @@ namespace EXAFMM_NAMESPACE {
     int getMatrix;
     int images;
     int IneJ;
-    int numBodies;
+    bint_t numBodies;
     const char * path;
     int P;
     int repeat;
-    int nspawn;
+    bint_t nspawn;
     double theta;
     int threads;
     int verbose;
@@ -62,7 +62,7 @@ namespace EXAFMM_NAMESPACE {
 	      "Usage: %s [options]\n"
 	      "Long option (short option)       : Description (Default value)\n"
 	      " --accuracy (-a)                 : Regression for accuracy only (%d)\n"
-	      " --ncrit (-c)                    : Number of bodies per leaf cell (%d)\n"
+	      " --ncrit (-c)                    : Number of bodies per leaf cell (%ld)\n"
 	      " --cutoff (-C)                   : Cutoff distance of interaction (%f)\n"
 	      " --distribution (-d) [c/l/o/p/s] : lattice, cube, sphere, octant, plummer (%s)\n"
 	      " --dual (-D)                     : Use dual tree traversal (%d)\n"
@@ -71,18 +71,18 @@ namespace EXAFMM_NAMESPACE {
 	      " --help (-h)                     : Show this help document\n"
 	      " --images (-i)                   : Number of periodic image levels (%d)\n"
 	      " --IneJ (-j)                     : Use different sources & targets (%d)\n"
-	      " --numBodies (-n)                : Number of bodies (%d)\n"
+	      " --numBodies (-n)                : Number of bodies (%ld)\n"
 	      " --path (-p)                     : Path to save files (%s)\n"
 	      " --P (-P) not working            : Order of expansion (%d)\n"
 	      " --repeat (-r)                   : Number of iteration loops (%d)\n"
-	      " --nspawn (-s)                   : Threshold for stopping task creation during recursion (%d)\n"
+	      " --nspawn (-s)                   : Threshold for stopping task creation during recursion (%ld)\n"
 	      " --theta (-t)                    : Multipole acceptance criterion (%f)\n"
 	      " --threads (-T)                  : Number of threads (%d)\n"
 	      " --verbose (-v)                  : Print information to screen (%d)\n"
 	      " --write (-w)                    : Write timings to file (%d)\n",
 	      name,
               accuracy,
-	      ncrit,
+	      long(ncrit),
 	      cutoff,
 	      distribution,
 	      dual,
@@ -90,11 +90,11 @@ namespace EXAFMM_NAMESPACE {
 	      getMatrix,
 	      images,
 	      IneJ,
-	      numBodies,
+	      long(numBodies),
               path,
 	      P,
 	      repeat,
-	      nspawn,
+	      long(nspawn),
 	      theta,
 	      threads,
 	      verbose,
@@ -215,7 +215,7 @@ namespace EXAFMM_NAMESPACE {
 	  accuracy = 1;
 	  break;
 	case 'c':
-	  ncrit = atoi(optarg);
+	  ncrit = atol(optarg);
 	  break;
 	case 'C':
 	  cutoff = atof(optarg);
@@ -242,7 +242,7 @@ namespace EXAFMM_NAMESPACE {
 	  IneJ = 1;
 	  break;
 	case 'n':
-	  numBodies = atoi(optarg);
+	  numBodies = atol(optarg);
 	  break;
         case 'p':
           path = optarg;
@@ -254,7 +254,7 @@ namespace EXAFMM_NAMESPACE {
 	  repeat = atoi(optarg);
 	  break;
 	case 's':
-	  nspawn = atoi(optarg);
+	  nspawn = atol(optarg);
 	  break;
 	case 't':
 	  theta = atof(optarg);

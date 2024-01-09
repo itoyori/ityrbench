@@ -9,7 +9,7 @@ namespace EXAFMM_NAMESPACE {
     template <typename T>
     using global_ptr = ityr::ori::global_ptr<T>;
 
-    typedef vec<8,int> ivec8;                                   //!< Vector of 8 integer types
+    typedef vec<8,bint_t> ivec8;                                   //!< Vector of 8 integer types
 
   public:
     //! Binary tree is used for counting number of bodies with a recursive approach
@@ -24,15 +24,15 @@ namespace EXAFMM_NAMESPACE {
   private:
     //! Octree is used for building the FMM tree structure as "nodes", then transformed to "cells" data structure
     struct OctreeNode {
-      int                    IBODY;                                       //!< Index offset for first body in node
-      int                    NBODY;                                       //!< Number of descendant bodies
-      int                    NNODE;                                       //!< Number of descendant nodes
+      bint_t                 IBODY;                                       //!< Index offset for first body in node
+      bint_t                 NBODY;                                       //!< Number of descendant bodies
+      bint_t                 NNODE;                                       //!< Number of descendant nodes
       global_ptr<OctreeNode> CHILD[8];                                    //!< Pointer to child node
       vec3                   X;                                           //!< Coordinate at center
     };
 
-    const int              ncrit;                                         //!< Number of bodies per leaf cell
-    const int              nspawn;                                        //!< Threshold of NBODY for spawning new threads
+    const bint_t           ncrit;                                         //!< Number of bodies per leaf cell
+    const bint_t           nspawn;                                        //!< Threshold of NBODY for spawning new threads
     int                    numLevels;                                     //!< Number of levels in tree
     GB_iter                B0;                                            //!< Iterator of first body
     global_ptr<OctreeNode> N0;                                            //!< Pointer to octree root node
@@ -49,17 +49,17 @@ namespace EXAFMM_NAMESPACE {
     //! Recursive functor for counting bodies in each octant using binary tree
     struct CountBodies {
       GBodies bodies;                                          //!< Vector of bodies
-      int begin;                                                //!< Body begin index
-      int end;                                                  //!< Body end index
+      bint_t begin;                                                //!< Body begin index
+      bint_t end;                                                  //!< Body end index
       vec3 X;                                                   //!< Coordinate of node center
       global_ptr<BinaryTreeNode> binNode;                                 //!< Pointer to binary tree node
-      int nspawn;                                               //!< Threshold of NBODY for spawning new threads
-      CountBodies(GBodies _bodies, int _begin, int _end, vec3 _X,// Constructor
-		  global_ptr<BinaryTreeNode> _binNode, int _nspawn) :
+      bint_t nspawn;                                               //!< Threshold of NBODY for spawning new threads
+      CountBodies(GBodies _bodies, bint_t _begin, bint_t _end, vec3 _X,// Constructor
+		  global_ptr<BinaryTreeNode> _binNode, bint_t _nspawn) :
 	bodies(_bodies), begin(_begin), end(_end), X(_X),       // Initialize variables
 	binNode(_binNode), nspawn(_nspawn) {}
       //! Get number of binary tree nodes for a given number of bodies
-      inline int getNumBinNode(int n) const {
+      inline bint_t getNumBinNode(bint_t n) const {
 	if (n <= nspawn) return 1;                              // If less then threshold, use only one node
 	else return 4 * ((n - 1) / nspawn) - 1;                 // Else estimate number of binary tree nodes
       }
@@ -74,10 +74,10 @@ namespace EXAFMM_NAMESPACE {
 
           ityr::for_each(
               body_seq_policy,
-              ityr::count_iterator<int>(begin),
-              ityr::count_iterator<int>(end),
+              ityr::count_iterator<bint_t>(begin),
+              ityr::count_iterator<bint_t>(end),
               ityr::make_global_iterator(bodies.begin() + begin, ityr::checkout_mode::read),
-              [&](int i, const auto& B) {
+              [&](bint_t i, const auto& B) {
                 vec3 x = B.X;                                   //  Coordinates of body
                 if (B.ICELL < 0) {                                //  If using residual index
                   auto mp_X = static_cast<vec3 Body::*>(&Source::X);
@@ -88,10 +88,10 @@ namespace EXAFMM_NAMESPACE {
               });
 
 	} else {                                                //  Else if number of bodies is larger than threshold
-	  int mid = (begin + end) / 2;                          //   Split range of bodies in half
+	  bint_t mid = (begin + end) / 2;                          //   Split range of bodies in half
 	  while ((&bodies[mid])->*(&Body::ICELL) < 0) mid++;                  //   Don't split residual groups
-	  int numLeftNode = getNumBinNode(mid - begin);         //   Number of binary tree nodes on left branch
-	  int numRightNode = getNumBinNode(end - mid);          //   Number of binary tree nodes on right branch
+	  bint_t numLeftNode = getNumBinNode(mid - begin);         //   Number of binary tree nodes on left branch
+	  bint_t numRightNode = getNumBinNode(end - mid);          //   Number of binary tree nodes on right branch
 	  /* assert(numLeftNode + numRightNode <= binNode->END - binNode->BEGIN);// Bounds checking for node count */
 
           global_ptr<BinaryTreeNode> binNode_left, binNode_right;
@@ -133,12 +133,12 @@ namespace EXAFMM_NAMESPACE {
     struct MoveBodies {
       GBodies bodies;                                          //!< Vector of bodies
       GBodies buffer;                                          //!< Buffer for bodies
-      int begin;                                                //!< Body begin index
-      int end;                                                  //!< Body end index
+      bint_t begin;                                                //!< Body begin index
+      bint_t end;                                                  //!< Body end index
       global_ptr<BinaryTreeNode> binNode;                                 //!< Pointer to binary tree node
       mutable ivec8 octantOffset;                               //!< Offset of octant
       vec3 X;                                                   //!< Coordinates of node center
-      MoveBodies(GBodies _bodies, GBodies _buffer, int _begin, int _end,// Constructor
+      MoveBodies(GBodies _bodies, GBodies _buffer, bint_t _begin, bint_t _end,// Constructor
 		 global_ptr<BinaryTreeNode> _binNode, ivec8 _octantOffset, vec3 _X) :
 	bodies(_bodies), buffer(_buffer), begin(_begin), end(_end),// Initialize variables
 	binNode(_binNode), octantOffset(_octantOffset), X(_X) {}
@@ -158,10 +158,10 @@ namespace EXAFMM_NAMESPACE {
 
           ityr::for_each(
               body_seq_policy,
-              ityr::count_iterator<int>(begin),
-              ityr::count_iterator<int>(end),
+              ityr::count_iterator<bint_t>(begin),
+              ityr::count_iterator<bint_t>(end),
               ityr::make_global_iterator(bodies.begin() + begin, ityr::checkout_mode::read),
-              [&](int i, const auto& B) {
+              [&](bint_t i, const auto& B) {
                 vec3 x = B.X;                                   //  Coordinates of body
                 if (B.ICELL < 0) {                                //  If using residual index
                   auto mp_X = static_cast<vec3 Body::*>(&Source::X);
@@ -180,7 +180,7 @@ namespace EXAFMM_NAMESPACE {
             }
           }
 	} else {                                                //  Else if there are child nodes
-	  int mid = (begin + end) / 2;                          //   Split range of bodies in half
+	  bint_t mid = (begin + end) / 2;                          //   Split range of bodies in half
 	  while ((&bodies[mid])->*(&Body::ICELL) < 0) mid++;                  //   Don't split residual groups
 
           MoveBodies leftBranch(bodies, buffer, begin, mid, binNode_left, octantOffset, X);// Recursion for left branch
@@ -201,19 +201,19 @@ namespace EXAFMM_NAMESPACE {
     struct BuildNodes {
       GBodies bodies;                                          //!< Vector of bodies
       GBodies buffer;                                          //!< Buffer for bodies
-      int begin;                                                //!< Body begin index
-      int end;                                                  //!< Body end index
+      bint_t begin;                                                //!< Body begin index
+      bint_t end;                                                  //!< Body end index
       global_ptr<BinaryTreeNode> binNode;                                 //!< Pointer to binary tree node
       vec3 X;                                                   //!< Coordinate of node center
       real_t R0;                                                //!< Radius of root cell
-      int ncrit;                                                //!< Number of bodies per leaf cell
-      int nspawn;                                               //!< Threshold of NBODY for spawning new threads
+      bint_t ncrit;                                                //!< Number of bodies per leaf cell
+      bint_t nspawn;                                               //!< Threshold of NBODY for spawning new threads
       int level;                                                //!< Current tree level
       bool direction;                                           //!< Direction of buffer copying
       //! Constructor
       BuildNodes(GBodies _bodies,
-		 GBodies _buffer, int _begin, int _end, global_ptr<BinaryTreeNode> _binNode,
-		 vec3 _X, real_t _R0, int _ncrit, int _nspawn, int _level=0, bool _direction=false) :
+		 GBodies _buffer, bint_t _begin, bint_t _end, global_ptr<BinaryTreeNode> _binNode,
+		 vec3 _X, real_t _R0, bint_t _ncrit, bint_t _nspawn, int _level=0, bool _direction=false) :
 	bodies(_bodies), buffer(_buffer),    // Initialize variables
 	begin(_begin), end(_end), binNode(_binNode), X(_X), R0(_R0),
 	ncrit(_ncrit), nspawn(_nspawn), level(_level), direction(_direction) {}
@@ -234,7 +234,7 @@ namespace EXAFMM_NAMESPACE {
       }
 
       //! Exclusive scan with offset
-      inline ivec8 exclusiveScan(ivec8 input, int offset) const {
+      inline ivec8 exclusiveScan(ivec8 input, bint_t offset) const {
 	ivec8 output;                                           // Output vector
 	for (int i=0; i<8; i++) {                               // Loop over elements
 	  output[i] = offset;                                   //  Set value
@@ -244,7 +244,7 @@ namespace EXAFMM_NAMESPACE {
       }
 
       //! Get maximum number of binary tree nodes for a given number of bodies
-      inline int getMaxBinNode(int n) const {
+      inline bint_t getMaxBinNode(bint_t n) const {
 	return (4 * n) / nspawn;                                // Conservative estimate of number of binary tree nodes
       }
 
@@ -259,7 +259,7 @@ namespace EXAFMM_NAMESPACE {
             auto [b_src, b_dest] =
               ityr::make_checkouts(bodies.begin() + begin, end - begin, ityr::checkout_mode::read,
                                    buffer.begin() + begin, end - begin, ityr::checkout_mode::write);
-            for (int i = 0; i < end - begin; i++) {
+            for (bint_t i = 0; i < end - begin; i++) {
               b_dest[i] = b_src[i];
             }
           }
@@ -284,7 +284,7 @@ namespace EXAFMM_NAMESPACE {
 
         global_ptr<BinaryTreeNode> binNodeOffsets[8];
         for (int i = 0; i < 8; i++) {
-	  int maxBinNode = getMaxBinNode(counts[i]);    //   Get maximum number of binary tree nodes
+	  bint_t maxBinNode = getMaxBinNode(counts[i]);    //   Get maximum number of binary tree nodes
           binNodeOffsets[i] = binNodeOffset;
 	  binNodeOffset += maxBinNode;                          //   Increment offset for binNode memory address
         }
@@ -298,7 +298,7 @@ namespace EXAFMM_NAMESPACE {
             ityr::count_iterator<int>(8),
             [=, *this](int i) {
               /* toc = logger::get_time(); */
-              int maxBinNode = getMaxBinNode(counts[i]);    //   Get maximum number of binary tree nodes
+              bint_t maxBinNode = getMaxBinNode(counts[i]);    //   Get maximum number of binary tree nodes
               /* assert(binNodeOffset + maxBinNode <= binNode->END);   //    Bounds checking for node count */
               vec3 Xchild = X;                                      //    Initialize center coordinates of child node
               real_t r = R0 / (1 << (level + 1));                   //    Radius of cells for child's level
@@ -332,18 +332,18 @@ namespace EXAFMM_NAMESPACE {
       mutable GC_iter CN;                                        //!< Iterator of cell counter
       vec3 X0;                                                  //!< Coordinate of root cell center
       real_t R0;                                                //!< Radius of root cell
-      int nspawn;                                               //!< Threshold of NNODE for spawning new threads
+      bint_t nspawn;                                               //!< Threshold of NNODE for spawning new threads
       int level;                                                //!< Current tree level
-      int iparent;                                              //!< Index of parent cell
+      bint_t iparent;                                              //!< Index of parent cell
       Nodes2cells(global_ptr<OctreeNode> _octNode, GB_iter _B0, GC_iter _C, // Constructor
 		  GC_iter _C0, GC_iter _CN, vec3 _X0, real_t _R0,
-		  int _nspawn, int _level=0, int _iparent=0) :
+		  bint_t _nspawn, int _level=0, bint_t _iparent=0) :
 	octNode(_octNode), B0(_B0), C(_C), C0(_C0), CN(_CN),    // Initialize variables
 	X0(_X0), R0(_R0), nspawn(_nspawn), level(_level), iparent(_iparent) {}
       //! Get cell index
       uint64_t getKey(vec3 X, vec3 Xmin, real_t diameter) const {
-	int iX[3] = {0, 0, 0};                                  // Initialize 3-D index
-	for (int d=0; d<3; d++) iX[d] = int((X[d] - Xmin[d]) / diameter);// 3-D index
+	bint_t iX[3] = {0, 0, 0};                                  // Initialize 3-D index
+	for (int d=0; d<3; d++) iX[d] = bint_t((X[d] - Xmin[d]) / diameter);// 3-D index
 	uint64_t index = ((1 << 3 * level) - 1) / 7;            // Levelwise offset
 	for (int l=0; l<level; l++) {                           // Loop over levels
 	  for (int d=0; d<3; d++) index += (iX[d] & 1) << (3 * l + d); // Interleave bits into Morton key
@@ -445,7 +445,7 @@ namespace EXAFMM_NAMESPACE {
         logger::startTimer("Grow tree");                          // Start timer
       }
       B0 = bodies.begin();                                      // Bodies iterator
-      int maxBinNode = (4 * bodies.size()) / nspawn;            // Get maximum size of binary tree
+      bint_t maxBinNode = (4 * bodies.size()) / nspawn;            // Get maximum size of binary tree
 
       bin_nodes_vec.resize(maxBinNode);
 
@@ -508,7 +508,7 @@ namespace EXAFMM_NAMESPACE {
     }
 
   public:
-    BuildTree(int _ncrit, int _nspawn) : ncrit(_ncrit), nspawn(_nspawn), numLevels(0) {}
+    BuildTree(bint_t _ncrit, bint_t _nspawn) : ncrit(_ncrit), nspawn(_nspawn), numLevels(0) {}
 
     //! Build tree structure top down
     void buildTree(GBodies bodies, GBodies buffer, Bounds bounds,
@@ -531,7 +531,7 @@ namespace EXAFMM_NAMESPACE {
     void printTreeData(GCells cells) {
       if (logger::verbose && !cells.empty()) {                  // If verbose flag is true
 	logger::printTitle("Tree stats");                       //  Print title
-        int nbody = cells.begin()->*(static_cast<int Cell::*>(&CellBase::NBODY));
+        bint_t nbody = cells.begin()->*(static_cast<bint_t Cell::*>(&CellBase::NBODY));
 	std::cout  << std::setw(logger::stringLength) << std::left//  Set format
 		   << "Bodies"     << " : " << nbody << std::endl// Print number of bodies
 		   << std::setw(logger::stringLength) << std::left//  Set format

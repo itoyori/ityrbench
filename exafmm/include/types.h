@@ -14,6 +14,8 @@
 #include "../../common.hpp"
 
 namespace EXAFMM_NAMESPACE {
+  using bint_t = long;
+
   template <typename T>
   using global_span = ityr::global_span<T>;
   template <typename T>
@@ -42,7 +44,7 @@ namespace EXAFMM_NAMESPACE {
   typedef std::complex<real_t> complex_t;                       //!< Complex type
   const complex_t I(0.,1.);                                     //!< Imaginary unit
 
-  typedef vec<3,int> ivec3;                                     //!< Vector of 3 int types
+  typedef vec<3,bint_t> ivec3;                                     //!< Vector of 3 int types
   typedef vec<3,real_t> vec3;                                   //!< Vector of 3 real_t types
   typedef vec<4,real_t> vec4;                                   //!< Vector of 4 real_t types
   typedef vec<3,float> fvec3;                                   //!< Vector of 3 float types
@@ -97,8 +99,8 @@ namespace EXAFMM_NAMESPACE {
 
   //! Structure of bodies
   struct Body : public Source {                                 //!< Base components of body structure
-    int     IBODY;                                              //!< Initial body numbering for sorting back
-    int     IRANK;                                              //!< Initial rank numbering for partitioning back
+    bint_t  IBODY;                                              //!< Initial body numbering for sorting back
+    bint_t  IRANK;                                              //!< Initial rank numbering for partitioning back
     int64_t ICELL;                                              //!< Cell index
     real_t  WEIGHT;                                             //!< Weight for partitioning
 #if EXAFMM_LAPLACE
@@ -127,11 +129,11 @@ namespace EXAFMM_NAMESPACE {
 
   //! Base components of cells
   struct CellBase {
-    int IPARENT;                                                //!< Index of parent cell
-    int ICHILD;                                                 //!< Index of first child cell
-    int NCHILD;                                                 //!< Number of child cells
-    int IBODY;                                                  //!< Index of first body
-    int NBODY;                                                  //!< Number of descendant bodies
+    bint_t IPARENT;                                                //!< Index of parent cell
+    bint_t ICHILD;                                                 //!< Index of first child cell
+    bint_t NCHILD;                                                 //!< Number of child cells
+    bint_t IBODY;                                                  //!< Index of first body
+    bint_t NBODY;                                                  //!< Number of descendant bodies
 #if EXAFMM_COUNT_LIST
     int numP2P;                                                 //!< Size of P2P interaction list per cell
     int numM2L;                                                 //!< Size of M2L interaction list per cell

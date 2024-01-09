@@ -13,15 +13,15 @@ namespace EXAFMM_NAMESPACE {
     //! Post-order traversal for upward pass
     void postOrderTraversal(GC_iter C, GC_iter C0) const {
       auto cs = ityr::make_checkout(C, 1, ityr::checkout_mode::read);
-      int ichild = cs[0].ICHILD;
-      int nchild = cs[0].NCHILD;
+      bint_t ichild = cs[0].ICHILD;
+      bint_t nchild = cs[0].NCHILD;
       cs.checkin();
 
       ityr::for_each(
           ityr::execution::par,
-          ityr::count_iterator<int>(0),
-          ityr::count_iterator<int>(nchild),
-          [=, *this](int i) {
+          ityr::count_iterator<bint_t>(0),
+          ityr::count_iterator<bint_t>(nchild),
+          [=, *this](bint_t i) {
             postOrderTraversal(C0 + ichild + i, C0);
           });
 
@@ -60,16 +60,16 @@ namespace EXAFMM_NAMESPACE {
 #endif
 #endif
 
-      int ichild = C_.ICHILD;
-      int nchild = C_.NCHILD;
+      bint_t ichild = C_.ICHILD;
+      bint_t nchild = C_.NCHILD;
       cs.checkin();
       csj.checkin();
 
       ityr::for_each(
           ityr::execution::par,
-          ityr::count_iterator<int>(0),
-          ityr::count_iterator<int>(nchild),
-          [=, *this](int i) {
+          ityr::count_iterator<bint_t>(0),
+          ityr::count_iterator<bint_t>(nchild),
+          [=, *this](bint_t i) {
             preOrderTraversal(C0 + ichild + i, C0);
           });
     };
@@ -111,17 +111,17 @@ namespace EXAFMM_NAMESPACE {
         if (!cells.empty()) {                                     // If cell vector is not empty
           GC_iter C0 = cells.begin();                              //  Root cell
           auto cs = ityr::make_checkout(C0, 1, ityr::checkout_mode::read);
-          int ichild = cs[0].ICHILD;
-          int nchild = cs[0].NCHILD;
+          bint_t ichild = cs[0].ICHILD;
+          bint_t nchild = cs[0].NCHILD;
           if (nchild == 0) {                                 //  If root is the only cell
             kernel->L2P(&cs[0]);                                       //   L2P kernel
           }                                                       //  End if root is the only cell
           cs.checkin();
           ityr::for_each(
               ityr::execution::par,
-              ityr::count_iterator<int>(0),
-              ityr::count_iterator<int>(nchild),
-              [=, *this](int i) {
+              ityr::count_iterator<bint_t>(0),
+              ityr::count_iterator<bint_t>(nchild),
+              [=, *this](bint_t i) {
                 preOrderTraversal(C0 + ichild + i, C0);                            //   Start pre-order traversal from root
               });
         }                                                         // End if for empty cell vector
@@ -143,7 +143,7 @@ namespace EXAFMM_NAMESPACE {
     }
 
     //! Dipole correction
-    void dipoleCorrection(Bodies & bodies, vec3 dipole, int numBodies, vec3 cycle) {
+    void dipoleCorrection(Bodies & bodies, vec3 dipole, bint_t numBodies, vec3 cycle) {
 #if EXAFMM_LAPLACE
       real_t coef = 4 * M_PI / (3 * cycle[0] * cycle[1] * cycle[2]);// Precalcualte constant
       for (B_iter B=bodies.begin(); B!=bodies.end(); B++) {     // Loop over bodies

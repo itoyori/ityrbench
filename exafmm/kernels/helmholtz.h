@@ -394,8 +394,8 @@ namespace EXAFMM_NAMESPACE {
     void P2P(Cell* Ci, const Cell* Cj) {
       GB_iter GBi = Ci->BODY;
       GB_iter GBj = Cj->BODY;
-      int ni = Ci->NBODY;
-      int nj = Cj->NBODY;
+      bint_t ni = Ci->NBODY;
+      bint_t nj = Cj->NBODY;
 
       auto [Bi_, Bj_] =
         ityr::make_checkouts(GBi, ni, ityr::checkout_mode::read_write,
@@ -408,7 +408,7 @@ namespace EXAFMM_NAMESPACE {
 
         real_t wave_r = std::real(wavek);
         real_t wave_i = std::imag(wavek);
-        int i = 0;
+        bint_t i = 0;
 #if EXAFMM_USE_SIMD
         simdvec wave_rvec = wave_r;
         simdvec wave_ivec = wave_i;
@@ -435,7 +435,7 @@ namespace EXAFMM_NAMESPACE {
           simdvec dz = Xperiodic[2];
           zi -= dz;
 
-          for (int j=0; j<nj; j++) {
+          for (bint_t j=0; j<nj; j++) {
             dx = Bj[j].X[0];
             dx -= xi;
             dy = Bj[j].X[1];
@@ -491,7 +491,7 @@ namespace EXAFMM_NAMESPACE {
           real_t ay_i = 0.0;
           real_t az_r = 0.0;
           real_t az_i = 0.0;
-          for (int j=0; j<nj; j++) {
+          for (bint_t j=0; j<nj; j++) {
             real_t mj_r = std::real(Bj[j].SRC);
             real_t mj_i = std::imag(Bj[j].SRC);
             vec3 dX = Bi[i].X - Bj[j].X - Xperiodic;
@@ -528,15 +528,15 @@ namespace EXAFMM_NAMESPACE {
     void P2P_direct(Cell* Ci, const Cell* Cj) {
       GB_iter GBi = Ci->BODY;
       GB_iter GBj = Cj->BODY;
-      int ni = Ci->NBODY;
-      int nj = Cj->NBODY;
+      bint_t ni = Ci->NBODY;
+      bint_t nj = Cj->NBODY;
 
       auto Bi_ = ityr::make_checkout(GBi, ni, ityr::checkout_mode::read_write);
       auto Bi = Bi_.data();
 
       real_t wave_r = std::real(wavek);
       real_t wave_i = std::imag(wavek);
-      int i = 0;
+      bint_t i = 0;
 #if EXAFMM_USE_SIMD
       simdvec wave_rvec = wave_r;
       simdvec wave_ivec = wave_i;

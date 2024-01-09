@@ -27,7 +27,7 @@ namespace EXAFMM_NAMESPACE {
   private:
     Kernel* kernel;                                            //!< Kernel class
     real_t theta;                                         //!< Multipole acceptance criteria
-    int nspawn;                                           //!< Threshold of NBODY for spawning new threads
+    bint_t nspawn;                                           //!< Threshold of NBODY for spawning new threads
     int images;                                           //!< Number of periodic image sublevels
     const char * path;                                          //!< Path to save files
 #if EXAFMM_COUNT_KERNEL
@@ -355,7 +355,7 @@ namespace EXAFMM_NAMESPACE {
   public:
     //! Constructor
     Traversal() {}
-    Traversal(Kernel* _kernel, real_t _theta, int _nspawn, int _images, const char * _path) : // Constructor
+    Traversal(Kernel* _kernel, real_t _theta, bint_t _nspawn, int _images, const char * _path) : // Constructor
       kernel(_kernel), theta(_theta), nspawn(_nspawn), images(_images), path(_path) // Initialize variables
 #if EXAFMM_COUNT_KERNEL
       , numP2P(0), numM2L(0)
